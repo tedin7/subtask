@@ -69,7 +69,7 @@ def _settings(sandbox: bool, kind: str) -> str:
     ]
     data: dict = {
         "permissions": {
-            "deny": [f"Read(/{p})" for p in secret_paths] + [f"Bash(*{Path(p).name}*)" for p in secret_paths]
+            "deny": [f"Read(/{p})" for p in secret_paths] + [f"Bash(*{p}*)" for p in secret_paths]
         }
     }
     if kind == "api":
