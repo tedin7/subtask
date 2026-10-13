@@ -125,7 +125,11 @@ def start(
 def _line(job_id: str) -> str:
     st, sp = jobs.status(job_id), jobs.spec(job_id)
     age = int((time.time() - sp.get("created", time.time())) / 60)
-    cost = f"{st.get('cost_usd', 0):.3f}$" if sp.get("engine", "").endswith("-api") or sp.get("engine") == "dsh" else "-"
+    cost = (
+        f"{st.get('cost_usd', 0):.3f}$"
+        if sp.get("engine", "").endswith("-api") or sp.get("engine") == "dsh"
+        else "-"
+    )
     final = st.get("state") in jobs.FINAL
     extra = st.get("error") or (st.get("detail") if final else st.get("last")) or ""
     return f"{job_id} {st.get('state')} · {sp.get('engine')} · {age}m · {cost} · {extra}"[:140]
@@ -271,6 +275,28 @@ def engines() -> str:
 STEPS = config.HOME / "steps.jsonl"
 
 
+def _repo_of(path: str) -> str | None:
+    """The git work tree containing `path` (a file or a directory), if any."""
+    p = Path(path).expanduser()
+    if not p.is_absolute():
+        return None
+    while not p.exists() and p != p.parent:
+        p = p.parent
+    if p.is_file():
+        p = p.parent
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(p), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout.strip() or None if done.returncode == 0 else None
+
+
 def step(
     title: str,
     path: str,
@@ -279,7 +305,7 @@ def step(
     repo: str | None = None,
     lang: str | None = None,
 ) -> str:
-    """Record a significant step: one model explains it, a stronger one challenges it.
+    """Record a significant step: a separate cheap model explains it.
 
     The agent declares the step; a separate model (narrate.py) reads it with the
     repository's real state and writes the announcement. If the narrator is not
@@ -289,7 +315,7 @@ def step(
 
     if not title.strip() or not path.strip() or not how.strip():
         return "title, path and how are required"
-    where = repo or os.getcwd()
+    where = repo or _repo_of(path.strip()) or os.getcwd()
     entry = {
         "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
         "repo": where,
@@ -301,14 +327,11 @@ def step(
     lines = [f"STEP: {entry['title']}", f"- path: {entry['path']}", f"- how: {entry['how']}"]
     lines += [f"- decision: {d}" for d in entry["decisions"]]
     declared = "\n".join(lines)
-    explained, checked = narrate.review(declared, where, lang or os.environ.get("SUBTASK_STEP_LANG", "Italian"))
+    explained = narrate.review(declared, where, lang or os.environ.get("SUBTASK_STEP_LANG", "Italian"))
     if explained.startswith("(unavailable"):
         out = f"{declared}\n{explained}"
     else:
         out = f"STEP: {entry['title']}\n{explained}"
-    out += f"\n\nCHECK:\n{checked}"
-    if checked.startswith("STOP"):
-        out += "\n\nAGENT: pause here and ask the operator before going on."
     entry["announcement"] = out
     config.HOME.mkdir(parents=True, exist_ok=True)
     with STEPS.open("a", encoding="utf-8") as fh:

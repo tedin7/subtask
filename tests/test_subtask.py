@@ -253,7 +253,7 @@ def test_step_falls_back_to_the_declared_step_without_a_key(st, tmp_path):
     assert st.jobs.month_spent() == 0
 
 
-def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
+def test_step_only_explains_with_haiku_and_books_it(st, tmp_path, monkeypatch):
     from subtask import narrate
 
     class Resp:
@@ -271,8 +271,7 @@ def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
     def fake_open(req, timeout):
         body = json.loads(req.data)
         seen.append(body)
-        text = "- Sta per aggiungere una cache." if "haiku" in body["model"] else "STOP: cancella dati"
-        return Resp(text)
+        return Resp("- Sta per aggiungere una cache.")
 
     monkeypatch.setattr(narrate.urllib.request, "urlopen", fake_open)
     monkeypatch.setattr(
@@ -284,10 +283,22 @@ def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
         },
     )
     out = st.core.step("Add cache", "edit core.py", "TDD", repo=str(tmp_path))
-    assert "Sta per aggiungere" in out and "CHECK:\nSTOP: cancella dati" in out
-    assert out.endswith("ask the operator before going on.")
-    assert sorted(b["model"] for b in seen) == ["claude-haiku-5-5", "claude-sonnet-5-5"]
-    assert st.jobs.month_spent() == pytest.approx(0.002 + 0.006)
+    assert "Sta per aggiungere" in out and "CHECK" not in out
+    assert [b["model"] for b in seen] == ["claude-haiku-5-5"]
+    assert st.jobs.month_spent() == pytest.approx(0.002)
+
+
+def test_step_reads_the_repo_from_path_when_repo_is_missing(st, tmp_path, monkeypatch):
+    from subtask import narrate
+
+    sub = tmp_path / "other"
+    (sub / "pkg").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(sub)], check=True)
+    seen = []
+    monkeypatch.setattr(narrate, "review", lambda text, repo, lang: seen.append(repo) or "- ok")
+    st.core.step("t", str(sub / "pkg" / "new_file.py"), "h")
+    st.core.step("t", "edit core.py", "h")
+    assert seen == [str(sub), os.getcwd()]
 
 
 def test_dsh_cost_counts_uncached_cached_and_output_tokens(st):

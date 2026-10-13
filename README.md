@@ -114,7 +114,7 @@ Any agent with a shell can use the CLI instead: `subtask --help`.
 | `reply(id, message)` | continue a finished job in the same session |
 | `stop(id)` / `cleanup(id)` | stop a job / remove its worktree, keep the branch |
 | `spend()` / `engines()` | API spend this month / free quota per engine |
-| `step(title, path, how, decisions=[])` | Haiku explains the step and Sonnet challenges it (OK/STOP) against the repo state; the agent shows both to the user (~4 s, <$0.01); CLI `subtask steps` lists them |
+| `step(title, path, how, decisions=[])` | Haiku announces the step in plain words from the repo state (repo read from an absolute `path` if `repo` is missing); the agent shows it to the user (~3 s, <$0.01); CLI `subtask steps` lists them |
 
 ## Settings
 

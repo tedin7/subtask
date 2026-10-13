@@ -12,10 +12,14 @@ yourself. Follow these rules.
 
 Before each significant step (new phase, choice of approach, a change with
 risk, a merge or release) call `step(title, path, how, decisions)` and show
-the returned text to the user verbatim, in your chat. Two independent models
-read your declaration and the repo state in parallel: Haiku explains the step
-in plain words, Sonnet tries to prove it wrong (CHECK: OK or STOP). On STOP,
-pause and ask the user. About 4 s and under 1 cent. CLI: `subtask step "..." --path ... --how ... --decision ...`.
+the returned text to the user verbatim, in your chat. Haiku, a model that did
+not plan the step, reads your declaration and the repo state and announces it
+in plain words. Put an absolute path in `path` (or pass `repo`) so it reads
+the right repository. About 3 s and under 1 cent.
+
+Falsification is separate: when a complex implementation is finished
+(concurrency, saved data, security, money, shared logic, a part broken before),
+start a sub-task on `sonnet-api` that tries to make it fail. Not on every step. CLI: `subtask step "..." --path ... --how ... --decision ...`.
 Small edits and reads are not steps.
 
 ## Delegate or not

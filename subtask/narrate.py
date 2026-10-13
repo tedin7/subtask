@@ -13,7 +13,6 @@ import os
 import subprocess
 import time
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 
 from . import config, jobs
 
@@ -23,11 +22,6 @@ EXPLAINER = (
     os.environ.get("SUBTASK_STEP_MODEL", "claude-haiku-5-5"),
     config._money("SUBTASK_STEP_PRICE_IN", "1"),
     config._money("SUBTASK_STEP_PRICE_OUT", "5"),
-)
-CHALLENGER = (
-    os.environ.get("SUBTASK_CHECK_MODEL", "claude-sonnet-5-5"),
-    config._money("SUBTASK_CHECK_PRICE_IN", "3"),
-    config._money("SUBTASK_CHECK_PRICE_OUT", "15"),
 )
 RESERVE_USD = 0.05
 MAX_CONTEXT = 6000
@@ -39,19 +33,13 @@ EXPLAIN = (
     "and why. Short sentences, plain words, no em dashes, bullets, at most 6 lines. "
     "Never invent facts. Write in this language: {lang}."
 )
-CHALLENGE = (
-    "You are an independent reviewer. A coding agent is about to take a step. Try to "
-    "prove the step wrong: compare it with the repository state and look for what can "
-    "break, what is missing, what contradicts the state, what is risky or irreversible. "
-    "First line exactly 'OK' if nothing serious, or 'STOP: <reason>' if the agent must "
-    "pause and ask the operator before going on. Then at most 3 bullets, one line each, "
-    "plain words, no em dashes. Never invent facts. Write in this language: {lang}."
-)
 
 
 def _git(repo: str, *args: str) -> str:
     try:
-        done = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=10, check=False)
+        done = subprocess.run(
+            ["git", "-C", repo, *args], capture_output=True, text=True, timeout=10, check=False
+        )
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -62,7 +50,11 @@ def repo_context(repo: str) -> str:
         ("branch", _git(repo, "branch", "--show-current")),
         ("last commits", _git(repo, "log", "--oneline", "-5")),
         ("changed files", "\n".join(_git(repo, "status", "--short").splitlines()[:30])),
-        ("diff size", _git(repo, "diff", "--stat", "HEAD").splitlines()[-1:] and _git(repo, "diff", "--stat", "HEAD").splitlines()[-1]),
+        (
+            "diff size",
+            _git(repo, "diff", "--stat", "HEAD").splitlines()[-1:]
+            and _git(repo, "diff", "--stat", "HEAD").splitlines()[-1],
+        ),
     ]
     text = "\n\n".join(f"{k}:\n{v}" for k, v in parts if v)
     return text[:MAX_CONTEXT] or "(not a git repository)"
@@ -107,20 +99,14 @@ def _call(spec: tuple[str, float, float], system: str, user: str) -> str:
         jobs.settle_open(job, cost)
 
 
-def review(step_text: str, repo: str, lang: str) -> tuple[str, str]:
-    """Explain (cheap model) and challenge (stronger model) the step in parallel.
+def review(step_text: str, repo: str, lang: str) -> str:
+    """Explain the step with the cheap model: the text, or '(unavailable: reason)'.
 
-    Each result is the text, or '(unavailable: reason)'.
+    Falsification does not run here: it belongs to finished, complex work and
+    runs as a separate sub-task on Sonnet.
     """
     user = f"Declared step:\n{step_text}\n\nRepository state:\n{repo_context(repo)}"
-
-    def run(spec, system):
-        try:
-            return _call(spec, system.format(lang=lang), user)
-        except Exception as exc:  # noqa: BLE001 - the step must never block the work
-            return f"(unavailable: {type(exc).__name__}: {str(exc)[:80]})"
-
-    with ThreadPoolExecutor(2) as pool:
-        explained = pool.submit(run, EXPLAINER, EXPLAIN)
-        checked = pool.submit(run, CHALLENGER, CHALLENGE)
-        return explained.result(), checked.result()
+    try:
+        return _call(EXPLAINER, EXPLAIN.format(lang=lang), user)
+    except Exception as exc:  # noqa: BLE001 - the step must never block the work
+        return f"(unavailable: {type(exc).__name__}: {str(exc)[:80]})"
