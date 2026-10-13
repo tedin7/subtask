@@ -3,6 +3,7 @@
 Sources (all local or the account's own usage endpoint, read-only):
 - *-api: the monthly cap minus the ledger.
 - codex: the rate_limits block in the newest Codex session file.
+- dsh: DeepSeek, paid from the same monthly cap as the *-api engines.
 - kimi, opencode: no quota data available, reported as unknown.
 """
 
@@ -20,8 +21,8 @@ UNKNOWN = 50.0  # free % assumed when an engine exposes no quota
 
 # Which engines fit which kind of task, best first when free room is equal.
 KINDS = {
-    "read": ["haiku-api", "kimi", "opencode", "sonnet-api"],
-    "code": ["sonnet-api", "codex", "kimi", "opencode"],
+    "read": ["haiku-api", "dsh", "kimi", "opencode", "sonnet-api"],
+    "code": ["sonnet-api", "dsh", "codex", "kimi", "opencode"],
     "review": ["sonnet-api", "codex", "kimi"],
     "hard": ["opus-api", "codex", "sonnet-api"],
 }
@@ -85,6 +86,7 @@ def snapshot(refresh: bool = False) -> dict[str, dict]:
         "haiku-api": {"free": api_free, "note": api_note},
         "opus-api": {"free": api_free, "note": api_note},
         "codex": {"free": codex_free, "note": codex_note},
+        "dsh": {"free": api_free, "note": api_note},
         "kimi": {"free": None, "note": "unknown (no quota data)"},
         "opencode": {"free": None, "note": "unknown (no quota data)"},
     }
@@ -100,11 +102,11 @@ def pick(kind: str = "code", max_usd: float | None = None, readonly: bool = Fals
     left = config.MONTHLY_CAP_USD - jobs.month_spent()
     best, best_score = None, -1.0
     for rank, engine in enumerate(candidates):
-        if readonly and engine in ("kimi", "opencode"):
+        if readonly and engine in ("kimi", "opencode", "dsh"):
             continue  # they have no enforced read-only mode
         free = snap[engine]["free"]
         free = UNKNOWN if free is None else free
-        if engine.endswith("-api") and left < (max_usd or config.DEFAULT_MAX_USD):
+        if (engine.endswith("-api") or engine == "dsh") and left < (max_usd or config.DEFAULT_MAX_USD):
             continue
         if free < 10:
             continue

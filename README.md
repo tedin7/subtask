@@ -47,6 +47,7 @@ These rules are also in the MCP server instructions, so every client reads them.
 | `haiku-api`  | API key                   | reading, search, summaries   |
 | `sonnet-api` | API key                   | coding, review (default)     |
 | `opus-api`   | API key                   | hard design only             |
+| `dsh`        | DeepSeek key, same cap    | coding, reading (cheap)      |
 | `codex`      | Codex login               | coding                       |
 | `kimi`       | Kimi CLI login            | coding, reading              |
 | `opencode`   | OpenCode login            | coding, reading              |
@@ -57,6 +58,9 @@ no Claude Code subscription engine: inside Claude Code use its own Agent tool.
 Choosing never touches the network:
 
 - API engines: monthly cap minus the local ledger.
+- `dsh`: DeepSeek Harness SDK (`pip install deepseek-harness-sdk`); key in
+  `~/.config/deepseek/api-key` or `DEEPSEEK_API_KEY` in the env file; cost from
+  token usage at list price, charged to the monthly cap. No read-only mode.
 - `codex`: the `rate_limits` block in the newest Codex session file.
 - `kimi`, `opencode`: no quota data, treated as half free.
 

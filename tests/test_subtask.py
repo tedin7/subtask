@@ -280,3 +280,25 @@ def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
     assert out.endswith("ask the operator before going on.")
     assert sorted(b["model"] for b in seen) == ["claude-haiku-5-5", "claude-sonnet-5-5"]
     assert st.jobs.month_spent() == pytest.approx(0.002 + 0.006)
+
+
+def test_dsh_cost_counts_uncached_cached_and_output_tokens(st):
+    from subtask import worker
+
+    usage = {"inputTokens": 1_000_000, "cacheReadTokens": 1_000_000, "outputTokens": 1_000_000}
+    events = [{"type": "assistant/message", "data": {"usage": usage}}, {"type": "turn/end", "data": {}}]
+    assert math.isclose(worker.dsh_cost(events), 0.30 + 0.006 + 1.20)
+
+
+def test_dsh_refused_read_only_and_skipped_by_auto(st, tmp_path):
+    out = st.core.start("x", "dsh", None, str(tmp_path), "HEAD", True, None, 5, "low")
+    assert "cannot run read-only" in out
+    engine, _ = st.capacity.pick("read", readonly=True)
+    assert engine not in ("dsh", "kimi", "opencode")
+
+
+def test_dsh_key_never_taken_from_environment(st, tmp_path, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "from-env")
+    monkeypatch.setenv("SUBTASK_DSH_KEY_FILE", str(tmp_path / "missing"))
+    importlib.reload(st.config)
+    assert st.config.deepseek_key() == ""

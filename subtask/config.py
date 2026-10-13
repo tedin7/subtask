@@ -30,6 +30,21 @@ MAX_JOB_USD = _money("SUBTASK_MAX_JOB_USD", "20")
 MAX_RUNNING = int(_money("SUBTASK_MAX_RUNNING", "4")) or 4
 SUMMARY_LINES = 12
 
+# DeepSeek (engine "dsh"): key file and list price in USD per million tokens.
+# Peak rates, checked 2026-09-10; override if the price list changes.
+DSH_KEY_FILE = Path(os.environ.get("SUBTASK_DSH_KEY_FILE", Path.home() / ".config" / "deepseek" / "api-key"))
+DSH_INPUT_USD_M = _money("SUBTASK_DSH_INPUT_USD_M", "0.30")
+DSH_CACHED_USD_M = _money("SUBTASK_DSH_CACHED_USD_M", "0.006")
+DSH_OUTPUT_USD_M = _money("SUBTASK_DSH_OUTPUT_USD_M", "1.20")
+
+
+def deepseek_key() -> str:
+    """DEEPSEEK_API_KEY from the env file, else the key file. Never from the environment."""
+    key = load_secrets().get("DEEPSEEK_API_KEY", "")
+    if not key and DSH_KEY_FILE.is_file():
+        key = DSH_KEY_FILE.read_text().strip()
+    return key
+
 
 def load_secrets() -> dict[str, str]:
     """Read the env file. The key is never taken from the environment."""

@@ -27,6 +27,7 @@ ENGINES = {
     "codex": ("codex", None),
     "kimi": ("kimi", None),
     "opencode": ("opencode", None),
+    "dsh": ("dsh", "deepseek-v4-flash"),
 }
 
 SUMMARY_RULE = (
@@ -167,6 +168,57 @@ async def _run_claude(job_id: str, spec: dict, prompt: str, resume: str | None) 
     return final
 
 
+def dsh_cost(events: list[dict]) -> float:
+    """USD from the usage of each model message; rates in config (DeepSeek list price)."""
+    total = 0.0
+    for event in events:
+        usage = event.get("data", {}).get("usage") if isinstance(event.get("data"), dict) else None
+        if not usage:
+            usage = event.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        total += (
+            usage.get("inputTokens", 0) * config.DSH_INPUT_USD_M
+            + usage.get("cacheReadTokens", 0) * config.DSH_CACHED_USD_M
+            + usage.get("outputTokens", 0) * config.DSH_OUTPUT_USD_M
+        ) / 1e6
+    return total
+
+
+def _run_dsh(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
+    from deepseek_harness import DeepSeekHarness
+
+    key = config.deepseek_key()
+    if not key:
+        raise RuntimeError(f"DeepSeek key missing (file {config.DSH_KEY_FILE})")
+    home = jobs.job_dir(job_id) / "dsh-home"
+    home.mkdir(mode=0o700, exist_ok=True)
+    API_STARTED.set()
+    with DeepSeekHarness(
+        cwd=spec["cwd"],
+        dsh_home=str(home),
+        model=ENGINES["dsh"][1],
+        reasoning_effort=spec.get("effort") or "medium",
+        api_key=key,  # reaches the dsh process only; its shell tool does not inherit it
+        env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(home), "LANG": "C.UTF-8"},
+    ) as harness:
+        run = harness.run(prompt + SUMMARY_RULE, session_id=resume) if resume else harness.run(
+            prompt + SUMMARY_RULE
+        )
+    with (jobs.job_dir(job_id) / "events.jsonl").open("a") as log:
+        for event in run.events:
+            if event.get("type") in ("assistant/message", "turn/end"):
+                log.write(json.dumps(event)[:4000] + "\n")
+    return {
+        "ok": run.finish_reason == "completed" and bool(run.final_response),
+        "subtype": run.finish_reason or "error",
+        "result": run.final_response or "",
+        "cost_usd": dsh_cost(run.events),
+        "session_id": run.session_id,
+        "turns": None,
+    }
+
+
 def _run_cli(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
     engine, cwd = spec["engine"], spec["cwd"]
     last = jobs.job_dir(job_id) / "last-message.txt"
@@ -231,9 +283,11 @@ def main() -> int:
         jobs.update_status(job_id, state="running", pid=os.getpid(), last="starting", error=None)
         if not Path(spec["cwd"]).is_dir():
             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
-        if kind == "api" and jobs.reserve(job_id, spec["max_usd"]) is None:
+        if kind in ("api", "dsh") and jobs.reserve(job_id, spec["max_usd"]) is None:
             raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
-        if kind == "api":
+        if kind == "dsh":
+            final = _run_dsh(job_id, spec, prompt, resume)
+        elif kind == "api":
             final = asyncio.run(_run_claude(job_id, spec, prompt, resume))
         else:
             final = _run_cli(job_id, spec, prompt, resume)
@@ -252,7 +306,7 @@ def main() -> int:
             spent = reported - before  # a resumed session reports its running total
         else:
             spent = float(reported)
-        if kind == "api":
+        if kind in ("api", "dsh"):
             jobs.settle_open(job_id, spent)  # no-op when nothing was reserved
         else:
             spent = 0.0

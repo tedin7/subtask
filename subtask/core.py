@@ -71,7 +71,7 @@ def start(
         task += "\n\nRead these first: " + ", ".join(files)
     if jobs.running_count() >= config.MAX_RUNNING:
         return f"{config.MAX_RUNNING} sub-tasks already running: use wait()"
-    if readonly and engine in ("kimi", "opencode"):
+    if readonly and engine in ("kimi", "opencode", "dsh"):
         return f"{engine} cannot run read-only; use another engine"
     job_id = jobs.new_id()
     folder = jobs.job_dir(job_id)
@@ -125,7 +125,7 @@ def start(
 def _line(job_id: str) -> str:
     st, sp = jobs.status(job_id), jobs.spec(job_id)
     age = int((time.time() - sp.get("created", time.time())) / 60)
-    cost = f"{st.get('cost_usd', 0):.3f}$" if "api" in sp.get("engine", "") else "-"
+    cost = f"{st.get('cost_usd', 0):.3f}$" if sp.get("engine", "").endswith("-api") or sp.get("engine") == "dsh" else "-"
     final = st.get("state") in jobs.FINAL
     extra = st.get("error") or (st.get("detail") if final else st.get("last")) or ""
     return f"{job_id} {st.get('state')} · {sp.get('engine')} · {age}m · {cost} · {extra}"[:140]
