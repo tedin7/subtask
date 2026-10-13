@@ -8,6 +8,14 @@ description: Delegate work to background sub-agents through the subtask MCP tool
 Every token you spend on delegation must be cheaper than doing the work
 yourself. Follow these rules.
 
+## Announce every significant step
+
+Before each significant step (new phase, choice of approach, a change with
+risk, a merge or release) call `step(title, path, how, decisions)` and show
+the returned announcement to the user verbatim. No model runs, it costs
+nothing. CLI: `subtask step "..." --path ... --how ... --decision ...`.
+Small edits and reads are not steps.
+
 ## Delegate or not
 
 Delegate when one of these is true:

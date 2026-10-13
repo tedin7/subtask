@@ -105,12 +105,13 @@ Any agent with a shell can use the CLI instead: `subtask --help`.
 | tool | what it does |
 |------|--------------|
 | `start(task, engine="auto", kind="code", repo=None, cwd=None, base="HEAD", readonly=False, max_usd=None, max_turns=60, effort="medium")` | start a job, return its id |
-| `wait(ids, timeout=50, any=False)` | block until all (or the first) end, max 600 s |
+| `wait(ids, timeout=300, any=False)` | block until all (or the first) end, max 600 s |
 | `status(id=None)` | one line per job |
 | `result(id, full=False)` | the summary, branch and commit count |
 | `reply(id, message)` | continue a finished job in the same session |
 | `stop(id)` / `cleanup(id)` | stop a job / remove its worktree, keep the branch |
 | `spend()` / `engines()` | API spend this month / free quota per engine |
+| `step(title, path, how, decisions=[])` | log a significant step and return the announcement to show the user (no model, no cost); CLI `subtask steps` lists them |
 
 ## Settings
 

@@ -236,3 +236,10 @@ def test_bad_cap_env_falls_back(monkeypatch):
     import subtask.config
 
     assert importlib.reload(subtask.config).MONTHLY_CAP_USD == 180
+
+
+def test_step_logs_and_returns_the_announcement(st):
+    out = st.core.step("Add cache", "edit core.py", "TDD", ["no new dependency"], repo="/x/app")
+    assert out.splitlines() == ["STEP: Add cache", "- path: edit core.py", "- how: TDD", "- decision: no new dependency"]
+    assert "app: Add cache" in st.core.steps()
+    assert st.core.step("", "p", "h") == "title, path and how are required"

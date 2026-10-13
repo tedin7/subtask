@@ -47,6 +47,12 @@ def main() -> int:
     rp.add_argument("message")
     for name in ("stop", "cleanup"):
         sub.add_parser(name).add_argument("id")
+    sp = sub.add_parser("step")
+    sp.add_argument("title")
+    sp.add_argument("--path", required=True)
+    sp.add_argument("--how", required=True)
+    sp.add_argument("--decision", action="append", dest="decisions")
+    sub.add_parser("steps")
     sub.add_parser("spend")
     sub.add_parser("engines")
     a = p.parse_args()
@@ -76,6 +82,10 @@ def main() -> int:
         out = core.result(a.id, a.full)
     elif a.cmd == "reply":
         out = core.reply(a.id, a.message)
+    elif a.cmd == "step":
+        out = core.step(a.title, a.path, a.how, a.decisions)
+    elif a.cmd == "steps":
+        out = core.steps()
     elif a.cmd == "stop":
         out = core.stop(a.id)
     elif a.cmd == "cleanup":

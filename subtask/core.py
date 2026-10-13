@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import subprocess
@@ -265,3 +266,36 @@ def spend() -> str:
 
 def engines() -> str:
     return capacity.report()
+
+
+STEPS = config.HOME / "steps.jsonl"
+
+
+def step(title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None) -> str:
+    """Record a significant step and return the announcement to show the user.
+
+    No model runs: the agent that decides is the only one who knows why.
+    """
+    if not title.strip() or not path.strip() or not how.strip():
+        return "title, path and how are required"
+    entry = {
+        "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "repo": repo or os.getcwd(),
+        "title": title.strip(),
+        "path": path.strip(),
+        "how": how.strip(),
+        "decisions": [d.strip() for d in decisions or [] if d.strip()],
+    }
+    config.HOME.mkdir(parents=True, exist_ok=True)
+    with STEPS.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    lines = [f"STEP: {entry['title']}", f"- path: {entry['path']}", f"- how: {entry['how']}"]
+    lines += [f"- decision: {d}" for d in entry["decisions"]]
+    return "\n".join(lines)
+
+
+def steps(limit: int = 10) -> str:
+    if not STEPS.is_file():
+        return "no steps"
+    rows = [json.loads(x) for x in STEPS.read_text(encoding="utf-8").splitlines()[-limit:] if x.strip()]
+    return "\n".join(f"{r['ts']} {Path(r['repo']).name}: {r['title']} ({r['path']})" for r in rows)

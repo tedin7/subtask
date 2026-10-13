@@ -17,7 +17,8 @@ mcp = FastMCP(
     instructions=(
         "Background sub-agents. Delegate only parallel pieces, long/noisy work, or a "
         "reviewer for complex code; do small things yourself. start_many() then one "
-        "wait(): it returns the summaries. engine=auto picks by free quota."
+        "wait(): it returns the summaries. engine=auto picks by free quota. Before each significant step call step() "
+        "and show its announcement."
     ),
 )
 
@@ -97,6 +98,14 @@ def cleanup(id: str) -> str:
 def engines() -> str:
     """Free quota per engine, and API spend this month."""
     return core.engines() + "\n" + core.spend()
+
+
+@mcp.tool()
+def step(title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None) -> str:
+    """Call BEFORE each significant step. Logs it and returns the announcement:
+    show it to the user verbatim. path: the road you take; how: the method;
+    decisions: choices you made and why. No model runs, no cost."""
+    return core.step(title, path, how, decisions, repo)
 
 
 def main() -> None:
