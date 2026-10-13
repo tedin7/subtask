@@ -6,6 +6,8 @@ they are kept short. The full usage guide is the `subtask` skill (skill/SKILL.md
 
 from __future__ import annotations
 
+import asyncio
+
 from mcp.server.fastmcp import FastMCP
 
 from . import core
@@ -48,10 +50,11 @@ def start_many(tasks: list[dict]) -> str:
 
 
 @mcp.tool()
-def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
+async def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
     """Block until all jobs end (any=True: the first), max 600 s. Returns each
     finished job's summary, so result() is usually not needed."""
-    return core.wait(ids, timeout, any)
+    # In a thread, so stop/status calls are served while this one waits.
+    return await asyncio.to_thread(core.wait, ids, timeout, any)
 
 
 @mcp.tool()
@@ -73,9 +76,9 @@ def reply(id: str, message: str) -> str:
 
 
 @mcp.tool()
-def stop(id: str) -> str:
+async def stop(id: str) -> str:
     """Stop a running job."""
-    return core.stop(id)
+    return await asyncio.to_thread(core.stop, id)
 
 
 @mcp.tool()

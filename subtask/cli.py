@@ -88,5 +88,13 @@ def main() -> int:
     return 0
 
 
+def run() -> int:
+    try:
+        return main()
+    except ValueError as exc:  # bad id or argument: one line, no traceback
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())

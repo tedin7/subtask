@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -33,22 +34,69 @@ SUMMARY_RULE = (
     "(the findings, the decision, the numbers), then files touched, commits, tests "
     "run, what is left. The caller reads only this section. Use the task language."
 )
-# OS-level sandbox for Bash: writes outside the working dir are blocked.
-SANDBOX = {"enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True}
-READONLY_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+READONLY_TOOLS = ["Read", "Grep", "Glob", "WebSearch"]
+KEY_RE = re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}")
+SECRET_ENV = ("ANTHROPIC_", "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+
+
+def redact(text: str) -> str:
+    return KEY_RE.sub("sk-ant-[REDACTED]", text)
+
+
+def _key_helper() -> Path:
+    """Script that prints the key, so the key is never in the agent's environment."""
+    helper = config.HOME / "key-helper.sh"
+    helper.parent.mkdir(parents=True, exist_ok=True)
+    helper.write_text(
+        f"#!{sys.executable}\n"
+        f"from subtask.config import load_secrets\n"
+        f"print(load_secrets().get('ANTHROPIC_API_KEY', ''))\n"
+    )
+    helper.chmod(0o700)
+    return helper
+
+
+def _settings(sandbox: bool, kind: str) -> str:
+    """Per-run settings: OS sandbox for Bash, and best-effort read denies on secrets.
+
+    Not a hard boundary: an agent running as the same user can still find a way to
+    read files it may not Read. Run subtask under a dedicated user for that.
+    """
+    secret_paths = [
+        str(config.ENV_FILE),
+        str(config.HOME / "key-helper.sh"),
+        str(Path.home() / ".claude" / ".credentials.json"),
+    ]
+    data: dict = {
+        "permissions": {
+            "deny": [f"Read(/{p})" for p in secret_paths] + [f"Bash(*{Path(p).name}*)" for p in secret_paths]
+        }
+    }
+    if kind == "api":
+        data["apiKeyHelper"] = str(_key_helper())
+    if sandbox:
+        data["sandbox"] = {
+            "enabled": True,
+            "allowUnsandboxedCommands": False,
+            "failIfUnavailable": True,
+            "filesystem": {"allowWrite": [str(Path.home() / ".cache")], "denyRead": secret_paths},
+        }
+    return json.dumps(data)
+
+
+def _clean_env() -> dict[str, str]:
+    """Environment for child CLIs without any inherited secret."""
+    return {k: v for k, v in os.environ.items() if not k.startswith(SECRET_ENV)}
 
 
 def _api_env(kind: str) -> dict[str, str]:
-    env = {"IS_SANDBOX": "1"}  # bypassPermissions is refused as root without it
+    env = {"IS_SANDBOX": "1", "ANTHROPIC_API_KEY": ""}  # key comes from apiKeyHelper only
     if kind == "api":
         secrets = config.load_secrets()
         if not secrets.get("ANTHROPIC_API_KEY"):
             raise RuntimeError(f"ANTHROPIC_API_KEY missing (file {config.ENV_FILE})")
-        env["ANTHROPIC_API_KEY"] = secrets["ANTHROPIC_API_KEY"]
         if secrets.get("ANTHROPIC_WORKSPACE_ID"):
             env["ANTHROPIC_CUSTOM_HEADERS"] = f"anthropic-workspace-id: {secrets['ANTHROPIC_WORKSPACE_ID']}"
-    else:
-        env["ANTHROPIC_API_KEY"] = ""  # force the subscription login
     return env
 
 
@@ -71,8 +119,8 @@ async def _run_claude(job_id: str, spec: dict, prompt: str, resume: str | None) 
         effort=spec["effort"],
         permission_mode="dontAsk" if readonly else "bypassPermissions",
         allowed_tools=READONLY_TOOLS if readonly else [],
-        disallowed_tools=["mcp__*"],
-        sandbox=None if readonly or not spec.get("sandbox", True) else SANDBOX,
+        disallowed_tools=["mcp__*", "WebFetch"] if readonly else ["mcp__*"],
+        settings=_settings(not readonly and spec.get("sandbox", True), kind),
         system_prompt={"type": "preset", "preset": "claude_code", "append": SUMMARY_RULE},
         env=_api_env(kind),
         resume=resume,
@@ -103,28 +151,24 @@ async def _run_claude(job_id: str, spec: dict, prompt: str, resume: str | None) 
 def _run_cli(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
     engine, cwd = spec["engine"], spec["cwd"]
     last = jobs.job_dir(job_id) / "last-message.txt"
+    readonly = spec.get("readonly", False)
     if engine == "codex":
-        argv = [
-            "codex",
-            "exec",
-            "--json",
-            "--skip-git-repo-check",
-            "-C",
-            cwd,
-            "--dangerously-bypass-approvals-and-sandbox",
-            "-o",
-            str(last),
-        ]
-        argv += ["resume", resume, prompt] if resume else [prompt]
+        mode = ["-s", "read-only"] if readonly else ["--dangerously-bypass-approvals-and-sandbox"]
+        argv = ["codex", "exec", "--json", "--skip-git-repo-check", "-C", cwd, *mode, "-o", str(last)]
+        argv += ["resume", resume, "--", prompt] if resume else ["--", prompt]
     elif engine == "kimi":
-        argv = ["kimi", "--auto", "--output-format", "text", "-p", prompt]
-        argv[1:1] = ["-c"] if resume else []
+        argv = ["kimi", "--plan" if readonly else "--auto", "--output-format", "text"]
+        argv += ["-S", resume] if resume and resume != "continue" else ["-c"] if resume else []
+        argv += ["-p", prompt]
     elif engine == "opencode":
-        argv = ["opencode", "run", prompt] + (["--continue"] if resume else [])
+        argv = ["opencode", "run"] + (["--continue"] if resume else []) + ["--", prompt]
     else:
         raise RuntimeError(f"unknown engine: {engine}")
+    last.unlink(missing_ok=True)
     with (jobs.job_dir(job_id) / "output.log").open("a") as out:
-        proc = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=out, text=True, check=False)
+        proc = subprocess.run(
+            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=out, text=True, check=False, env=_clean_env()
+        )
     text = last.read_text() if last.is_file() else proc.stdout
     session = resume or "continue"
     if engine == "codex":
@@ -143,6 +187,16 @@ def _run_cli(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
 
 
 def main() -> int:
+    stopped = False
+
+    def _on_term(_sig: int, _frame: object) -> None:
+        nonlocal stopped
+        if stopped:
+            return  # a second stop must not interrupt the bookkeeping below
+        stopped = True
+        raise KeyboardInterrupt  # unwinds into finally, so the job is closed and settled
+
+    signal.signal(signal.SIGTERM, _on_term)  # first thing: an early stop is never lost
     parser = argparse.ArgumentParser()
     parser.add_argument("job_id")
     parser.add_argument("--reply-file")
@@ -150,23 +204,18 @@ def main() -> int:
     job_id = args.job_id
     spec = jobs.spec(job_id)
     previous = jobs.status(job_id)
-    prompt = Path(args.reply_file).read_text() if args.reply_file else spec["task"]
-    resume = previous.get("session_id") if args.reply_file else None
+    before = float(previous.get("cost_usd") or 0) if args.reply_file else 0.0
     kind = ENGINES[spec["engine"]][0]
-    jobs.update_status(job_id, state="running", pid=os.getpid(), last="starting", error=None)
-    if kind == "api" and jobs.reserve(job_id, spec["max_usd"]) is None:
-        jobs.update_status(job_id, state="failed", error=f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
-        return 1
     final: dict = {}
-    stopped = False
-
-    def _on_term(_sig: int, _frame: object) -> None:
-        nonlocal stopped
-        stopped = True
-        raise KeyboardInterrupt  # unwinds into finally, so the job is closed and settled
-
-    signal.signal(signal.SIGTERM, _on_term)
+    reserved = False
     try:
+        prompt = Path(args.reply_file).read_text() if args.reply_file else spec["task"]
+        resume = previous.get("session_id") if args.reply_file else None
+        jobs.update_status(job_id, state="running", pid=os.getpid(), last="starting", error=None)
+        if kind == "api":
+            if jobs.reserve(job_id, spec["max_usd"]) is None:
+                raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
+            reserved = True
         if kind in ("api", "sub"):
             final = asyncio.run(_run_claude(job_id, spec, prompt, resume))
         else:
@@ -174,29 +223,24 @@ def main() -> int:
     except KeyboardInterrupt:
         final = {"ok": False, "subtype": "stopped", "result": "stopped by request"}
     except Exception as exc:
-        final = {
-            "ok": False,
-            "subtype": "exception",
-            "result": f"{type(exc).__name__}: {exc}",
-            "cost_usd": 0.0,
-        }
+        final = {"ok": False, "subtype": "exception", "result": f"{type(exc).__name__}: {exc}"}
     finally:
-        before = float(previous.get("cost_usd") or 0) if args.reply_file else 0.0
-        if stopped and kind == "api":
-            total = before + float(spec["max_usd"])  # unknown after a kill: charge the budget
-        elif kind in ("api", "sub") and args.reply_file:
-            total = max(
-                before, float(final.get("cost_usd") or 0)
-            )  # a resumed session reports the running total
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        reported = final.get("cost_usd")
+        if reported is None:
+            # Killed or crashed before a final cost: unknown, so charge the whole budget.
+            spent = float(spec["max_usd"]) if reserved else 0.0
+        elif args.reply_file and kind in ("api", "sub") and reported >= before:
+            spent = reported - before  # a resumed session reports its running total
         else:
-            total = before + float(final.get("cost_usd") or 0)
-        if kind == "api":
-            jobs.settle(job_id, total - before)
-        (jobs.job_dir(job_id) / "result.md").write_text(final.get("result", ""))
+            spent = float(reported)
+        if reserved:
+            jobs.settle(job_id, spent)
+        (jobs.job_dir(job_id) / "result.md").write_text(redact(final.get("result", "")))
         jobs.update_status(
             job_id,
             state="stopped" if stopped else "done" if final.get("ok") else "failed",
-            cost_usd=round(total, 4),
+            cost_usd=round(before + spent, 4),
             session_id=final.get("session_id") or previous.get("session_id"),
             turns=final.get("turns"),
             detail=final.get("subtype"),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import os
 import secrets
 import signal
@@ -19,7 +20,7 @@ FINAL = {"done", "failed", "stopped"}
 
 
 def new_id() -> str:
-    return "st-" + secrets.token_hex(3)
+    return "st-" + secrets.token_hex(5)
 
 
 def job_dir(job_id: str) -> Path:
@@ -48,42 +49,66 @@ def spec(job_id: str) -> dict:
 def status(job_id: str) -> dict:
     data = read_json(job_dir(job_id) / "status.json", {"state": "unknown"})
     pid = data.get("pid")
-    if data.get("state") == "running" and pid and not _alive(pid):
-        data["state"] = "failed"
-        data["error"] = "worker died before finishing"
-        write_json(job_dir(job_id) / "status.json", data)
+    if data.get("state") in ("queued", "running") and pid and not _alive(pid, job_id):
+        if unsettled(job_id):  # the worker died before booking its cost: charge the budget
+            settle(job_id, float(spec(job_id).get("max_usd") or 0))
+        data = update_status(job_id, state="failed", pid=None, error="worker died before finishing")
     return data
 
 
-def update_status(job_id: str, **fields: object) -> dict:
-    path = job_dir(job_id) / "status.json"
+@contextmanager
+def job_lock(job_id: str) -> Iterator[None]:
     with (job_dir(job_id) / ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)  # read-modify-write must not interleave
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def update_status(job_id: str, locked: bool = False, **fields: object) -> dict:
+    """Read-modify-write under the job lock (pass locked=True if already held)."""
+    path = job_dir(job_id) / "status.json"
+    if locked:
+        data = {**read_json(path), **fields, "updated": time.time()}
+        write_json(path, data)
+        return data
+    with job_lock(job_id):
         data = {**read_json(path), **fields, "updated": time.time()}
         write_json(path, data)
     return data
 
 
-def _alive(pid: int) -> bool:
+def _alive(pid: int, job_id: str = "") -> bool:
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        if os.waitpid(pid, os.WNOHANG)[0] == pid:
+            return False  # our own child that has exited: reaped, not a zombie
+    except ChildProcessError:
+        pass  # not our child (spawned by another server or CLI call)
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except FileNotFoundError:
         return False
-    except PermissionError:
-        return True
-    return True
+    except OSError:
+        return True  # no /proc: assume alive
+    return b"subtask.worker" in cmdline and job_id.encode() in cmdline  # guards pid reuse
 
 
-def stop(job_id: str) -> bool:
+def stop(job_id: str, grace_s: float = 8.0) -> bool:
     current = status(job_id)
     pid = current.get("pid")
-    if current.get("state") in FINAL or not pid or not _alive(pid):
+    if current.get("state") in FINAL or not pid:
         return False
-    try:
-        os.killpg(pid, signal.SIGTERM)  # the worker leads its own process group
-    except ProcessLookupError:
-        return False
-    update_status(job_id, stop_requested=True)
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pid, sig)  # the worker leads its own process group
+        except ProcessLookupError:
+            break
+        deadline = time.time() + grace_s
+        while time.time() < deadline and _alive(pid, job_id):
+            time.sleep(0.2)
+        if not _alive(pid, job_id):
+            break
+    status(job_id)  # books a killed worker as failed and settles its reservation
+    if read_json(job_dir(job_id) / "status.json").get("state") != "stopped":
+        update_status(job_id, state="stopped", pid=None)
     return True
 
 
@@ -95,7 +120,7 @@ def all_jobs() -> list[str]:
 
 
 def running_count() -> int:
-    return sum(1 for j in all_jobs() if status(j).get("state") == "running")
+    return sum(1 for j in all_jobs() if status(j).get("state") in ("queued", "running"))
 
 
 # ---------------------------------------------------------------- ledger
@@ -130,12 +155,29 @@ def _month_total(fh) -> float:
 
 def reserve(job_id: str, amount: float) -> float | None:
     """Book `amount` against the monthly cap. None when it would overshoot."""
+    if not math.isfinite(amount) or amount <= 0:
+        return None
     with _ledger() as fh:
         committed = _month_total(fh)
         if committed + amount > config.MONTHLY_CAP_USD:
             return None
         fh.write(json.dumps({"ts": _now(), "job": job_id, "reserve_usd": amount}) + "\n")
         return committed + amount
+
+
+def unsettled(job_id: str) -> bool:
+    """True when the job has a reservation not yet followed by a cost row."""
+    with _ledger() as fh:
+        fh.seek(0)
+        open_ = False
+        for line in fh.read().splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("job") == job_id:
+                open_ = "reserve_usd" in row
+        return open_
 
 
 def settle(job_id: str, cost: float) -> None:

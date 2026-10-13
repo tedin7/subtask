@@ -7,7 +7,7 @@ license = { text = "MIT" }
 dependencies = ["claude-agent-sdk>=0.2", "mcp>=1.28,<2"]
 
 [project.scripts]
-subtask = "subtask.cli:main"
+subtask = "subtask.cli:run"
 subtask-mcp = "subtask.server:main"
 
 [build-system]

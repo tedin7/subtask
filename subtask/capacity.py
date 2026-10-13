@@ -88,9 +88,11 @@ def _find(obj: object, key: str) -> dict | None:
 
 def snapshot(refresh: bool = False) -> dict[str, dict]:
     if not refresh and CACHE.is_file() and time.time() - CACHE.stat().st_mtime < CACHE_TTL_S:
-        return json.loads(CACHE.read_text())
+        cached = jobs.read_json(CACHE)
+        if cached:
+            return cached
     left = config.MONTHLY_CAP_USD - jobs.month_spent()
-    api_free = max(0.0, 100 * left / config.MONTHLY_CAP_USD)
+    api_free = max(0.0, 100 * left / config.MONTHLY_CAP_USD) if config.MONTHLY_CAP_USD > 0 else 0.0
     api_note = f"{left:.2f}$ of {config.MONTHLY_CAP_USD:.0f}$ left this month"
     claude_free, claude_note = _claude_free()
     codex_free, codex_note = _codex_free()
@@ -104,17 +106,19 @@ def snapshot(refresh: bool = False) -> dict[str, dict]:
         "opencode": {"free": None, "note": "unknown (no quota data)"},
     }
     config.HOME.mkdir(parents=True, exist_ok=True)
-    CACHE.write_text(json.dumps(snap))
+    jobs.write_json(CACHE, snap)  # atomic: parallel readers never see half a file
     return snap
 
 
-def pick(kind: str = "code", max_usd: float | None = None) -> tuple[str, str]:
+def pick(kind: str = "code", max_usd: float | None = None, readonly: bool = False) -> tuple[str, str]:
     """Return (engine, reason): the fitting engine with the most free room."""
     candidates = KINDS.get(kind, KINDS["code"])
     snap = snapshot()
     left = config.MONTHLY_CAP_USD - jobs.month_spent()
     best, best_score = None, -1.0
     for rank, engine in enumerate(candidates):
+        if readonly and engine in ("kimi", "opencode"):
+            continue  # they have no enforced read-only mode
         free = snap[engine]["free"]
         free = UNKNOWN if free is None else free
         if engine.endswith("-api") and left < (max_usd or config.DEFAULT_MAX_USD):

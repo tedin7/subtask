@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 import sys
@@ -19,15 +20,15 @@ def _git(repo: str, *args: str) -> str:
 
 
 def _spawn(job_id: str, *extra: str) -> int:
-    log = (jobs.job_dir(job_id) / "worker.log").open("a")
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "subtask.worker", job_id, *extra],
-        stdout=log,
-        stderr=log,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-        cwd=Path(__file__).resolve().parents[1],
-    )
+    with (jobs.job_dir(job_id) / "worker.log").open("a") as log:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "subtask.worker", job_id, *extra],
+            stdout=log,
+            stderr=log,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=Path(__file__).resolve().parents[1],
+        )
     return proc.pid
 
 
@@ -48,17 +49,29 @@ def start(
 ) -> str:
     reason = ""
     if engine == "auto":
-        engine, reason = capacity.pick(kind, max_usd)
+        engine, reason = capacity.pick(kind, max_usd, readonly)
         if not engine:
             return reason
     if engine not in ENGINES:
         return f"unknown engine: {engine}. Valid: {', '.join(ENGINES)}"
     if not task.strip():
         return "empty task"
+    budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
+    if not (isinstance(budget, (int, float)) and math.isfinite(budget) and 0 < budget <= config.MAX_JOB_USD):
+        return f"max_usd must be between 0 and {config.MAX_JOB_USD}"
+    if not 1 <= int(max_turns) <= 500:
+        return "max_turns must be between 1 and 500"
+    if base.startswith("-"):
+        return "invalid base"
+    if effort not in ("low", "medium", "high", "xhigh", "max"):
+        return "effort must be low|medium|high|xhigh|max"
+    repo = str(Path(repo).resolve()) if repo else None
     if files:
         task += "\n\nRead these first: " + ", ".join(files)
     if jobs.running_count() >= config.MAX_RUNNING:
         return f"{config.MAX_RUNNING} sub-tasks already running: use wait()"
+    if readonly and engine in ("kimi", "opencode"):
+        return f"{engine} cannot run read-only; use another engine"
     job_id = jobs.new_id()
     folder = jobs.job_dir(job_id)
     folder.mkdir(parents=True)
@@ -71,6 +84,8 @@ def start(
             base = _git(repo, "rev-parse", base)
             _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
         except subprocess.CalledProcessError as exc:
+            folder.joinpath("spec.json").unlink(missing_ok=True)
+            folder.rmdir() if not any(folder.iterdir()) else None
             return f"worktree not created: {exc.stderr.strip()[:200]}"
         task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
     else:
@@ -86,7 +101,7 @@ def start(
             "cwd": workdir,
             "readonly": readonly,
             "model": model,
-            "max_usd": max_usd or config.DEFAULT_MAX_USD,
+            "max_usd": budget,
             "max_turns": max_turns,
             "effort": effort,
             "sandbox": sandbox,
@@ -148,9 +163,10 @@ def start_many(tasks: list[dict]) -> str:
 
 def _summary(text: str) -> str:
     marker = text.rfind("## Summary")
-    chunk = text[marker:] if marker >= 0 else text
-    lines = [line for line in chunk.strip().splitlines() if line.strip()]
-    return "\n".join(lines[: config.SUMMARY_LINES + 1])
+    lines = [line for line in text[max(marker, 0) :].splitlines() if line.strip()]
+    if marker >= 0:
+        return "\n".join(lines[: config.SUMMARY_LINES + 1])
+    return "\n".join(lines[-config.SUMMARY_LINES :])  # no marker: the end is the conclusion
 
 
 def result(job_id: str, full: bool = False) -> str:
@@ -171,14 +187,18 @@ def result(job_id: str, full: bool = False) -> str:
 
 
 def reply(job_id: str, message: str) -> str:
-    st = jobs.status(job_id)
-    if st.get("state") not in jobs.FINAL:
-        return f"{job_id} is still running: wait or stop it"
-    if not st.get("session_id"):
-        return f"{job_id} has no session to resume"
-    reply_file = jobs.job_dir(job_id) / f"reply-{int(time.time())}.md"
-    reply_file.write_text(message)
-    jobs.update_status(job_id, state="queued", last="reply")
+    if not message.strip():
+        return "empty message"
+    jobs.status(job_id)  # settle a dead worker first: it takes the lock itself
+    with jobs.job_lock(job_id):  # two replies at once must not both start a worker
+        st = jobs.read_json(jobs.job_dir(job_id) / "status.json")
+        if st.get("state") not in jobs.FINAL:
+            return f"{job_id} is still running: wait or stop it"
+        if not st.get("session_id"):
+            return f"{job_id} has no session to resume"
+        reply_file = jobs.job_dir(job_id) / f"reply-{time.time_ns()}.md"
+        reply_file.write_text(message)
+        jobs.update_status(job_id, state="queued", last="reply", locked=True)
     pid = _spawn(job_id, "--reply-file", str(reply_file))
     jobs.update_status(job_id, pid=pid)
     return f"{job_id} resumed"
@@ -192,14 +212,22 @@ def cleanup(job_id: str) -> str:
     sp = jobs.spec(job_id)
     if jobs.status(job_id).get("state") not in jobs.FINAL:
         return f"{job_id} is still running"
-    if sp.get("branch") and sp.get("repo"):
-        subprocess.run(
-            ["git", "-C", sp["repo"], "worktree", "remove", "--force", sp["cwd"]],
-            capture_output=True,
-            check=False,
-        )
-        return f"{job_id}: worktree removed, branch {sp['branch']} kept"
-    return f"{job_id}: nothing to clean"
+    if not (sp.get("branch") and sp.get("repo")):
+        return f"{job_id}: nothing to clean"
+    dirty = subprocess.run(
+        ["git", "-C", sp["cwd"], "status", "--porcelain"], capture_output=True, text=True, check=False
+    )
+    if dirty.stdout.strip():
+        return f"{job_id}: worktree has uncommitted changes, not removed ({sp['cwd']})"
+    done = subprocess.run(
+        ["git", "-C", sp["repo"], "worktree", "remove", sp["cwd"]],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0:
+        return f"{job_id}: worktree not removed: {done.stderr.strip()[:200]}"
+    return f"{job_id}: worktree removed, branch {sp['branch']} kept"
 
 
 def spend() -> str:
