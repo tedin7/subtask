@@ -254,7 +254,7 @@ def test_step_falls_back_to_the_declared_step_without_a_key(st, tmp_path):
 
 
 def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
-    import subtask.narrate as narrate
+    from subtask import narrate
 
     class Resp:
         def __init__(self, text):
@@ -338,9 +338,9 @@ def test_fast_server_speaks_json_rpc(st, tmp_path):
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
         env={**os.environ},
     )
-    time.sleep(0)
     out = {r.get("id"): r for r in map(json.loads, proc.stdout.splitlines())}
     assert out[1]["result"]["protocolVersion"] == "2025-06-18"
     assert len(out[2]["result"]["tools"]) == 10

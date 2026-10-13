@@ -51,7 +51,7 @@ CHALLENGE = (
 
 def _git(repo: str, *args: str) -> str:
     try:
-        done = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
