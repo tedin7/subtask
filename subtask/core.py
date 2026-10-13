@@ -279,7 +279,7 @@ def step(
     repo: str | None = None,
     lang: str | None = None,
 ) -> str:
-    """Record a significant step; an independent model explains it to the user.
+    """Record a significant step: one model explains it, a stronger one challenges it.
 
     The agent declares the step; a separate model (narrate.py) reads it with the
     repository's real state and writes the announcement. If the narrator is not
@@ -301,11 +301,14 @@ def step(
     lines = [f"STEP: {entry['title']}", f"- path: {entry['path']}", f"- how: {entry['how']}"]
     lines += [f"- decision: {d}" for d in entry["decisions"]]
     declared = "\n".join(lines)
-    try:
-        text = narrate.explain(declared, where, lang or os.environ.get("SUBTASK_STEP_LANG", "Italian"))
-        out = f"STEP: {entry['title']} (explained by an independent observer)\n{text}"
-    except Exception as exc:  # noqa: BLE001 - the step must never block the work
-        out = f"{declared}\n(observer unavailable: {type(exc).__name__}: {str(exc)[:80]})"
+    explained, checked = narrate.review(declared, where, lang or os.environ.get("SUBTASK_STEP_LANG", "Italian"))
+    if explained.startswith("(unavailable"):
+        out = f"{declared}\n{explained}"
+    else:
+        out = f"STEP: {entry['title']}\n{explained}"
+    out += f"\n\nCHECK:\n{checked}"
+    if checked.startswith("STOP"):
+        out += "\n\nAGENT: pause here and ask the operator before going on."
     entry["announcement"] = out
     config.HOME.mkdir(parents=True, exist_ok=True)
     with STEPS.open("a", encoding="utf-8") as fh:

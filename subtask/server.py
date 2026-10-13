@@ -104,8 +104,9 @@ def engines() -> str:
 async def step(
     title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None
 ) -> str:
-    """Call BEFORE each significant step. An independent model explains it from
-    your declaration and the repo state; show its text to the user verbatim.
+    """Call BEFORE each significant step. Haiku explains it and Sonnet challenges
+    it against the repo state; paste the text in your chat verbatim. On STOP,
+    pause and ask the user.
     path: the road you take; how: the method; decisions: choices and why."""
     return await asyncio.to_thread(core.step, title, path, how, decisions, repo)
 

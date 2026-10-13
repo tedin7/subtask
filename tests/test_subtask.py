@@ -242,36 +242,41 @@ def test_step_falls_back_to_the_declared_step_without_a_key(st, tmp_path):
     (tmp_path / "env").write_text("")
     out = st.core.step("Add cache", "edit core.py", "TDD", ["no new dependency"], repo=str(tmp_path))
     assert out.splitlines()[:4] == ["STEP: Add cache", "- path: edit core.py", "- how: TDD", "- decision: no new dependency"]
-    assert "observer unavailable" in out
+    assert "(unavailable: RuntimeError: no API key)" in out
     assert "Add cache" in st.core.steps()
     assert st.core.step("", "p", "h") == "title, path and how are required"
     assert st.jobs.month_spent() == 0
 
 
-def test_step_uses_the_observer_and_books_its_cost(st, tmp_path, monkeypatch):
+def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
     import subtask.narrate as narrate
 
     class Resp:
+        def __init__(self, text):
+            self.text = text
+
         def __enter__(self):
             return self
 
         def __exit__(self, *a):
             return False
 
-    seen = {}
+    seen = []
 
     def fake_open(req, timeout):
-        seen["body"] = json.loads(req.data)
-        r = Resp()
-        r.read = lambda *a: json.dumps(
-            {"content": [{"type": "text", "text": "- Sta per aggiungere una cache."}],
-             "usage": {"input_tokens": 1000, "output_tokens": 200}}
-        ).encode()
-        return r
+        body = json.loads(req.data)
+        seen.append(body)
+        text = "- Sta per aggiungere una cache." if "haiku" in body["model"] else "STOP: cancella dati"
+        return Resp(text)
 
     monkeypatch.setattr(narrate.urllib.request, "urlopen", fake_open)
-    monkeypatch.setattr(narrate.json, "load", lambda r: json.loads(r.read()))
+    monkeypatch.setattr(
+        narrate.json,
+        "load",
+        lambda r: {"content": [{"type": "text", "text": r.text}], "usage": {"input_tokens": 1000, "output_tokens": 200}},
+    )
     out = st.core.step("Add cache", "edit core.py", "TDD", repo=str(tmp_path))
-    assert "independent observer" in out and "Sta per aggiungere" in out
-    assert "Declared step" in seen["body"]["messages"][0]["content"]
-    assert st.jobs.month_spent() == pytest.approx(0.002)
+    assert "Sta per aggiungere" in out and "CHECK:\nSTOP: cancella dati" in out
+    assert out.endswith("ask the operator before going on.")
+    assert sorted(b["model"] for b in seen) == ["claude-haiku-5-5", "claude-sonnet-5-5"]
+    assert st.jobs.month_spent() == pytest.approx(0.002 + 0.006)

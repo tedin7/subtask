@@ -13,24 +13,39 @@ import os
 import subprocess
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 from . import config, jobs
 
-MODEL = os.environ.get("SUBTASK_STEP_MODEL", "claude-haiku-5-5")
-# USD per million tokens, input / output. Override when prices change.
-PRICE_IN = config._money("SUBTASK_STEP_PRICE_IN", "1")
-PRICE_OUT = config._money("SUBTASK_STEP_PRICE_OUT", "5")
+# (model, USD per million input tokens, USD per million output tokens).
+# Override when prices change.
+EXPLAINER = (
+    os.environ.get("SUBTASK_STEP_MODEL", "claude-haiku-5-5"),
+    config._money("SUBTASK_STEP_PRICE_IN", "1"),
+    config._money("SUBTASK_STEP_PRICE_OUT", "5"),
+)
+CHALLENGER = (
+    os.environ.get("SUBTASK_CHECK_MODEL", "claude-sonnet-5-5"),
+    config._money("SUBTASK_CHECK_PRICE_IN", "3"),
+    config._money("SUBTASK_CHECK_PRICE_OUT", "15"),
+)
 RESERVE_USD = 0.05
 MAX_CONTEXT = 6000
 
-SYSTEM = (
+EXPLAIN = (
     "You are an independent observer. A coding agent is about to take a step. "
     "You did not plan it. Explain it to the operator, who is smart but not technical: "
     "what the agent is about to do, which road it takes, how, and the decisions it made "
-    "and why. Short sentences, plain words, no em dashes, bullets, at most 8 lines. "
-    "Check the declared step against the repository state: if something does not add up "
-    "(risky, missing, contradicts the state), say it in one line starting with the words 'Watch out:' translated into the output language. "
+    "and why. Short sentences, plain words, no em dashes, bullets, at most 6 lines. "
     "Never invent facts. Write in this language: {lang}."
+)
+CHALLENGE = (
+    "You are an independent reviewer. A coding agent is about to take a step. Try to "
+    "prove the step wrong: compare it with the repository state and look for what can "
+    "break, what is missing, what contradicts the state, what is risky or irreversible. "
+    "First line exactly 'OK' if nothing serious, or 'STOP: <reason>' if the agent must "
+    "pause and ask the operator before going on. Then at most 3 bullets, one line each, "
+    "plain words, no em dashes. Never invent facts. Write in this language: {lang}."
 )
 
 
@@ -53,28 +68,25 @@ def repo_context(repo: str) -> str:
     return text[:MAX_CONTEXT] or "(not a git repository)"
 
 
-def explain(step_text: str, repo: str, lang: str) -> str:
-    """Return the narrator's explanation. Raises on any failure."""
+def _call(spec: tuple[str, float, float], system: str, user: str) -> str:
+    """One Messages API call, booked in the ledger. Raises on any failure."""
+    model, price_in, price_out = spec
     secrets = config.load_secrets()
     key = secrets.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("no API key")
-    job = f"step-{int(time.time() * 1000)}"
+    job = f"step-{time.time_ns()}"
     if jobs.reserve(job, RESERVE_USD) is None:
         raise RuntimeError("monthly cap reached")
     cost = 0.0
     try:
         body = {
-            "model": MODEL,
+            "model": model,
             "max_tokens": 800,
-            "thinking": {"type": "disabled"},
-            "system": SYSTEM.format(lang=lang),
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Declared step:\n{step_text}\n\nRepository state:\n{repo_context(repo)}",
-                }
-            ],
+            # Sonnet 5.5 refuses "disabled"; "between_tools" means no thinking there.
+            "thinking": {"type": "between_tools" if "sonnet-5" in model else "disabled"},
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
         }
         headers = {
             "x-api-key": key,
@@ -89,7 +101,26 @@ def explain(step_text: str, repo: str, lang: str) -> str:
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.load(resp)
         usage = data.get("usage", {})
-        cost = (usage.get("input_tokens", 0) * PRICE_IN + usage.get("output_tokens", 0) * PRICE_OUT) / 1e6
+        cost = (usage.get("input_tokens", 0) * price_in + usage.get("output_tokens", 0) * price_out) / 1e6
         return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
     finally:
         jobs.settle_open(job, cost)
+
+
+def review(step_text: str, repo: str, lang: str) -> tuple[str, str]:
+    """Explain (cheap model) and challenge (stronger model) the step in parallel.
+
+    Each result is the text, or '(unavailable: reason)'.
+    """
+    user = f"Declared step:\n{step_text}\n\nRepository state:\n{repo_context(repo)}"
+
+    def run(spec, system):
+        try:
+            return _call(spec, system.format(lang=lang), user)
+        except Exception as exc:  # noqa: BLE001 - the step must never block the work
+            return f"(unavailable: {type(exc).__name__}: {str(exc)[:80]})"
+
+    with ThreadPoolExecutor(2) as pool:
+        explained = pool.submit(run, EXPLAINER, EXPLAIN)
+        checked = pool.submit(run, CHALLENGER, CHALLENGE)
+        return explained.result(), checked.result()
