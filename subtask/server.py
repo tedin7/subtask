@@ -15,15 +15,13 @@ from . import core
 mcp = FastMCP(
     "subtask",
     instructions=(
-        "Background sub-agents. Delegate only parallel pieces, long/noisy work, or a "
-        "reviewer for complex code; do small things yourself. start_many() then one "
-        "wait(): it returns the summaries. engine=auto picks by free quota. Before each significant step call step() "
-        "and show its announcement."
+        "Background sub-agents for parallel, long or review work; small things do yourself. "
+        "start_many() then one wait(). Call step() before each significant step."
     ),
 )
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def start(
     task: str,
     kind: str = "code",
@@ -37,23 +35,21 @@ def start(
     base: str = "HEAD",
     max_turns: int = 60,
 ) -> str:
-    """Start one job. kind: read|code|review|hard. repo: work in a new worktree+branch.
-    files: paths the agent reads first (do not paste them). Returns the id."""
+    """Start a job. kind: read|code|review|hard. repo: new worktree. files: paths to read."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort, kind=kind, files=files
     )
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def start_many(tasks: list[dict]) -> str:
-    """Start several jobs in one call. Each item takes start()'s arguments."""
+    """Items take start()'s arguments."""
     return core.start_many(tasks)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 async def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
-    """Block until all jobs end (any=True: the first), max 600 s. Returns each
-    finished job's summary, so result() is usually not needed."""
+    """Wait for jobs (any=True: first); returns their summaries."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     deadline = asyncio.get_running_loop().time() + max(1, min(timeout, 600))
@@ -64,51 +60,70 @@ async def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
         await asyncio.sleep(1)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def status(id: str | None = None) -> str:
     """One line per job."""
     return core.status(id)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def result(id: str, full: bool = False) -> str:
-    """Summary of a finished job; full=True for the whole final message."""
+    """Job summary; full=True for all."""
     return core.result(id, full)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def reply(id: str, message: str) -> str:
-    """Continue a finished job in the same session."""
+    """Continue a finished job."""
     return core.reply(id, message)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 async def stop(id: str) -> str:
-    """Stop a running job."""
+    """Stop a job."""
     return await asyncio.to_thread(core.stop, id)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def cleanup(id: str) -> str:
-    """Remove a finished job's worktree; keep its branch."""
+    """Remove a job's worktree, keep branch."""
     return core.cleanup(id)
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def engines() -> str:
-    """Free quota per engine, and API spend this month."""
+    """Free quota and API spend."""
     return core.engines() + "\n" + core.spend()
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 async def step(
     title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None
 ) -> str:
-    """Call BEFORE each significant step. Haiku explains it and Sonnet challenges
-    it against the repo state; paste the text in your chat verbatim. On STOP,
-    pause and ask the user.
-    path: the road you take; how: the method; decisions: choices and why."""
+    """Before each significant step. Paste the reply verbatim; on STOP ask the user."""
     return await asyncio.to_thread(core.step, title, path, how, decisions, repo)
+
+
+def _slim(schema: object) -> object:
+    """Drop what the client never needs: titles, and the null branch of optionals."""
+    if isinstance(schema, list):
+        return [_slim(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: _slim(v) for k, v in schema.items() if k != "title"}
+    branches = out.get("anyOf")
+    if isinstance(branches, list):
+        kept = [b for b in branches if b != {"type": "null"}]
+        if len(kept) == 1:
+            out.pop("anyOf")
+            out.update(kept[0])
+    if out.get("default", 0) is None:
+        out.pop("default")
+    return out
+
+
+for _tool in mcp._tool_manager.list_tools():
+    _tool.parameters = _slim(_tool.parameters)
 
 
 def main() -> None:
