@@ -53,8 +53,14 @@ def start_many(tasks: list[dict]) -> str:
 async def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
     """Block until all jobs end (any=True: the first), max 600 s. Returns each
     finished job's summary, so result() is usually not needed."""
-    # In a thread, so stop/status calls are served while this one waits.
-    return await asyncio.to_thread(core.wait, ids, timeout, any)
+    # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
+    # so any number of waits never delays stop() or status().
+    deadline = asyncio.get_running_loop().time() + max(1, min(timeout, 600))
+    while True:
+        out = core.wait(ids, 0, any)
+        if not out.startswith("still running") or asyncio.get_running_loop().time() >= deadline:
+            return out
+        await asyncio.sleep(1)
 
 
 @mcp.tool()

@@ -13,6 +13,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from . import config, jobs
@@ -34,9 +35,12 @@ SUMMARY_RULE = (
     "(the findings, the decision, the numbers), then files touched, commits, tests "
     "run, what is left. The caller reads only this section. Use the task language."
 )
+API_STARTED = threading.Event()  # set once the engine has produced anything (spend possible)
 READONLY_TOOLS = ["Read", "Grep", "Glob", "WebSearch"]
 KEY_RE = re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}")
-SECRET_ENV = ("ANTHROPIC_", "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+SECRET_NAME = re.compile(
+    r"(ANTHROPIC|TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE)", re.IGNORECASE
+)
 
 
 def redact(text: str) -> str:
@@ -47,16 +51,18 @@ def _key_helper() -> Path:
     """Script that prints the key, so the key is never in the agent's environment."""
     helper = config.HOME / "key-helper.sh"
     helper.parent.mkdir(parents=True, exist_ok=True)
-    helper.write_text(
+    tmp = helper.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(
         f"#!{sys.executable}\n"
         f"from subtask.config import load_secrets\n"
         f"print(load_secrets().get('ANTHROPIC_API_KEY', ''))\n"
     )
-    helper.chmod(0o700)
+    tmp.chmod(0o700)
+    os.replace(tmp, helper)  # atomic: other workers may be running it right now
     return helper
 
 
-def _settings(sandbox: bool, kind: str) -> str:
+def _settings(sandbox: bool, kind: str, git_dir: str | None = None) -> str:
     """Per-run settings: OS sandbox for Bash, and best-effort read denies on secrets.
 
     Not a hard boundary: an agent running as the same user can still find a way to
@@ -69,7 +75,9 @@ def _settings(sandbox: bool, kind: str) -> str:
     ]
     data: dict = {
         "permissions": {
-            "deny": [f"Read(/{p})" for p in secret_paths] + [f"Bash(*{p}*)" for p in secret_paths]
+            "deny": [f"{tool}(/{p})" for p in secret_paths for tool in ("Read", "Edit", "Write")]
+            + [f"Bash(*{p}*)" for p in secret_paths]
+            + [f"Bash(*{p.replace(str(Path.home()), '~')}*)" for p in secret_paths]
         }
     }
     if kind == "api":
@@ -79,14 +87,24 @@ def _settings(sandbox: bool, kind: str) -> str:
             "enabled": True,
             "allowUnsandboxedCommands": False,
             "failIfUnavailable": True,
-            "filesystem": {"allowWrite": [str(Path.home() / ".cache")], "denyRead": secret_paths},
+            "filesystem": {
+                # git data of a worktree lives in the main repo's .git: commits need it
+                "allowWrite": [str(Path.home() / ".cache")] + ([git_dir] if git_dir else []),
+                "denyRead": secret_paths,
+                "denyWrite": secret_paths,
+            },
         }
     return json.dumps(data)
 
 
-def _clean_env() -> dict[str, str]:
-    """Environment for child CLIs without any inherited secret."""
-    return {k: v for k, v in os.environ.items() if not k.startswith(SECRET_ENV)}
+def scrub_environ() -> None:
+    """Drop secret-looking variables from this process, so no child inherits them.
+
+    The Agent SDK passes the whole worker environment to the Claude CLI, and the
+    CLI to every Bash command; cleaning here covers all engines at once.
+    """
+    for name in [k for k in os.environ if SECRET_NAME.search(k)]:
+        del os.environ[name]
 
 
 def _api_env(kind: str) -> dict[str, str]:
@@ -120,7 +138,7 @@ async def _run_claude(job_id: str, spec: dict, prompt: str, resume: str | None) 
         permission_mode="dontAsk" if readonly else "bypassPermissions",
         allowed_tools=READONLY_TOOLS if readonly else [],
         disallowed_tools=["mcp__*", "WebFetch"] if readonly else ["mcp__*"],
-        settings=_settings(not readonly and spec.get("sandbox", True), kind),
+        settings=_settings(not readonly and spec.get("sandbox", True), kind, spec.get("git_dir")),
         system_prompt={"type": "preset", "preset": "claude_code", "append": SUMMARY_RULE},
         env=_api_env(kind),
         resume=resume,
@@ -129,6 +147,7 @@ async def _run_claude(job_id: str, spec: dict, prompt: str, resume: str | None) 
     final: dict = {}
     log = (jobs.job_dir(job_id) / "events.jsonl").open("a")
     async for message in query(prompt=prompt, options=options):
+        API_STARTED.set()
         if isinstance(message, AssistantMessage):
             turns += 1
             tools = [b.name for b in message.content if isinstance(b, ToolUseBlock)]
@@ -166,9 +185,7 @@ def _run_cli(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
         raise RuntimeError(f"unknown engine: {engine}")
     last.unlink(missing_ok=True)
     with (jobs.job_dir(job_id) / "output.log").open("a") as out:
-        proc = subprocess.run(
-            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=out, text=True, check=False, env=_clean_env()
-        )
+        proc = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=out, text=True, check=False)
     text = last.read_text() if last.is_file() else proc.stdout
     session = resume or "continue"
     if engine == "codex":
@@ -197,6 +214,7 @@ def main() -> int:
         raise KeyboardInterrupt  # unwinds into finally, so the job is closed and settled
 
     signal.signal(signal.SIGTERM, _on_term)  # first thing: an early stop is never lost
+    scrub_environ()
     parser = argparse.ArgumentParser()
     parser.add_argument("job_id")
     parser.add_argument("--reply-file")
@@ -207,15 +225,14 @@ def main() -> int:
     before = float(previous.get("cost_usd") or 0) if args.reply_file else 0.0
     kind = ENGINES[spec["engine"]][0]
     final: dict = {}
-    reserved = False
     try:
         prompt = Path(args.reply_file).read_text() if args.reply_file else spec["task"]
         resume = previous.get("session_id") if args.reply_file else None
         jobs.update_status(job_id, state="running", pid=os.getpid(), last="starting", error=None)
-        if kind == "api":
-            if jobs.reserve(job_id, spec["max_usd"]) is None:
-                raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
-            reserved = True
+        if not Path(spec["cwd"]).is_dir():
+            raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
+        if kind == "api" and jobs.reserve(job_id, spec["max_usd"]) is None:
+            raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
         if kind in ("api", "sub"):
             final = asyncio.run(_run_claude(job_id, spec, prompt, resume))
         else:
@@ -228,15 +245,22 @@ def main() -> int:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         reported = final.get("cost_usd")
         if reported is None:
-            # Killed or crashed before a final cost: unknown, so charge the whole budget.
-            spent = float(spec["max_usd"]) if reserved else 0.0
+            # Stopped or crashed without a final cost. If the engine already ran, the
+            # spend is unknown: charge the budget. If it never started, nothing was spent.
+            spent = float(spec["max_usd"]) if API_STARTED.is_set() else 0.0
         elif args.reply_file and kind in ("api", "sub") and reported >= before:
             spent = reported - before  # a resumed session reports its running total
         else:
             spent = float(reported)
-        if reserved:
-            jobs.settle(job_id, spent)
-        (jobs.job_dir(job_id) / "result.md").write_text(redact(final.get("result", "")))
+        if kind == "api":
+            jobs.settle_open(job_id, spent)  # no-op when nothing was reserved
+        else:
+            spent = 0.0
+        text = redact(final.get("result", ""))
+        if final.get("ok") or not args.reply_file:
+            (jobs.job_dir(job_id) / "result.md").write_text(text)
+        else:  # a failed reply keeps the previous good result
+            final["error"] = text[:300]
         jobs.update_status(
             job_id,
             state="stopped" if stopped else "done" if final.get("ok") else "failed",
@@ -244,6 +268,7 @@ def main() -> int:
             session_id=final.get("session_id") or previous.get("session_id"),
             turns=final.get("turns"),
             detail=final.get("subtype"),
+            error=final.get("error"),
             pid=None,
         )
     return 0

@@ -59,7 +59,7 @@ def start(
     budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
     if not (isinstance(budget, (int, float)) and math.isfinite(budget) and 0 < budget <= config.MAX_JOB_USD):
         return f"max_usd must be between 0 and {config.MAX_JOB_USD}"
-    if not 1 <= int(max_turns) <= 500:
+    if not isinstance(max_turns, int) or not 1 <= max_turns <= 500:
         return "max_turns must be between 1 and 500"
     if base.startswith("-"):
         return "invalid base"
@@ -75,7 +75,7 @@ def start(
     job_id = jobs.new_id()
     folder = jobs.job_dir(job_id)
     folder.mkdir(parents=True)
-    branch = None
+    branch = git_dir = None
     if repo and not readonly:
         branch = f"subtask/{job_id}"
         workdir = str(config.WORKTREES / job_id)
@@ -83,6 +83,7 @@ def start(
         try:
             base = _git(repo, "rev-parse", base)
             _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
+            git_dir = str(Path(repo, _git(repo, "rev-parse", "--git-common-dir")).resolve())
         except subprocess.CalledProcessError as exc:
             folder.joinpath("spec.json").unlink(missing_ok=True)
             folder.rmdir() if not any(folder.iterdir()) else None
@@ -98,6 +99,7 @@ def start(
             "repo": repo,
             "base": base if branch else None,
             "branch": branch,
+            "git_dir": git_dir,
             "cwd": workdir,
             "readonly": readonly,
             "model": model,
@@ -109,7 +111,11 @@ def start(
         },
     )
     jobs.update_status(job_id, state="queued")
-    pid = _spawn(job_id)
+    try:
+        pid = _spawn(job_id)
+    except OSError as exc:
+        jobs.update_status(job_id, state="failed", error=f"worker not started: {exc}")
+        return f"{job_id} failed to start: {exc}"
     jobs.update_status(job_id, pid=pid)
     where = f"branch {branch}" if branch else workdir
     return f"{job_id} started · {engine} · {where}" + (f"\n({reason})" if reason else "")
@@ -137,7 +143,10 @@ def wait(job_ids: list[str], timeout: int = 50, any_: bool = False, results: boo
     One call replaces many status() polls, and with results=True it also
     returns each finished job's summary, saving a result() call per job.
     """
-    deadline = time.time() + max(1, min(timeout, 600))
+    unknown = [j for j in job_ids if not (jobs.job_dir(j) / "spec.json").is_file()]
+    if unknown:
+        return "unknown job: " + ", ".join(unknown)
+    deadline = time.time() + max(0, min(timeout, 600))
     while True:
         ended = [j for j in job_ids if jobs.status(j).get("state") in jobs.FINAL]
         if ended and (any_ or len(ended) == len(job_ids)):
@@ -156,7 +165,7 @@ def start_many(tasks: list[dict]) -> str:
     for spec in tasks:
         try:
             out.append(start(**spec))
-        except TypeError as exc:
+        except Exception as exc:  # noqa: BLE001 - report it and keep the ids already started
             out.append(f"bad task {spec.get('task', '')[:40]!r}: {exc}")
     return "\n".join(out)
 
@@ -189,6 +198,8 @@ def result(job_id: str, full: bool = False) -> str:
 def reply(job_id: str, message: str) -> str:
     if not message.strip():
         return "empty message"
+    if not (jobs.job_dir(job_id) / "spec.json").is_file():
+        return f"unknown job: {job_id}"
     jobs.status(job_id)  # settle a dead worker first: it takes the lock itself
     with jobs.job_lock(job_id):  # two replies at once must not both start a worker
         st = jobs.read_json(jobs.job_dir(job_id) / "status.json")
@@ -199,7 +210,11 @@ def reply(job_id: str, message: str) -> str:
         reply_file = jobs.job_dir(job_id) / f"reply-{time.time_ns()}.md"
         reply_file.write_text(message)
         jobs.update_status(job_id, state="queued", last="reply", locked=True)
-    pid = _spawn(job_id, "--reply-file", str(reply_file))
+    try:
+        pid = _spawn(job_id, "--reply-file", str(reply_file))
+    except OSError as exc:
+        jobs.update_status(job_id, state="failed", error=f"worker not started: {exc}")
+        return f"{job_id} failed to resume: {exc}"
     jobs.update_status(job_id, pid=pid)
     return f"{job_id} resumed"
 
@@ -215,10 +230,13 @@ def cleanup(job_id: str) -> str:
     if not (sp.get("branch") and sp.get("repo")):
         return f"{job_id}: nothing to clean"
     dirty = subprocess.run(
-        ["git", "-C", sp["cwd"], "status", "--porcelain"], capture_output=True, text=True, check=False
+        ["git", "-C", sp["cwd"], "status", "--porcelain", "--ignored"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if dirty.stdout.strip():
-        return f"{job_id}: worktree has uncommitted changes, not removed ({sp['cwd']})"
+        return f"{job_id}: worktree has uncommitted or ignored files, not removed ({sp['cwd']})"
     done = subprocess.run(
         ["git", "-C", sp["repo"], "worktree", "remove", sp["cwd"]],
         capture_output=True,

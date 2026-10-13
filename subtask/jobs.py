@@ -50,9 +50,21 @@ def status(job_id: str) -> dict:
     data = read_json(job_dir(job_id) / "status.json", {"state": "unknown"})
     pid = data.get("pid")
     if data.get("state") in ("queued", "running") and pid and not _alive(pid, job_id):
-        if unsettled(job_id):  # the worker died before booking its cost: charge the budget
-            settle(job_id, float(spec(job_id).get("max_usd") or 0))
-        data = update_status(job_id, state="failed", pid=None, error="worker died before finishing")
+        with job_lock(job_id):
+            data = read_json(job_dir(job_id) / "status.json")  # re-check: it may have just finished
+            if data.get("state") in ("queued", "running") and data.get("pid") == pid:
+                charged = settle_open(job_id, float(spec(job_id).get("max_usd") or 0))
+                cost = float(data.get("cost_usd") or 0) + charged
+                data = update_status(
+                    job_id,
+                    locked=True,
+                    state="failed",
+                    pid=None,
+                    cost_usd=round(cost, 4),
+                    error="worker died before finishing",
+                )
+    elif data.get("state") == "queued" and not pid and time.time() - float(data.get("updated") or 0) > 60:
+        data = update_status(job_id, state="failed", error="worker never started")
     return data
 
 
@@ -178,6 +190,24 @@ def unsettled(job_id: str) -> bool:
             if row.get("job") == job_id:
                 open_ = "reserve_usd" in row
         return open_
+
+
+def settle_open(job_id: str, cost: float) -> float:
+    """Settle the job's open reservation, atomically. Returns what was booked (0 if none)."""
+    with _ledger() as fh:
+        fh.seek(0)
+        open_ = False
+        for line in fh.read().splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("job") == job_id:
+                open_ = "reserve_usd" in row
+        if not open_:
+            return 0.0
+        fh.write(json.dumps({"ts": _now(), "job": job_id, "cost_usd": round(cost, 4)}) + "\n")
+        return cost
 
 
 def settle(job_id: str, cost: float) -> None:

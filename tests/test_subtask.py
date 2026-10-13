@@ -165,3 +165,74 @@ def test_capacity_cache_survives_zero_cap(st, monkeypatch):
     snap = st.capacity.snapshot(refresh=True)
     assert snap["sonnet-api"]["free"] == 0.0
     assert json.loads(st.capacity.CACHE.read_text())
+
+
+def test_dead_worker_is_charged_once_under_concurrent_status(st):
+    import threading
+
+    job = "st-dddddddddd"
+    folder = st.jobs.job_dir(job)
+    folder.mkdir(parents=True)
+    st.jobs.write_json(folder / "spec.json", {"engine": "sonnet-api", "max_usd": 2.0, "created": time.time()})
+    st.jobs.reserve(job, 2.0)
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    st.jobs.write_json(folder / "status.json", {"state": "running", "pid": dead.pid})
+    threads = [threading.Thread(target=st.jobs.status, args=(job,)) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert st.jobs.month_spent() == pytest.approx(2.0)
+
+
+def test_engine_that_never_started_costs_nothing(st, tmp_path, monkeypatch):
+    (tmp_path / "env").write_text("")  # no key: the api engine fails before any call
+    job = st.core.start("x", engine="sonnet-api", cwd=str(tmp_path), max_usd=2).split()[0]
+    assert _wait_final(st, job)["state"] == "failed"
+    assert st.jobs.month_spent() == 0
+
+
+def test_secrets_are_scrubbed_from_the_worker_environment(st, tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_secret")
+    monkeypatch.setenv("SUBTASK_ANTHROPIC_API_KEY", "sk-ant-x-1234567890")
+    _fake_cli(tmp_path, "kimi", 'env | grep -c -E "GITHUB_TOKEN|ANTHROPIC" ; exit 0')
+    job = st.core.start("count", engine="kimi", cwd=str(tmp_path)).split()[0]
+    _wait_final(st, job)
+    assert (st.jobs.job_dir(job) / "result.md").read_text().strip() == "0"
+
+
+def test_wait_on_unknown_id_returns_at_once(st):
+    t = time.time()
+    assert st.core.wait(["st-0000000000"], 30).startswith("unknown job")
+    assert time.time() - t < 1
+
+
+def test_failed_reply_keeps_the_previous_result(st, tmp_path):
+    _fake_cli(tmp_path, "kimi", "echo first answer")
+    job = st.core.start("x", engine="kimi", cwd=str(tmp_path)).split()[0]
+    _wait_final(st, job)
+    _fake_cli(tmp_path, "kimi", "echo broken; exit 3")
+    st.core.reply(job, "again")
+    time.sleep(0.5)
+    _wait_final(st, job)
+    assert "first answer" in (st.jobs.job_dir(job) / "result.md").read_text()
+
+
+def test_start_many_reports_bad_items_and_keeps_started_ids(st, tmp_path):
+    _fake_cli(tmp_path, "kimi", "true")
+    out = st.core.start_many(
+        [
+            {"task": "a", "engine": "kimi", "cwd": str(tmp_path)},
+            {"task": "b", "engine": "kimi", "max_turns": "abc"},
+        ]
+    )
+    assert " started " in out.splitlines()[0]
+    assert "max_turns" in out.splitlines()[1]
+
+
+def test_bad_cap_env_falls_back(monkeypatch):
+    monkeypatch.setenv("SUBTASK_MONTHLY_CAP_USD", "nan")
+    import subtask.config
+
+    assert importlib.reload(subtask.config).MONTHLY_CAP_USD == 180
