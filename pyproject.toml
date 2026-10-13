@@ -1,0 +1,24 @@
+[project]
+name = "subtask"
+version = "0.1.0"
+description = "Background sub-agents for Claude Code, Codex, Kimi and OpenCode, over MCP or CLI, with a spend cap"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["claude-agent-sdk>=0.2", "mcp>=1.28,<2"]
+
+[project.scripts]
+subtask = "subtask.cli:main"
+subtask-mcp = "subtask.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["subtask"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint.per-file-ignores]
+"subtask/worker.py" = ["BLE001"]
