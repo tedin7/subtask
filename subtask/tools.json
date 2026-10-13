@@ -1,0 +1,221 @@
+{
+ "instructions": "Background sub-agents for parallel, long or review work; small things do yourself. start_many() then one wait(). Call step() before each significant step.",
+ "tools": [
+  {
+   "name": "start",
+   "description": "Start a job. kind: read|code|review|hard. repo: new worktree. files: paths to read.",
+   "inputSchema": {
+    "properties": {
+     "task": {
+      "type": "string"
+     },
+     "kind": {
+      "default": "code",
+      "type": "string"
+     },
+     "repo": {
+      "type": "string"
+     },
+     "cwd": {
+      "type": "string"
+     },
+     "files": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "readonly": {
+      "default": false,
+      "type": "boolean"
+     },
+     "engine": {
+      "default": "auto",
+      "type": "string"
+     },
+     "max_usd": {
+      "type": "number"
+     },
+     "effort": {
+      "default": "medium",
+      "type": "string"
+     },
+     "base": {
+      "default": "HEAD",
+      "type": "string"
+     },
+     "max_turns": {
+      "default": 60,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "task"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "start_many",
+   "description": "Items take start()'s arguments.",
+   "inputSchema": {
+    "properties": {
+     "tasks": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "tasks"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "wait",
+   "description": "Wait for jobs (any=True: first); returns their summaries.",
+   "inputSchema": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "timeout": {
+      "default": 300,
+      "type": "integer"
+     },
+     "any": {
+      "default": false,
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ids"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "status",
+   "description": "One line per job.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   }
+  },
+  {
+   "name": "result",
+   "description": "Job summary; full=True for all.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "full": {
+      "default": false,
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "reply",
+   "description": "Continue a finished job.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "message": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "message"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "stop",
+   "description": "Stop a job.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "cleanup",
+   "description": "Remove a job's worktree, keep branch.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "engines",
+   "description": "Free quota and API spend.",
+   "inputSchema": {
+    "properties": {},
+    "type": "object"
+   }
+  },
+  {
+   "name": "step",
+   "description": "Before each significant step. Paste the reply verbatim; on STOP ask the user.",
+   "inputSchema": {
+    "properties": {
+     "path": {
+      "type": "string"
+     },
+     "how": {
+      "type": "string"
+     },
+     "decisions": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "repo": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "path",
+     "how"
+    ],
+    "type": "object"
+   }
+  }
+ ]
+}

@@ -241,7 +241,12 @@ def test_bad_cap_env_falls_back(monkeypatch):
 def test_step_falls_back_to_the_declared_step_without_a_key(st, tmp_path):
     (tmp_path / "env").write_text("")
     out = st.core.step("Add cache", "edit core.py", "TDD", ["no new dependency"], repo=str(tmp_path))
-    assert out.splitlines()[:4] == ["STEP: Add cache", "- path: edit core.py", "- how: TDD", "- decision: no new dependency"]
+    assert out.splitlines()[:4] == [
+        "STEP: Add cache",
+        "- path: edit core.py",
+        "- how: TDD",
+        "- decision: no new dependency",
+    ]
     assert "(unavailable: RuntimeError: no API key)" in out
     assert "Add cache" in st.core.steps()
     assert st.core.step("", "p", "h") == "title, path and how are required"
@@ -273,7 +278,10 @@ def test_step_explains_and_challenges_and_books_both(st, tmp_path, monkeypatch):
     monkeypatch.setattr(
         narrate.json,
         "load",
-        lambda r: {"content": [{"type": "text", "text": r.text}], "usage": {"input_tokens": 1000, "output_tokens": 200}},
+        lambda r: {
+            "content": [{"type": "text", "text": r.text}],
+            "usage": {"input_tokens": 1000, "output_tokens": 200},
+        },
     )
     out = st.core.step("Add cache", "edit core.py", "TDD", repo=str(tmp_path))
     assert "Sta per aggiungere" in out and "CHECK:\nSTOP: cancella dati" in out
@@ -302,3 +310,40 @@ def test_dsh_key_never_taken_from_environment(st, tmp_path, monkeypatch):
     monkeypatch.setenv("SUBTASK_DSH_KEY_FILE", str(tmp_path / "missing"))
     importlib.reload(st.config)
     assert st.config.deepseek_key() == ""
+
+
+def test_fast_server_publishes_what_fastmcp_would():
+    import asyncio
+
+    from subtask import fastserver, server
+
+    tools = asyncio.run(server.mcp.list_tools())
+    published = [{"name": t.name, "description": t.description, "inputSchema": t.inputSchema} for t in tools]
+    assert fastserver.SPEC["tools"] == published
+    assert fastserver.SPEC["instructions"] == server.mcp.instructions
+
+
+def test_fast_server_speaks_json_rpc(st, tmp_path):
+    msgs = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "status", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "nope", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 5, "method": "bogus"},
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "subtask.fastserver"],
+        input="".join(json.dumps(m) + "\n" for m in msgs) + "not json\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={**os.environ},
+    )
+    time.sleep(0)
+    out = {r.get("id"): r for r in map(json.loads, proc.stdout.splitlines())}
+    assert out[1]["result"]["protocolVersion"] == "2025-06-18"
+    assert len(out[2]["result"]["tools"]) == 10
+    assert out[4]["result"]["isError"] is True
+    assert out[5]["error"]["code"] == -32601
+    assert out[None]["error"]["code"] == -32700
