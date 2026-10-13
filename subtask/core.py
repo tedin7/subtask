@@ -143,7 +143,7 @@ def wait(job_ids: list[str], timeout: int = 50, any_: bool = False, results: boo
     One call replaces many status() polls, and with results=True it also
     returns each finished job's summary, saving a result() call per job.
     """
-    unknown = [j for j in job_ids if not (jobs.job_dir(j) / "spec.json").is_file()]
+    unknown = [j for j in job_ids if not _known(j)]
     if unknown:
         return "unknown job: " + ", ".join(unknown)
     deadline = time.time() + max(0, min(timeout, 600))
@@ -159,10 +159,20 @@ def wait(job_ids: list[str], timeout: int = 50, any_: bool = False, results: boo
     return "\n\n".join(result(j) if j in ended else _line(j) for j in job_ids)
 
 
+def _known(job_id: str) -> bool:
+    try:
+        return (jobs.job_dir(job_id) / "spec.json").is_file()
+    except ValueError:
+        return False
+
+
 def start_many(tasks: list[dict]) -> str:
     """Start several jobs in one call; each dict takes start()'s arguments."""
     out = []
     for spec in tasks:
+        if not isinstance(spec, dict):
+            out.append(f"bad task: expected an object, got {type(spec).__name__}")
+            continue
         try:
             out.append(start(**spec))
         except Exception as exc:  # noqa: BLE001 - report it and keep the ids already started

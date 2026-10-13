@@ -27,7 +27,7 @@ def _money(name: str, default: str) -> float:
 MONTHLY_CAP_USD = _money("SUBTASK_MONTHLY_CAP_USD", "180")
 DEFAULT_MAX_USD = _money("SUBTASK_DEFAULT_MAX_USD", "2")
 MAX_JOB_USD = _money("SUBTASK_MAX_JOB_USD", "20")
-MAX_RUNNING = int(os.environ.get("SUBTASK_MAX_RUNNING", "4"))
+MAX_RUNNING = int(_money("SUBTASK_MAX_RUNNING", "4")) or 4
 SUMMARY_LINES = 12
 
 
