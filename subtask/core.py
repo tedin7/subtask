@@ -44,6 +44,7 @@ def start(
     model: str | None = None,
     sandbox: bool = True,
     kind: str = "code",
+    files: list[str] | None = None,
 ) -> str:
     reason = ""
     if engine == "auto":
@@ -54,6 +55,8 @@ def start(
         return f"unknown engine: {engine}. Valid: {', '.join(ENGINES)}"
     if not task.strip():
         return "empty task"
+    if files:
+        task += "\n\nRead these first: " + ", ".join(files)
     if jobs.running_count() >= config.MAX_RUNNING:
         return f"{config.MAX_RUNNING} sub-tasks already running: use wait()"
     job_id = jobs.new_id()
@@ -113,18 +116,34 @@ def status(job_id: str | None = None, limit: int = 8) -> str:
     return "\n".join(_line(j) for j in ids)
 
 
-def wait(job_ids: list[str], timeout: int = 50, any_: bool = False) -> str:
+def wait(job_ids: list[str], timeout: int = 50, any_: bool = False, results: bool = True) -> str:
     """Block until all jobs end (or the first one, with any_), or timeout.
 
-    One call replaces many status() polls: that is where tokens are saved.
+    One call replaces many status() polls, and with results=True it also
+    returns each finished job's summary, saving a result() call per job.
     """
     deadline = time.time() + max(1, min(timeout, 600))
-    while time.time() < deadline:
+    while True:
         ended = [j for j in job_ids if jobs.status(j).get("state") in jobs.FINAL]
         if ended and (any_ or len(ended) == len(job_ids)):
-            return "\n".join(_line(j) for j in job_ids)
-        time.sleep(3)
-    return "still running:\n" + "\n".join(_line(j) for j in job_ids)
+            break
+        if time.time() >= deadline:
+            return "still running:\n" + "\n".join(_line(j) for j in job_ids)
+        time.sleep(1)
+    if not results:
+        return "\n".join(_line(j) for j in job_ids)
+    return "\n\n".join(result(j) if j in ended else _line(j) for j in job_ids)
+
+
+def start_many(tasks: list[dict]) -> str:
+    """Start several jobs in one call; each dict takes start()'s arguments."""
+    out = []
+    for spec in tasks:
+        try:
+            out.append(start(**spec))
+        except TypeError as exc:
+            out.append(f"bad task {spec.get('task', '')[:40]!r}: {exc}")
+    return "\n".join(out)
 
 
 def _summary(text: str) -> str:
@@ -148,7 +167,7 @@ def result(job_id: str, full: bool = False) -> str:
         except subprocess.CalledProcessError:
             pass
     body = text if full else _summary(text)
-    return f"{head}\n{body}\n(full text: {folder / 'result.md'})"
+    return f"{head}\n{body}"
 
 
 def reply(job_id: str, message: str) -> str:

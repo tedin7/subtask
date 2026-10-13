@@ -1,4 +1,8 @@
-"""MCP server (stdio). The tool descriptions are the usage policy agents read."""
+"""MCP server (stdio).
+
+Instructions and tool descriptions are injected into every client session, so
+they are kept short. The full usage guide is the `subtask` skill (skill/SKILL.md).
+"""
 
 from __future__ import annotations
 
@@ -9,19 +13,9 @@ from . import core
 mcp = FastMCP(
     "subtask",
     instructions=(
-        "Delegate self-contained work to a background sub-agent. "
-        "USE IT for: (a) 2+ independent pieces that can run in parallel; "
-        "(b) long or noisy work whose details you do not need in your context "
-        "(broad searches, audits, refactors across many files, test-fix loops); "
-        "(c) an independent reviewer of complex code (concurrency, persistence, "
-        "security, money, shared logic). "
-        "DO IT YOURSELF when the change is small, needs your current context, "
-        "or you would spend more words briefing than doing. "
-        "engine=auto (default) picks by free quota; engines() shows it. Engines: haiku-api (cheap reading/search), sonnet-api (default: coding, "
-        "review), opus-api (only hard design), claude, codex, kimi, opencode. "
-        "Save tokens: start all parallel jobs first, then call wait() once "
-        "instead of polling status(); read result() (summary only) and ask "
-        "full=True only if needed."
+        "Background sub-agents. Delegate only parallel pieces, long/noisy work, or a "
+        "reviewer for complex code; do small things yourself. start_many() then one "
+        "wait(): it returns the summaries. engine=auto picks by free quota."
     ),
 )
 
@@ -29,53 +23,52 @@ mcp = FastMCP(
 @mcp.tool()
 def start(
     task: str,
-    engine: str = "auto",
+    kind: str = "code",
     repo: str | None = None,
     cwd: str | None = None,
-    base: str = "HEAD",
+    files: list[str] | None = None,
     readonly: bool = False,
+    engine: str = "auto",
     max_usd: float | None = None,
-    max_turns: int = 60,
     effort: str = "medium",
-    kind: str = "code",
+    base: str = "HEAD",
+    max_turns: int = 60,
 ) -> str:
-    """Start a sub-agent. With `repo` (and not readonly) it works in a new git
-    worktree on branch subtask/<id> from `base` and commits there. Write the task
-    as a full brief: goal, files, constraints, how to verify. engine='auto' picks
-    the fitting engine with the most free quota for `kind` (read, code, review,
-    hard). Returns the id."""
-    return core.start(task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort, kind=kind)
+    """Start one job. kind: read|code|review|hard. repo: work in a new worktree+branch.
+    files: paths the agent reads first (do not paste them). Returns the id."""
+    return core.start(
+        task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort, kind=kind, files=files
+    )
 
 
 @mcp.tool()
-def engines() -> str:
-    """Free quota per engine (API credit, Claude and Codex subscriptions)."""
-    return core.engines()
+def start_many(tasks: list[dict]) -> str:
+    """Start several jobs in one call. Each item takes start()'s arguments."""
+    return core.start_many(tasks)
 
 
 @mcp.tool()
-def wait(ids: list[str], timeout: int = 50, any: bool = False) -> str:
-    """Wait until all jobs end (or the first, with any=True), max `timeout`
-    seconds (cap 600), then one line per job. Use it instead of polling status()."""
+def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
+    """Block until all jobs end (any=True: the first), max 600 s. Returns each
+    finished job's summary, so result() is usually not needed."""
     return core.wait(ids, timeout, any)
 
 
 @mcp.tool()
 def status(id: str | None = None) -> str:
-    """One line per job: state, engine, minutes, cost, last activity."""
+    """One line per job."""
     return core.status(id)
 
 
 @mcp.tool()
 def result(id: str, full: bool = False) -> str:
-    """Outcome of a finished job: the sub-agent's short summary, branch and
-    commit count. full=True returns the whole final message."""
+    """Summary of a finished job; full=True for the whole final message."""
     return core.result(id, full)
 
 
 @mcp.tool()
 def reply(id: str, message: str) -> str:
-    """Continue a finished job in the same session (e.g. 'also fix X')."""
+    """Continue a finished job in the same session."""
     return core.reply(id, message)
 
 
@@ -87,14 +80,14 @@ def stop(id: str) -> str:
 
 @mcp.tool()
 def cleanup(id: str) -> str:
-    """Remove a finished job's worktree; the branch is kept for merging."""
+    """Remove a finished job's worktree; keep its branch."""
     return core.cleanup(id)
 
 
 @mcp.tool()
-def spend() -> str:
-    """API credit committed this month against the cap."""
-    return core.spend()
+def engines() -> str:
+    """Free quota per engine, and API spend this month."""
+    return core.engines() + "\n" + core.spend()
 
 
 def main() -> None:

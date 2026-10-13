@@ -31,9 +31,11 @@ def main() -> int:
     s.add_argument("--effort", default="medium")
     s.add_argument("--model")
     s.add_argument("--no-sandbox", action="store_true")
+    s.add_argument("--file", action="append", dest="files", help="path the agent reads first")
     w = sub.add_parser("wait")
     w.add_argument("ids", nargs="+")
-    w.add_argument("--timeout", type=int, default=50)
+    w.add_argument("--timeout", type=int, default=300)
+    w.add_argument("--no-results", action="store_true")
     w.add_argument("--any", action="store_true", help="return when the first job ends")
     st = sub.add_parser("status")
     st.add_argument("id", nargs="?")
@@ -64,9 +66,10 @@ def main() -> int:
             a.model,
             not a.no_sandbox,
             a.kind,
+            a.files,
         )
     elif a.cmd == "wait":
-        out = core.wait(a.ids, a.timeout, a.any)
+        out = core.wait(a.ids, a.timeout, a.any, not a.no_results)
     elif a.cmd == "status":
         out = core.status(a.id)
     elif a.cmd == "result":
