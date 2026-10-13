@@ -18,12 +18,12 @@ from pathlib import Path
 
 from . import config, jobs
 
-# engine -> (kind, model). "api" pays with the API key, "sub" with the CLI login.
+# engine -> (kind, model). "api" pays with the API key. No Claude Code subscription
+# engine on purpose: inside Claude Code the native Agent tool already does that.
 ENGINES = {
     "sonnet-api": ("api", "sonnet"),
     "haiku-api": ("api", "haiku"),
     "opus-api": ("api", "opus"),
-    "claude": ("sub", None),
     "codex": ("codex", None),
     "kimi": ("kimi", None),
     "opencode": ("opencode", None),
@@ -233,7 +233,7 @@ def main() -> int:
             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
         if kind == "api" and jobs.reserve(job_id, spec["max_usd"]) is None:
             raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
-        if kind in ("api", "sub"):
+        if kind == "api":
             final = asyncio.run(_run_claude(job_id, spec, prompt, resume))
         else:
             final = _run_cli(job_id, spec, prompt, resume)
@@ -248,7 +248,7 @@ def main() -> int:
             # Stopped or crashed without a final cost. If the engine already ran, the
             # spend is unknown: charge the budget. If it never started, nothing was spent.
             spent = float(spec["max_usd"]) if API_STARTED.is_set() else 0.0
-        elif args.reply_file and kind in ("api", "sub") and reported >= before:
+        elif args.reply_file and kind == "api" and reported >= before:
             spent = reported - before  # a resumed session reports its running total
         else:
             spent = float(reported)

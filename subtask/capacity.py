@@ -2,8 +2,6 @@
 
 Sources (all local or the account's own usage endpoint, read-only):
 - *-api: the monthly cap minus the ledger.
-- claude: the subscription usage endpoint used by Claude Code itself
-  (undocumented; on any error the engine is reported as unknown).
 - codex: the rate_limits block in the newest Codex session file.
 - kimi, opencode: no quota data available, reported as unknown.
 """
@@ -12,7 +10,6 @@ from __future__ import annotations
 
 import json
 import time
-import urllib.request
 from pathlib import Path
 
 from . import config, jobs
@@ -23,38 +20,18 @@ UNKNOWN = 50.0  # free % assumed when an engine exposes no quota
 
 # Which engines fit which kind of task, best first when free room is equal.
 KINDS = {
-    "read": ["haiku-api", "claude", "kimi", "opencode", "sonnet-api"],
-    "code": ["claude", "sonnet-api", "codex", "kimi", "opencode"],
-    "review": ["sonnet-api", "claude", "codex", "kimi"],
-    "hard": ["opus-api", "claude", "codex", "sonnet-api"],
+    "read": ["haiku-api", "kimi", "opencode", "sonnet-api"],
+    "code": ["sonnet-api", "codex", "kimi", "opencode"],
+    "review": ["sonnet-api", "codex", "kimi"],
+    "hard": ["opus-api", "codex", "sonnet-api"],
 }
-
-
-def _claude_free() -> tuple[float | None, str]:
-    creds = Path.home() / ".claude" / ".credentials.json"
-    try:
-        token = json.loads(creds.read_text())["claudeAiOauth"]["accessToken"]
-        req = urllib.request.Request(
-            "https://api.anthropic.com/api/oauth/usage",
-            headers={"Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.load(resp)
-    except Exception as exc:  # noqa: BLE001 - any failure means "unknown"
-        return None, f"unknown ({type(exc).__name__})"
-    windows = {k: v for k, v in data.items() if isinstance(v, dict) and v.get("utilization") is not None}
-    if not windows:
-        return None, "unknown"
-    name, worst = max(windows.items(), key=lambda kv: kv[1]["utilization"])
-    used = float(worst["utilization"])
-    return 100 - used, f"{used:.0f}% used ({name}, resets {str(worst.get('resets_at', ''))[:16]})"
 
 
 def _codex_free() -> tuple[float | None, str]:
     root = Path.home() / ".codex" / "sessions"
     files = sorted(root.glob("*/*/*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:5]
     for path in files:
-        for line in reversed(path.read_text(errors="replace").splitlines()):
+        for line in reversed(_tail(path).splitlines()):
             if '"rate_limits"' not in line:
                 continue
             try:
@@ -73,6 +50,14 @@ def _codex_free() -> tuple[float | None, str]:
                 when = time.strftime("%m-%d %H:%M", time.localtime(worst[1])) if worst[1] else "?"
                 return 100 - worst[0], f"{worst[0]:.0f}% used (resets {when})"
     return None, "unknown"
+
+
+def _tail(path: Path, size: int = 256 * 1024) -> str:
+    """Last `size` bytes only: session files grow to many MB, the newest limits are at the end."""
+    with path.open("rb") as fh:
+        fh.seek(0, 2)
+        fh.seek(max(0, fh.tell() - size))
+        return fh.read().decode(errors="replace")
 
 
 def _find(obj: object, key: str) -> dict | None:
@@ -94,13 +79,11 @@ def snapshot(refresh: bool = False) -> dict[str, dict]:
     left = config.MONTHLY_CAP_USD - jobs.month_spent()
     api_free = max(0.0, 100 * left / config.MONTHLY_CAP_USD) if config.MONTHLY_CAP_USD > 0 else 0.0
     api_note = f"{left:.2f}$ of {config.MONTHLY_CAP_USD:.0f}$ left this month"
-    claude_free, claude_note = _claude_free()
     codex_free, codex_note = _codex_free()
     snap = {
         "sonnet-api": {"free": api_free, "note": api_note},
         "haiku-api": {"free": api_free, "note": api_note},
         "opus-api": {"free": api_free, "note": api_note},
-        "claude": {"free": claude_free, "note": claude_note},
         "codex": {"free": codex_free, "note": codex_note},
         "kimi": {"free": None, "note": "unknown (no quota data)"},
         "opencode": {"free": None, "note": "unknown (no quota data)"},

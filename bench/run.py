@@ -95,7 +95,7 @@ def _session(cmd: list[str], env: dict, calls: list[tuple[str, dict]]) -> dict:
 
 def _stats(values: list[float]) -> dict:
     ordered = sorted(values)
-    p95 = ordered[min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1))))]
+    p95 = ordered[min(len(ordered) - 1, round(0.95 * (len(ordered) - 1)))]
     return {"median_ms": round(statistics.median(ordered) * 1000, 2), "p95_ms": round(p95 * 1000, 2)}
 
 

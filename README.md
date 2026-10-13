@@ -47,17 +47,16 @@ These rules are also in the MCP server instructions, so every client reads them.
 | `haiku-api`  | API key                   | reading, search, summaries   |
 | `sonnet-api` | API key                   | coding, review (default)     |
 | `opus-api`   | API key                   | hard design only             |
-| `claude`     | Claude Code login         | coding                       |
 | `codex`      | Codex login               | coding                       |
 | `kimi`       | Kimi CLI login            | coding, reading              |
 | `opencode`   | OpenCode login            | coding, reading              |
 
 `engine="auto"` with `kind` = `read`, `code`, `review` or `hard` picks among the
-fitting engines the one with the most free quota (`engines()` shows it):
+fitting engines the one with the most free quota (`engines()` shows it). There is
+no Claude Code subscription engine: inside Claude Code use its own Agent tool.
+Choosing never touches the network:
 
 - API engines: monthly cap minus the local ledger.
-- `claude`: the subscription usage endpoint used by Claude Code (undocumented;
-  reported as unknown when it fails).
 - `codex`: the `rate_limits` block in the newest Codex session file.
 - `kimi`, `opencode`: no quota data, treated as half free.
 

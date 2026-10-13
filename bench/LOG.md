@@ -5,3 +5,4 @@ Un giro = una modifica + `python bench/run.py` + confronto. Token = byte/4, stim
 | Giro | Modifica | Avvio ms | Token fissi | engines ms | pick freddo ms | Esito |
 |---|---|---|---|---|---|---|
 | 0 | base (e755b21) | 654 | 1472 | 368 | 165 | riferimento |
+| 1 | via motore claude, Codex legge solo la coda | 642 | 1472 | 19.22 | 10 | tenuto |
