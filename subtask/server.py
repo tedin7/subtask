@@ -101,11 +101,13 @@ def engines() -> str:
 
 
 @mcp.tool()
-def step(title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None) -> str:
-    """Call BEFORE each significant step. Logs it and returns the announcement:
-    show it to the user verbatim. path: the road you take; how: the method;
-    decisions: choices you made and why. No model runs, no cost."""
-    return core.step(title, path, how, decisions, repo)
+async def step(
+    title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None
+) -> str:
+    """Call BEFORE each significant step. An independent model explains it from
+    your declaration and the repo state; show its text to the user verbatim.
+    path: the road you take; how: the method; decisions: choices and why."""
+    return await asyncio.to_thread(core.step, title, path, how, decisions, repo)
 
 
 def main() -> None:

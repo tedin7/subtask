@@ -238,8 +238,40 @@ def test_bad_cap_env_falls_back(monkeypatch):
     assert importlib.reload(subtask.config).MONTHLY_CAP_USD == 180
 
 
-def test_step_logs_and_returns_the_announcement(st):
-    out = st.core.step("Add cache", "edit core.py", "TDD", ["no new dependency"], repo="/x/app")
-    assert out.splitlines() == ["STEP: Add cache", "- path: edit core.py", "- how: TDD", "- decision: no new dependency"]
-    assert "app: Add cache" in st.core.steps()
+def test_step_falls_back_to_the_declared_step_without_a_key(st, tmp_path):
+    (tmp_path / "env").write_text("")
+    out = st.core.step("Add cache", "edit core.py", "TDD", ["no new dependency"], repo=str(tmp_path))
+    assert out.splitlines()[:4] == ["STEP: Add cache", "- path: edit core.py", "- how: TDD", "- decision: no new dependency"]
+    assert "observer unavailable" in out
+    assert "Add cache" in st.core.steps()
     assert st.core.step("", "p", "h") == "title, path and how are required"
+    assert st.jobs.month_spent() == 0
+
+
+def test_step_uses_the_observer_and_books_its_cost(st, tmp_path, monkeypatch):
+    import subtask.narrate as narrate
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    seen = {}
+
+    def fake_open(req, timeout):
+        seen["body"] = json.loads(req.data)
+        r = Resp()
+        r.read = lambda *a: json.dumps(
+            {"content": [{"type": "text", "text": "- Sta per aggiungere una cache."}],
+             "usage": {"input_tokens": 1000, "output_tokens": 200}}
+        ).encode()
+        return r
+
+    monkeypatch.setattr(narrate.urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(narrate.json, "load", lambda r: json.loads(r.read()))
+    out = st.core.step("Add cache", "edit core.py", "TDD", repo=str(tmp_path))
+    assert "independent observer" in out and "Sta per aggiungere" in out
+    assert "Declared step" in seen["body"]["messages"][0]["content"]
+    assert st.jobs.month_spent() == pytest.approx(0.002)

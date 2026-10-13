@@ -12,8 +12,9 @@ yourself. Follow these rules.
 
 Before each significant step (new phase, choice of approach, a change with
 risk, a merge or release) call `step(title, path, how, decisions)` and show
-the returned announcement to the user verbatim. No model runs, it costs
-nothing. CLI: `subtask step "..." --path ... --how ... --decision ...`.
+the returned text to the user verbatim, in your chat. An independent model
+(Haiku, not you) reads your declaration and the repo state, explains the step
+in plain words and flags what does not add up. About 3 s and 0.2 cents. CLI: `subtask step "..." --path ... --how ... --decision ...`.
 Small edits and reads are not steps.
 
 ## Delegate or not

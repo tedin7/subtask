@@ -111,7 +111,7 @@ Any agent with a shell can use the CLI instead: `subtask --help`.
 | `reply(id, message)` | continue a finished job in the same session |
 | `stop(id)` / `cleanup(id)` | stop a job / remove its worktree, keep the branch |
 | `spend()` / `engines()` | API spend this month / free quota per engine |
-| `step(title, path, how, decisions=[])` | log a significant step and return the announcement to show the user (no model, no cost); CLI `subtask steps` lists them |
+| `step(title, path, how, decisions=[])` | an independent model explains the step from the declaration and the repo state; the agent shows it to the user (~3 s, ~$0.002); CLI `subtask steps` lists them |
 
 ## Settings
 

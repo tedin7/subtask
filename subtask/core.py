@@ -271,27 +271,46 @@ def engines() -> str:
 STEPS = config.HOME / "steps.jsonl"
 
 
-def step(title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None) -> str:
-    """Record a significant step and return the announcement to show the user.
+def step(
+    title: str,
+    path: str,
+    how: str,
+    decisions: list[str] | None = None,
+    repo: str | None = None,
+    lang: str | None = None,
+) -> str:
+    """Record a significant step; an independent model explains it to the user.
 
-    No model runs: the agent that decides is the only one who knows why.
+    The agent declares the step; a separate model (narrate.py) reads it with the
+    repository's real state and writes the announcement. If the narrator is not
+    available the declared step is returned as is, with the reason.
     """
+    from . import narrate
+
     if not title.strip() or not path.strip() or not how.strip():
         return "title, path and how are required"
+    where = repo or os.getcwd()
     entry = {
         "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "repo": repo or os.getcwd(),
+        "repo": where,
         "title": title.strip(),
         "path": path.strip(),
         "how": how.strip(),
         "decisions": [d.strip() for d in decisions or [] if d.strip()],
     }
+    lines = [f"STEP: {entry['title']}", f"- path: {entry['path']}", f"- how: {entry['how']}"]
+    lines += [f"- decision: {d}" for d in entry["decisions"]]
+    declared = "\n".join(lines)
+    try:
+        text = narrate.explain(declared, where, lang or os.environ.get("SUBTASK_STEP_LANG", "Italian"))
+        out = f"STEP: {entry['title']} (explained by an independent observer)\n{text}"
+    except Exception as exc:  # noqa: BLE001 - the step must never block the work
+        out = f"{declared}\n(observer unavailable: {type(exc).__name__}: {str(exc)[:80]})"
+    entry["announcement"] = out
     config.HOME.mkdir(parents=True, exist_ok=True)
     with STEPS.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    lines = [f"STEP: {entry['title']}", f"- path: {entry['path']}", f"- how: {entry['how']}"]
-    lines += [f"- decision: {d}" for d in entry["decisions"]]
-    return "\n".join(lines)
+    return out
 
 
 def steps(limit: int = 10) -> str:
