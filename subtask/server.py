@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from . import core
 
@@ -52,14 +52,31 @@ def start_many(tasks: list[dict]) -> str:
 
 
 @mcp.tool(structured_output=False)
-async def wait(ids: list[str], timeout: int = 300, any: bool = False, since: str | None = None) -> str:
+async def wait(
+    ids: list[str], timeout: int = 300, any: bool = False, since: str | None = None, ctx: Context | None = None
+) -> str:
     """Wait for jobs (any=True: first); returns summaries. since: cursor for changes."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
-    deadline = asyncio.get_running_loop().time() + max(1, min(timeout, 600))
+    loop = asyncio.get_running_loop()
+    reporter = None
+    pending: list = []
+    token = ctx.request_context.meta.progressToken if ctx and ctx.request_context.meta else None
+    if token is not None:
+        from .progress import Reporter
+
+        def send(value: float, message: str, total: float | None) -> None:
+            pending.append(ctx.report_progress(value, total, message))  # awaited before the reply
+
+        reporter = Reporter(send, [i for i in ids if core.known(i)])
+    deadline = loop.time() + max(1, min(timeout, 600))
     while True:
+        if reporter:
+            reporter.poll()
+            while pending:
+                await pending.pop(0)  # never after the result: progress stops at completion
         out = core.wait(ids, 0, any, since=since)
-        if not out.startswith("still running") or asyncio.get_running_loop().time() >= deadline:
+        if not out.startswith("still running") or loop.time() >= deadline:
             return out
         await asyncio.sleep(1)
 
