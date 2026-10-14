@@ -137,6 +137,17 @@ def _doctor_text(d: dict[str, Any]) -> str:
     for r in d["clients"]:
         hs = r.get("handshake") or {}
         lines.append(f"[{r['client']}] app: {'yes ' + str(r['version']) if r['present'] else 'not found'}")
+        if r.get("mode") == "plugin":
+            lines.append(f"  plugin: {r.get('line') or 'not listed by claude mcp list'}")
+            lines.append(
+                f"  connects: {'yes' if r.get('connects') else 'no'}"
+                + (
+                    "  WARNING: also a separate user-scope 'subtask' entry"
+                    if r.get("duplicate_user_entry")
+                    else ""
+                )
+            )
+            continue
         lines.append(f"  config: {r.get('config')}  configured: {'yes' if r.get('configured') else 'no'}")
         if r.get("command"):
             lines.append(f"  command: {' '.join(r['command'])}  exists: {r.get('command_exists')}")
