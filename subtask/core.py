@@ -306,7 +306,12 @@ def _delta(job_ids: list[str], since: str) -> tuple[str, str]:
 
 
 def wait(
-    job_ids: list[str], timeout: int = 50, any_: bool = False, results: bool = True, since: str | None = None
+    job_ids: list[str],
+    timeout: int = 50,
+    any_: bool = False,
+    results: bool = True,
+    since: str | None = None,
+    count: bool = True,
 ) -> str:
     """Block until all jobs end (or the first one, with any_), or timeout.
 
@@ -320,7 +325,8 @@ def wait(
     unknown = [j for j in job_ids if not known(j)]
     if unknown:
         return "unknown job: " + ", ".join(unknown)
-    telemetry.count_call(job_ids, "wait")
+    if count:  # servers poll wait() every second inside one tool call: count that call once
+        telemetry.count_call(job_ids, "wait")
     deadline = time.time() + max(0, min(timeout, 600))
     while True:
         ended = [j for j in job_ids if jobs.status(j).get("state") in jobs.FINAL]

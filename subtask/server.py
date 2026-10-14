@@ -77,12 +77,14 @@ async def wait(
 
         reporter = Reporter(send, [i for i in ids if core.known(i)])
     deadline = loop.time() + max(1, min(timeout, 600))
+    first = True
     while True:
         if reporter:
             reporter.poll()
             while pending:
                 await pending.pop(0)  # never after the result: progress stops at completion
-        out = core.wait(ids, 0, any, since=since)
+        out = core.wait(ids, 0, any, since=since, count=first)
+        first = False
         if not out.startswith("still running") or loop.time() >= deadline:
             return out
         await asyncio.sleep(1)

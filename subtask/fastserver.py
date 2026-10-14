@@ -89,8 +89,10 @@ def _wait(
             if core.known(job_id):
                 call.reporter.add(job_id)
         call.reporter.poll()
+    first = True
     while True:
-        out = core.wait(ids, 0, any, since=since)
+        out = core.wait(ids, 0, any, since=since, count=first)
+        first = False
         if not out.startswith("still running") or time.monotonic() >= deadline:
             if call.reporter:
                 call.reporter.poll()

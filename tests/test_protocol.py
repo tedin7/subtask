@@ -262,3 +262,19 @@ def test_reporter_follows_the_latest_change_and_admits_missing_detail(home):
     assert rep._what(b) == progress.NO_DETAIL  # kimi plain output: no structured activity
     core.stop(a)
     core.stop(b)
+
+
+def test_a_long_wait_counts_as_one_round_trip(home):
+    """The server polls core.wait every second; that is not a parent round trip."""
+    from subtask import telemetry
+
+    fake_cli(home, "kimi", "sleep 4; echo done")
+    c = Client(_env())
+    c.send({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "start", "arguments": {"task": "x", "engine": "kimi", "cwd": str(home)}}})  # fmt: skip
+    job = c.until(1)[0]["result"]["content"][0]["text"].split()[0]
+    c.send({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "wait", "arguments": {"ids": [job], "timeout": 30}}})  # fmt: skip
+    c.until(2, timeout=40)
+    c.close()
+    assert [x["tool"] for x in telemetry.calls(job)].count("wait") == 1

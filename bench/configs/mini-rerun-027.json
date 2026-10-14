@@ -1,0 +1,15 @@
+{
+ "name": "mini-rerun-027",
+ "description": "Rerun of mini-5usd on 0.2.7 (server instructions: one start_many, one wait). Same tasks and settings.",
+ "parent_client": "claude",
+ "arms": ["parent", "subtask-fixed:sonnet-api"],
+ "split": "test",
+ "tasks": ["r3", "c3"],
+ "repetitions": 1,
+ "seed": 20261014,
+ "max_retries": 0,
+ "ablations": {"batching": "on", "summary": "summary", "progress": "on", "narrator": "off"},
+ "budgets": {"max_total_usd": 5, "max_wall_minutes": 60, "max_concurrency": 1, "parent_usd_factor": 0.5},
+ "thresholds": {"min_test_tasks_for_claim": 16, "success_noninferiority_margin": 0.10, "ci_level": 0.95, "bootstrap_resamples": 2000},
+ "fake": {"worker_sleep_s": 0, "outcomes": {"success": 1.0}}
+}
