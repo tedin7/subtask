@@ -4,10 +4,28 @@ dynamic = ["version"]
 description = "Background sub-agents for Claude Code, Codex, Kimi and OpenCode, over MCP or CLI, with a spend cap"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+readme = "README.md"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = ["claude-agent-sdk>=0.2", "mcp>=1.28,<2"]
 
 [project.optional-dependencies]
 dsh = ["deepseek-harness-sdk==0.1.5rc1"]
+dev = ["pytest>=8", "ruff>=0.6", "jsonschema>=4"]
+
+[project.urls]
+Homepage = "https://github.com/tedin7/subtask"
+Repository = "https://github.com/tedin7/subtask"
+Issues = "https://github.com/tedin7/subtask/issues"
 
 [project.scripts]
 subtask = "subtask.cli:run"
@@ -32,3 +50,10 @@ line-length = 110
 
 [tool.ruff.lint.per-file-ignores]
 "subtask/worker.py" = ["BLE001"]
+
+[tool.pytest.ini_options]
+markers = [
+    "contract: offline adapter contract tests",
+    "live: needs real engines and budget (skipped by default)",
+]
+addopts = "-m 'not live'"

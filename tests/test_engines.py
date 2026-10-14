@@ -24,6 +24,7 @@ def _parse_all(adapter, name: str) -> dict:
     return state
 
 
+@pytest.mark.contract
 def test_kimi_contract_on_recorded_2_1_1_output():
     from subtask.engines.kimi import Kimi
 
@@ -43,6 +44,7 @@ def test_kimi_argv_never_combines_prompt_with_auto():
     assert "--auto" not in argv and argv[-2:] == ["-p", "hi"]
 
 
+@pytest.mark.contract
 def test_opencode_contract_on_recorded_2_0_28_output():
     from subtask.engines.opencode import OpenCodeGo
 
