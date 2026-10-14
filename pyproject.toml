@@ -52,6 +52,7 @@ line-length = 110
 "subtask/worker.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]  # bench/corpus/acceptance targets the frozen 3f731f6, not this tree
 markers = [
     "contract: offline adapter contract tests",
     "live: needs real engines and budget (skipped by default)",
