@@ -1,18 +1,31 @@
 # Changelog
 
-## 0.2.0 - unreleased
+## 0.2.0 - 2026-10-14
 
 ### Added
--
+- Engine adapters (one module per engine), probing, plugin engines via the `subtask.engines` entry point; `opencode-go` engine.
+- Explainable router: admissibility filters, then an explicit utility; `routing explain|calibrate`; legacy mode kept.
+- Capacity with unit, source, freshness and confidence; quota exhaustion remembered until reset.
+- Evidence envelope (`result(evidence=True)`) and `verify=` checks run by subtask itself.
+- Progress notifications during `wait`, `stop`, `start_many`; `wait(since=cursor)` fallback; cancellation.
+- Local telemetry, `roi`, `gc`, `du`, `doctor`, `watch`; demo engine (`SUBTASK_DEMO=1`).
+- `subtask install|uninstall|doctor --client claude|codex|kimi|opencode|all`; Claude and Codex plugins and marketplaces.
+- Benchmark corpus (24 validated tasks) and harness; first live mini run.
 
 ### Changed
--
+- MCP: dual-era server (2026-07-28 stateless with discovery and caching hints, plus initialize up to 2025-11-25).
+- Global admission across processes; money reserved together with the slot before any work; ledger v2 in monthly files.
+- Distribution renamed `subtask-mcp`; one version for package, CLI and MCP.
+- Server instructions teach one `start_many` then one `wait`.
 
 ### Fixed
--
+- `step.title` missing from the published schema.
+- Kimi 2.1 jobs failed (`-p` with `--auto`).
+- MAX_RUNNING could be exceeded by concurrent callers; 15 defects found by an independent review (slots, money, stop, recovery).
 
 ### Security
--
+- Codex writes in its `workspace-write` sandbox by default (no more bypass unless `policy=worktree`).
+- `policy=isolated` (bubblewrap) and `untrusted`; minimal worker environment; general secret redaction.
 
 ## 0.1.0
 

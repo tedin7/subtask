@@ -90,3 +90,11 @@ def test_one_version_for_package_cli_and_mcp():
     assert "version" in project.get("dynamic", [])
     assert fastserver.SERVER_INFO["version"] == subtask.__version__
     assert subtask.__version__.count(".") == 2
+
+
+def test_server_instructions_teach_the_cheap_pattern_without_the_skill():
+    from subtask import fastserver
+
+    text = fastserver.SPEC["instructions"]
+    assert "ONE start_many" in text and "ONE wait" in text and "Never poll" in text
+    assert len(text) < 500  # sent to every client session: stays short
