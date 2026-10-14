@@ -323,3 +323,25 @@ def test_claude_hook_script_prints_system_message():
     out = subprocess.run([sys.executable, "-I", str(script)], input='{"tool_name": "Bash"}', capture_output=True,
                          text=True, check=True).stdout  # fmt: skip
     assert out == ""
+
+
+def test_symlinked_skill_folder_is_replaced_without_touching_its_target(tmp_path, monkeypatch):
+    """A skill dir that is a link (here a broken one, as left by an older checkout layout)."""
+    import os
+
+    from subtask.install import clients, installer
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    c = clients.CLIENTS["claude"]()
+    dst = c.skill_path("user")
+    dst.parent.parent.mkdir(parents=True)
+    os.symlink(tmp_path / "gone" / "skill", dst.parent)
+    plan = installer._Plan()
+    out = installer.Outcome(client="claude", scope="user")
+    installer._skill_plan(c, "user", False, out, plan)
+    assert plan.skill_write is not None and not plan.blocked
+    installer._apply(c, "user", [], plan, out)
+    assert out.status == "done", out.notes
+    assert dst.read_bytes() == installer.skill_source() and not dst.parent.is_symlink()

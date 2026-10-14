@@ -2,7 +2,7 @@
   "mcpServers": {
     "subtask": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/tedin7/subtask@v0.2.0", "subtask-mcp"]
+      "args": ["--from", "git+https://github.com/tedin7/subtask@v0.2.1", "subtask-mcp"]
     }
   }
 }

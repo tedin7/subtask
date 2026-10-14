@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-10-14
+
+### Fixed
+- `subtask install` failed when the client's skill folder was a symlink (e.g. a broken link to an old checkout); the link is now replaced by a folder, its target untouched.
+
 ## 0.2.0 - 2026-10-14
 
 ### Added

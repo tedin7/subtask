@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -34,6 +35,7 @@ class _Plan:
     mcp_steps: list[Step] = field(default_factory=list)
     skill_write: bytes | None = None
     skill_remove: bool = False
+    relink: str | None = None  # a symlinked skill folder replaced by a real one (target kept for rollback)
     blocked: bool = False
 
 
@@ -58,6 +60,20 @@ def _mcp_plan(c: Client, scope: str, argv: list[str], force: bool, out: Outcome,
 def _skill_plan(c: Client, scope: str, force: bool, out: Outcome, plan: _Plan) -> None:
     dst = c.skill_path(scope)
     src = skill_source()
+    if dst.parent.is_symlink():
+        broken = not dst.parent.exists()
+        if not broken and not force:
+            out.notes.append(
+                f"collision: {dst.parent} is a link to {os.readlink(dst.parent)}; use --force to replace it"
+            )
+            plan.blocked = True
+            return
+        plan.relink = str(os.readlink(dst.parent))
+        out.notes.append(
+            f"{'broken ' if broken else ''}link {dst.parent} -> {plan.relink} replaced by a folder"
+        )
+        plan.skill_write = src
+        return
     cur = read_bytes(dst)
     if cur == src:
         return
@@ -75,10 +91,12 @@ def _apply(c: Client, scope: str, argv: list[str], plan: _Plan, out: Outcome) ->
     try:
         if plan.mcp_steps:
             snaps.append(snapshot(c.config_path(scope)))
-        if plan.skill_write is not None or plan.skill_remove:
+        if (plan.skill_write is not None or plan.skill_remove) and plan.relink is None:
             snaps.append(snapshot(dst, keep_copy=False))  # skill dirs are scanned: no stray copies
         for step in plan.mcp_steps:
             c.apply(step, scope, argv)
+        if plan.relink is not None:
+            dst.parent.unlink()  # only the link: its target is never touched
         if plan.skill_write is not None:
             atomic_write(dst, plan.skill_write)
         elif plan.skill_remove:
@@ -87,6 +105,11 @@ def _apply(c: Client, scope: str, argv: list[str], plan: _Plan, out: Outcome) ->
     except Exception as exc:  # noqa: BLE001 - any failure must roll back, then is reported
         for snap in reversed(snaps):
             snap.restore()
+        if plan.relink is not None and not dst.parent.is_symlink():
+            dst.unlink(missing_ok=True)
+            _rmdir_empty(dst.parent)
+            if not dst.parent.exists():
+                os.symlink(plan.relink, dst.parent)
         out.status = "error"
         out.notes.append(f"{exc}; rolled back")
         return
