@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Stand-in for the claude / codex / opencode / kimi CLIs: logs argv, edits config like the real one."""
 
 import json

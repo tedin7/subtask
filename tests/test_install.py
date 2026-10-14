@@ -107,7 +107,7 @@ def test_codex_comments_and_other_tables_preserved(env):
     assert text.startswith(CODEX_SEED.rstrip("\n"))
     assert "tool_timeout_sec = 660" in text.split("[mcp_servers.subtask]")[1]
     assert stat.S_IMODE(cfg.stat().st_mode) == 0o600
-    assert list((home / ".codex").glob("config.toml.subtask-bak-*"))[0].read_text() == CODEX_SEED
+    assert next((home / ".codex").glob("config.toml.subtask-bak-*")).read_text() == CODEX_SEED
     assert cli(e, "uninstall", "--client", "codex", "--yes")[0] == 0
     assert cfg.read_text().rstrip("\n") == CODEX_SEED.rstrip("\n")
 
@@ -219,7 +219,7 @@ def test_rollback_when_a_step_fails(env):
 
 
 def test_doctor_handshake_real_server(env):
-    home, e = env
+    _home, e = env
     cli(e, "install", "--client", "kimi", "--yes")
     rc, out = cli(e, "doctor", "--client", "kimi")
     r = out["clients"][0]
