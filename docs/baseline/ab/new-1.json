@@ -1,0 +1,34 @@
+{
+ "commit": "32200bc",
+ "when": "2026-10-14T04:11:55",
+ "cmd": "/root/subtask-wt/.venv/bin/subtask-mcp",
+ "reps": 20,
+ "startup": {
+  "median_ms": 42.64,
+  "p95_ms": 67.6
+ },
+ "tools": {
+  "status": {
+   "median_ms": 24.36,
+   "p95_ms": 43.63
+  },
+  "engines": {
+   "median_ms": 35.22,
+   "p95_ms": 49.45
+  }
+ },
+ "reply_tokens_est": {
+  "status": 3,
+  "engines": 164
+ },
+ "fixed_tokens_est": 742,
+ "tool_count": 10,
+ "pick": {
+  "cold_ms": 18.77,
+  "warm": {
+   "median_ms": 0.51,
+   "p95_ms": 0.94
+  }
+ },
+ "note": "tokens = bytes/4, rough estimate"
+}
