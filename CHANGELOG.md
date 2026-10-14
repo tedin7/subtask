@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.9 - 2026-10-14
+
+### Added
+- Automatic step announcements: `subtask narrate-hook`, wired as a PreToolUse hook in the Claude Code
+  plugin. Before a file change or a commit it reads the user's request, the agent's recent actions and
+  the exact change from the session, has Haiku explain them, and shows the text only to the user
+  (verified live: the agent cannot see it, so it costs the agent no turn and no token). At most once per
+  20 minutes per repository (`SUBTASK_STEP_EVERY_MIN`); never blocks a change.
+- Skill and server instructions carry the measured rule: delegate long work to cheap engines.
+
 ## 0.2.8 - 2026-10-14
 
 ### Fixed

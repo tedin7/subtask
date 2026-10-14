@@ -79,6 +79,12 @@ Do NOT delegate when:
 
 ## Announce every significant step
 
+With the Claude Code plugin installed, a hook announces steps automatically
+before file changes and commits (at most every 20 minutes per repository),
+shown only to the user: you spend no turn on it. Call `step` yourself only for
+a decision that is not a file change (a choice of approach, a release).
+
+
 Before each significant step (new phase, choice of approach, a change with
 risk, a merge or release) call `step(title, path, how, decisions)` and show
 the returned text to the user verbatim. A separate cheap model reads your

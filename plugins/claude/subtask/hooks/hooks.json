@@ -1,11 +1,41 @@
 {
-  "description": "Show server, tool, duration and ok/error after every MCP tool call. Active only while the subtask plugin is installed and enabled.",
+  "description": "Timing of every MCP tool call, and automatic step announcements (Haiku) before file changes and commits, shown only to you.",
   "hooks": {
     "PostToolUse": [
-      { "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/mcp_timing.py\"", "timeout": 5 }] }
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/mcp_timing.py\"",
+            "timeout": 5
+          }
+        ]
+      }
     ],
     "PostToolUseFailure": [
-      { "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/mcp_timing.py\"", "timeout": 5 }] }
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/mcp_timing.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'command -v subtask >/dev/null 2>&1 && subtask narrate-hook 2>/dev/null; exit 0'",
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }

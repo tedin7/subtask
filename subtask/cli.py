@@ -65,6 +65,9 @@ def main() -> int:
     sp.add_argument("--how", required=True)
     sp.add_argument("--decision", action="append", dest="decisions")
     sub.add_parser("steps")
+    sub.add_parser(
+        "narrate-hook", help="Claude Code PreToolUse hook: automatic step announcement (reads JSON on stdin)"
+    )
     sub.add_parser("spend")
     sub.add_parser("engines")
     install_commands.add_parsers(sub)
@@ -83,6 +86,10 @@ def main() -> int:
     wa.add_argument("--interval", type=float, default=2.0)
     a = p.parse_args()
 
+    if a.cmd == "narrate-hook":
+        from . import stephook
+
+        return stephook.main()
     if a.cmd in ("install", "uninstall") or (a.cmd == "doctor" and a.client):
         return install_commands.run(a)
 

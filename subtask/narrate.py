@@ -81,7 +81,7 @@ def observed_activity(repo: str, limit: int = 5) -> str:
     return "\n".join(lines)
 
 
-def _call(spec: tuple[str, float, float], system: str, user: str) -> str:
+def _call(spec: tuple[str, float, float], system: str, user: str, timeout: float = 60) -> str:
     """One Messages API call, booked in the ledger. Raises on any failure."""
     model, price_in, price_out = spec
     secrets = config.load_secrets()
@@ -112,7 +112,7 @@ def _call(spec: tuple[str, float, float], system: str, user: str) -> str:
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), headers=headers
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.load(resp)
         usage = data.get("usage", {})
         cost = (usage.get("input_tokens", 0) * price_in + usage.get("output_tokens", 0) * price_out) / 1e6

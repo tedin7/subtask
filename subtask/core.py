@@ -596,6 +596,7 @@ def step(
         out = f"STEP: {entry['title']}\n{explained}"
         entry["narrator"] = "model"
     entry["announcement"] = out
+    entry["epoch"] = time.time()
     config.HOME.mkdir(parents=True, exist_ok=True)
     with STEPS.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")

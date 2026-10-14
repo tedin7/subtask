@@ -3,10 +3,10 @@
 #   sh scripts/install.sh              install the tool, then PRINT the client plan (no client config changes)
 #   sh scripts/install.sh --yes        install the tool and register it in every detected client
 #   sh scripts/install.sh --install-uv also install uv with its official installer if uv is missing
-# SUBTASK_REF selects the git tag or branch (default v0.2.8). The PyPI name `subtask` is NOT this project.
+# SUBTASK_REF selects the git tag or branch (default v0.2.9). The PyPI name `subtask` is NOT this project.
 set -eu
 
-REF="${SUBTASK_REF:-v0.2.8}"
+REF="${SUBTASK_REF:-v0.2.9}"
 SRC="${SUBTASK_SOURCE:-git+https://github.com/tedin7/subtask@${REF}}"  # SUBTASK_SOURCE: local path, for tests
 YES=""
 INSTALL_UV=""
