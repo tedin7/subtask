@@ -224,3 +224,23 @@ three in under 30 seconds. Parallel work (native or subtask) does not shorten th
 3x and takes about 2x as long, native is close to the parent. Delegation can only pay off when each
 piece is long (minutes of work, many tool calls, noisy output); this corpus does not have such pieces.
 Real API spend for this section: 0.80 USD (workers).
+
+## Long pieces with cheaper workers (2026-10-14, owner budget 15 USD)
+
+`bench/long.py`: one request, three independent pieces that each need many steps, on the frozen commit:
+L1 tests for cli.py to >= 80 % coverage (baseline 0 %), L2 tests for worker.py to >= 60 % (baseline 23 %),
+L3 `mypy --strict` clean on jobs.py, worker.py, fastserver.py (baseline 21 errors) with the suite green.
+Checked by coverage.py, mypy and the full suite on the final tree. Parent: Sonnet in every arm.
+
+| arm | verified | parent turns | parent $ | worker $ | total $ | wall s | parent cache read tok |
+|---|---|---|---|---|---|---|---|
+| Sonnet alone | 3/3 | 14 | 0.322 | - | 0.322 | 118 | 479,631 |
+| Sonnet + haiku-api workers | 3/3 | 9 | 0.125 | 0.075 | 0.200 | 217 | 217,508 |
+| Sonnet + opencode-go workers | 3/3 | 10 | 0.137 | 0 (subscription) | 0.137 | 368 | 246,994 |
+| Sonnet + kimi workers | 3/3 | 12 | 0.142 | 0 (subscription) | 0.142 | 947 | 299,826 |
+
+Reading (one repetition, indicative): with long pieces and cheaper workers, delegation pays for the
+first time. Same verified result; total money -38 % (haiku-api, real API dollars) to -57 % (opencode-go,
+whose worker cost is a subscription share, not counted in dollars); the parent's context -38 % to -55 %.
+The price is time: 1.8x (haiku) to 8x (kimi) the wall clock.
+Real API spend for this section: 0.20 USD (haiku workers); parent costs are Claude subscription estimates.
