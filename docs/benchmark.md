@@ -152,3 +152,22 @@ null and analysed as unknown, never as 0.
 - Every live arm (`parent`, `native`, `subtask-fixed:<real engine>`, `subtask-auto` on real engines).
 - Any measurement of parent context saved, dollars or latency against doing the work directly.
 - Exact parent tokens: only the client JSON can give them, and no client ran.
+
+## Live mini run (2026-10-14, owner cap 5 USD)
+
+Config `bench/configs/mini-5usd*.json`: tasks r3 (read) and c3 (code), 1 repetition, parent
+Claude Code 2.1.296 with `--model sonnet`, subtask arm on `sonnet-api`. The first subtask attempt
+did not reach the server (harness looked up `subtask-mcp` on PATH only; fixed) and is excluded.
+
+| task | arm | verified | parent $ | worker $ | total $ | wall s | parent cache read tok | subtask calls |
+|---|---|---|---|---|---|---|---|---|
+| r3 | parent | yes | 0.070 | - | 0.070 | 9.5 | 32,055 | 0 |
+| r3 | subtask sonnet-api | yes | 0.086 | 0.083 | 0.169 | 25.7 | 129,143 | 13 |
+| c3 | parent | yes | 0.078 | - | 0.078 | 11.5 | 79,603 | 0 |
+| c3 | subtask sonnet-api | yes | 0.100 | 0.064 | 0.164 | 36.1 | 181,430 | 14 |
+
+Reading (2 tasks, 1 rep: no statistical claim): on small tasks delegating cost about 2x the
+money, 3x the time and more parent context, with the same verified success. The parent made
+13-14 subtask calls instead of start + one wait: the skill was not loaded in `-p` mode, only the
+short server instructions. Real API spend: 0.147 $ (workers); parent costs are Claude subscription
+estimates.

@@ -8,6 +8,8 @@ missing (None); they are never estimated here.
 from __future__ import annotations
 
 import json
+import sys
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -69,7 +71,11 @@ def brief(task: dict, arm: str, ablations: dict, repo: Path) -> str:
 
 
 def mcp_config(path: Path, home: Path, progress: str) -> Path:
-    exe = shutil.which("subtask-mcp") or "subtask-mcp"
+    # next to the running interpreter first: a venv's bin is often not on PATH
+    local = Path(sys.executable).with_name("subtask-mcp")
+    exe = str(local) if local.is_file() else shutil.which("subtask-mcp")
+    if not exe:
+        raise RuntimeError("subtask-mcp not found next to this python nor on PATH")
     env = {"SUBTASK_HOME": str(home)}
     if progress == "off":
         env["SUBTASK_PROGRESS_MIN_S"] = "1e9"  # no significant updates
@@ -82,6 +88,8 @@ def argv(client: str, arm: str, prompt: str, repo: Path, max_usd: float, mcp: Pa
     if client == "claude":
         cmd = ["claude", "-p", prompt, "--output-format", "json", "--permission-mode", "bypassPermissions"]
         cmd += ["--max-budget-usd", f"{max_usd:.2f}", "--strict-mcp-config"]
+        if os.environ.get("SUBTASK_BENCH_PARENT_MODEL"):
+            cmd += ["--model", os.environ["SUBTASK_BENCH_PARENT_MODEL"]]
         if mcp is not None:
             cmd += ["--mcp-config", str(mcp)]
         if arm != "native":
