@@ -1,0 +1,28 @@
+diff --git a/subtask/jobs.py b/subtask/jobs.py
+index cf93f8e..f2cc6ad 100644
+--- a/subtask/jobs.py
++++ b/subtask/jobs.py
+@@ -147,6 +147,7 @@ def _ledger() -> Iterator:
+ 
+ 
+ def _month_total(fh) -> float:
++    """This month's settled costs plus every reservation still open, whatever month it was made in."""
+     fh.seek(0)
+     month = datetime.now(UTC).strftime("%Y-%m")
+     spent, reserved = 0.0, {}
+@@ -155,12 +156,11 @@ def _month_total(fh) -> float:
+             row = json.loads(line)
+         except json.JSONDecodeError:
+             continue
+-        if not str(row.get("ts", "")).startswith(month):
+-            continue
+         if "reserve_usd" in row:
+             reserved[row["job"]] = float(row["reserve_usd"])
+-        else:
+-            reserved.pop(row.get("job"), None)
++            continue
++        reserved.pop(row.get("job"), None)
++        if str(row.get("ts", "")).startswith(month):
+             spent += float(row.get("cost_usd") or 0)
+     return spent + sum(reserved.values())
+ 

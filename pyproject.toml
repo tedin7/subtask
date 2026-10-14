@@ -20,7 +20,7 @@ dependencies = ["claude-agent-sdk>=0.2", "mcp>=1.28,<2"]
 
 [project.optional-dependencies]
 dsh = ["deepseek-harness-sdk==0.1.5rc1"]
-dev = ["pytest>=8", "ruff>=0.6", "jsonschema>=4"]
+dev = ["pytest>=8", "ruff>=0.6", "jsonschema>=4", "tqdm>=4"]
 
 [project.urls]
 Homepage = "https://github.com/tedin7/subtask"

@@ -1,0 +1,44 @@
+diff --git a/subtask/core.py b/subtask/core.py
+index 43dbcd2..f981abc 100644
+--- a/subtask/core.py
++++ b/subtask/core.py
+@@ -74,6 +74,9 @@ def start(
+     if readonly and engine in ("kimi", "opencode", "dsh"):
+         return f"{engine} cannot run read-only; use another engine"
+     job_id = jobs.new_id()
++    paid = engine.endswith("-api") or engine == "dsh"
++    if paid and jobs.reserve(job_id, budget) is None:  # money is booked at admission, by the parent
++        return f"monthly cap {config.MONTHLY_CAP_USD:.0f} $ reached: {jobs.month_spent():.2f} $ committed"
+     folder = jobs.job_dir(job_id)
+     folder.mkdir(parents=True)
+     branch = git_dir = None
+@@ -88,6 +91,7 @@ def start(
+         except subprocess.CalledProcessError as exc:
+             folder.joinpath("spec.json").unlink(missing_ok=True)
+             folder.rmdir() if not any(folder.iterdir()) else None
++            jobs.settle_open(job_id, 0.0)
+             return f"worktree not created: {exc.stderr.strip()[:200]}"
+         task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
+     else:
+@@ -116,6 +120,7 @@ def start(
+         pid = _spawn(job_id)
+     except OSError as exc:
+         jobs.update_status(job_id, state="failed", error=f"worker not started: {exc}")
++        jobs.settle_open(job_id, 0.0)
+         return f"{job_id} failed to start: {exc}"
+     jobs.update_status(job_id, pid=pid)
+     where = f"branch {branch}" if branch else workdir
+diff --git a/subtask/worker.py b/subtask/worker.py
+index 6ec62f5..2421584 100644
+--- a/subtask/worker.py
++++ b/subtask/worker.py
+@@ -283,7 +283,8 @@ def main() -> int:
+         jobs.update_status(job_id, state="running", pid=os.getpid(), last="starting", error=None)
+         if not Path(spec["cwd"]).is_dir():
+             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
+-        if kind in ("api", "dsh") and jobs.reserve(job_id, spec["max_usd"]) is None:
++        # first attempt: start() reserved at admission; a reply books its own attempt here
++        if args.reply_file and kind in ("api", "dsh") and jobs.reserve(job_id, spec["max_usd"]) is None:
+             raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
+         if kind == "dsh":
+             final = _run_dsh(job_id, spec, prompt, resume)

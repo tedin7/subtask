@@ -1,0 +1,1025 @@
+{
+ "v": 1,
+ "name": "subtask-e2e-pilot",
+ "frozen": "2026-10-14",
+ "target": {
+  "repo": "self (the subtask git repository)",
+  "commit": "3f731f60ebcacba35c0d92f6cc4b917b836517ce",
+  "baseline_suite": "python -m pytest -q -p no:cacheprovider tests"
+ },
+ "splits": {
+  "calibration": "2 per kind, for tuning prompts/thresholds; never reported as evidence",
+  "test": "4 per kind, reported"
+ },
+ "tasks": [
+  {
+   "id": "r1",
+   "kind": "read",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "In this repository, which engines does auto-routing consider for a task of kind 'review', in which order, and what tie-break rule does pick() use between them?",
+   "files": [
+    "subtask/capacity.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "KINDS['review'] = sonnet-api, codex, kimi; score = free - rank*5, engines under 10% free skipped, API engines skipped when the monthly room is below the job budget.",
+    "required_facts": [
+     {
+      "name": "order",
+      "regex": "sonnet-api.{0,80}codex.{0,80}kimi"
+     },
+     {
+      "name": "rank_penalty",
+      "regex": "rank\\s*\\*\\s*5|5\\s*(points|per rank)|minus\\s*5"
+     },
+     {
+      "name": "ten_pct",
+      "regex": "10\\s*%|< ?10\\b|below 10"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 0.5,
+    "max_minutes": 10
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "r2",
+   "kind": "read",
+   "split": "test",
+   "delegation_expected": false,
+   "prompt": "What is the TTL of the engine capacity cache, and in which file is it stored?",
+   "files": [
+    "subtask/capacity.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "120 seconds, in capacity.json under SUBTASK_HOME.",
+    "required_facts": [
+     {
+      "name": "ttl",
+      "regex": "\\b120\\b"
+     },
+     {
+      "name": "file",
+      "regex": "capacity\\.json"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 0.5,
+    "max_minutes": 10
+   },
+   "why_delegation": "one constant lookup: the brief is as long as the work",
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "r3",
+   "kind": "read",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "How does jobs._alive decide that a worker pid is still the same subtask worker and not a reused pid? Cite the mechanism precisely.",
+   "files": [
+    "subtask/jobs.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "It reaps its own exited children with waitpid(WNOHANG), then reads /proc/<pid>/cmdline and requires both 'subtask.worker' and the job id in it; OSError other than FileNotFoundError is treated as alive.",
+    "required_facts": [
+     {
+      "name": "proc_cmdline",
+      "regex": "/proc/.{0,12}cmdline"
+     },
+     {
+      "name": "module_marker",
+      "regex": "subtask\\.worker"
+     },
+     {
+      "name": "job_id",
+      "regex": "job[ _-]?id"
+     },
+     {
+      "name": "waitpid",
+      "regex": "waitpid|WNOHANG|reap"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 0.5,
+    "max_minutes": 10
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "r4",
+   "kind": "read",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "Trace what happens to money and job state when a worker process dies before finishing. Which function charges what?",
+   "files": [
+    "subtask/jobs.py",
+    "subtask/core.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "jobs.status() sees a queued/running job whose pid is dead, takes the job lock, re-checks, calls settle_open(job, max_usd) which writes a cost row for the full max_usd if a reservation is open, then marks the job failed with 'worker died before finishing'.",
+    "required_facts": [
+     {
+      "name": "settle_open",
+      "regex": "settle_open"
+     },
+     {
+      "name": "max_usd",
+      "regex": "max_usd|full budget|whole budget"
+     },
+     {
+      "name": "failed",
+      "regex": "failed"
+     },
+     {
+      "name": "message",
+      "regex": "worker died before finishing"
+     },
+     {
+      "name": "lock",
+      "regex": "job[_ ]lock|lock"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 0.5,
+    "max_minutes": 10
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "r5",
+   "kind": "read",
+   "split": "test",
+   "delegation_expected": false,
+   "prompt": "Which MCP protocol versions does fastserver accept in initialize, and what does it answer when the client asks for an unknown one?",
+   "files": [
+    "subtask/fastserver.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05; unknown -> it answers with the first (2025-11-25).",
+    "required_facts": [
+     {
+      "name": "v1",
+      "regex": "2025-11-25"
+     },
+     {
+      "name": "v2",
+      "regex": "2025-06-18"
+     },
+     {
+      "name": "v3",
+      "regex": "2025-03-26"
+     },
+     {
+      "name": "v4",
+      "regex": "2024-11-05"
+     },
+     {
+      "name": "fallback",
+      "regex": "(first|newest|latest|default).{0,40}2025-11-25|2025-11-25.{0,60}(fallback|unknown|otherwise|default)"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 0.5,
+    "max_minutes": 10
+   },
+   "why_delegation": "single-file lookup, answer is one line",
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "r6",
+   "kind": "read",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Explain end to end how the Anthropic API key reaches the Claude agent run by a sub-job, and what keeps it out of the agent's environment and Bash commands.",
+   "files": [
+    "subtask/worker.py",
+    "subtask/config.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "load_secrets reads the env file (never os.environ); _key_helper writes key-helper.sh that prints it; settings set apiKeyHelper; _api_env sets ANTHROPIC_API_KEY to empty; scrub_environ deletes secret-looking env vars; deny rules + sandbox denyRead cover the env file, helper and credentials.",
+    "required_facts": [
+     {
+      "name": "helper",
+      "regex": "apiKeyHelper|key-helper"
+     },
+     {
+      "name": "env_file",
+      "regex": "load_secrets|env file|SUBTASK_ENV_FILE"
+     },
+     {
+      "name": "empty_env",
+      "regex": "ANTHROPIC_API_KEY.{0,40}(empty|\\\"\\\"|blank)"
+     },
+     {
+      "name": "scrub",
+      "regex": "scrub_environ"
+     },
+     {
+      "name": "deny",
+      "regex": "deny(Read)?|denyRead"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 0.5,
+    "max_minutes": 10
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "v1",
+   "kind": "review",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "Review subtask/server.py for correctness bugs in how tool schemas are published. Report each defect with the function, the effect on clients, and a fix.",
+   "files": [
+    "subtask/server.py",
+    "subtask/tools.json"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "_slim() drops every key named 'title', including the real property 'title' of the step tool: step's schema lists 'title' as required but has no such property; tools.json has the same hole.",
+    "required_facts": [
+     {
+      "name": "fn",
+      "regex": "_slim"
+     },
+     {
+      "name": "title_prop",
+      "regex": "title"
+     },
+     {
+      "name": "step",
+      "regex": "\\bstep\\b"
+     },
+     {
+      "name": "required_mismatch",
+      "regex": "required|missing.{0,30}propert|propert.{0,30}(missing|dropped|removed)"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 1.0,
+    "max_minutes": 15
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "v2",
+   "kind": "review",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Review the admission logic of core.start() for concurrency problems when several MCP servers or CLI processes start jobs at the same time.",
+   "files": [
+    "subtask/core.py",
+    "subtask/jobs.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "running_count() >= MAX_RUNNING is checked, then the job is created later without any lock: check-then-act race across processes, more than MAX_RUNNING jobs can start; fix with a file lock around count+claim.",
+    "required_facts": [
+     {
+      "name": "check",
+      "regex": "running_count|MAX_RUNNING"
+     },
+     {
+      "name": "race",
+      "regex": "race|TOCTOU|check[- ]then[- ]act|atomic"
+     },
+     {
+      "name": "processes",
+      "regex": "process|concurren|parallel"
+     },
+     {
+      "name": "lock",
+      "regex": "lock|flock"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 1.0,
+    "max_minutes": 15
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "v3",
+   "kind": "review",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Review worker._run_cli for compatibility with current engine CLIs. Kimi CLI 2.1 is installed. What breaks?",
+   "files": [
+    "subtask/worker.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "The write path builds kimi --auto ... -p prompt; Kimi 2.1 rejects --prompt combined with --auto ('Cannot combine --prompt with --auto'), so every write job fails; drop --auto, prompt mode already runs tools.",
+    "required_facts": [
+     {
+      "name": "auto",
+      "regex": "--auto"
+     },
+     {
+      "name": "prompt",
+      "regex": "-p\\b|--prompt"
+     },
+     {
+      "name": "reject",
+      "regex": "reject|cannot combine|incompatib|not allowed|error|fails?"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 1.0,
+    "max_minutes": 15
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "v4",
+   "kind": "review",
+   "split": "calibration",
+   "delegation_expected": false,
+   "prompt": "Review fastserver.initialize: is the serverInfo it reports correct for this package?",
+   "files": [
+    "subtask/fastserver.py",
+    "pyproject.toml"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "serverInfo.version is hard-coded '0.2.0' but pyproject declares 0.1.0.",
+    "required_facts": [
+     {
+      "name": "v020",
+      "regex": "0\\.2\\.0"
+     },
+     {
+      "name": "v010",
+      "regex": "0\\.1\\.0"
+     },
+     {
+      "name": "where",
+      "regex": "serverInfo|version"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 1.0,
+    "max_minutes": 15
+   },
+   "why_delegation": "two-file glance; cheaper to check than to brief",
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "v5",
+   "kind": "review",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Security review: does the redaction applied to job results protect against secrets other than Anthropic keys leaking into results?",
+   "files": [
+    "subtask/worker.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "KEY_RE only matches sk-ant- keys; OpenAI/GitHub/JWT/AWS/private keys/password=... pass through unredacted into result.md and replies.",
+    "required_facts": [
+     {
+      "name": "only_ant",
+      "regex": "(only|just).{0,40}sk-ant|sk-ant.{0,60}only"
+     },
+     {
+      "name": "others",
+      "regex": "openai|github|ghp_|jwt|aws|AKIA|private key|password|deepseek"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 1.0,
+    "max_minutes": 15
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "v6",
+   "kind": "review",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Security review of the codex engine path in worker._run_cli: what sandbox does a write job run with?",
+   "files": [
+    "subtask/worker.py"
+   ],
+   "acceptance": {
+    "type": "reference_answer",
+    "reference": "Write jobs pass --dangerously-bypass-approvals-and-sandbox: no codex sandbox at all, commands run unsandboxed as the user; use -s workspace-write with approval_policy=never.",
+    "required_facts": [
+     {
+      "name": "flag",
+      "regex": "dangerously-bypass-approvals-and-sandbox"
+     },
+     {
+      "name": "no_sandbox",
+      "regex": "no sandbox|without (a |any )?sandbox|unsandboxed|bypass"
+     },
+     {
+      "name": "fix",
+      "regex": "workspace-write"
+     }
+    ],
+    "forbidden": [],
+    "rubric": "score = matched required facts / total (case-insensitive regex on the final answer); verified success = score 1.0 and no forbidden match; no LLM judge"
+   },
+   "budget": {
+    "max_usd": 1.0,
+    "max_minutes": 15
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_score": 1.0,
+    "checked": "2026-10-14T03:57:27",
+    "seconds": 0.0
+   }
+  },
+  {
+   "id": "c1",
+   "kind": "code",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "Fix server._slim so that it drops schema 'title' metadata but keeps a real tool parameter named 'title' (the step tool's title). Keep subtask/tools.json in line with what FastMCP publishes.",
+   "files": [
+    "subtask/server.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_c1_slim_title.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_c1_slim_title.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/c1.patch"
+   },
+   "budget": {
+    "max_usd": 1.5,
+    "max_minutes": 20
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "2 failed in 0.59s",
+    "reference_tail": "2 passed in 0.54s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:57:33",
+    "seconds": 6.4
+   }
+  },
+  {
+   "id": "c2",
+   "kind": "code",
+   "split": "test",
+   "delegation_expected": false,
+   "prompt": "fastserver reports serverInfo version 0.2.0 but the package is 0.1.0. Make it report the package version.",
+   "files": [
+    "subtask/fastserver.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_c2_server_version.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_c2_server_version.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/c2.patch"
+   },
+   "budget": {
+    "max_usd": 1.5,
+    "max_minutes": 20
+   },
+   "why_delegation": "one-line edit",
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "1 failed in 0.07s",
+    "reference_tail": "1 passed in 0.05s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:57:38",
+    "seconds": 4.9
+   }
+  },
+  {
+   "id": "c3",
+   "kind": "code",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Kimi CLI 2.1 refuses --auto together with -p/--prompt. Fix the kimi argv in worker._run_cli so write jobs (and resumed ones) keep the prompt without --auto.",
+   "files": [
+    "subtask/worker.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_c3_kimi_prompt.py",
+    "helpers": [
+     "bench/corpus/acceptance/_cli_argv.py"
+    ],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_c3_kimi_prompt.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/c3.patch"
+   },
+   "budget": {
+    "max_usd": 1.5,
+    "max_minutes": 20
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "2 failed in 0.05s",
+    "reference_tail": "2 passed in 0.04s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:57:43",
+    "seconds": 4.7
+   }
+  },
+  {
+   "id": "c4",
+   "kind": "code",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "Codex write jobs run with --dangerously-bypass-approvals-and-sandbox. Make them use codex's workspace-write sandbox with approvals never asked; keep read-only jobs as they are.",
+   "files": [
+    "subtask/worker.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_c4_codex_sandbox.py",
+    "helpers": [
+     "bench/corpus/acceptance/_cli_argv.py"
+    ],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_c4_codex_sandbox.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/c4.patch"
+   },
+   "budget": {
+    "max_usd": 1.5,
+    "max_minutes": 20
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "1 failed, 1 passed in 0.06s",
+    "reference_tail": "2 passed in 0.04s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:57:48",
+    "seconds": 5.1
+   }
+  },
+  {
+   "id": "c5",
+   "kind": "code",
+   "split": "test",
+   "delegation_expected": false,
+   "prompt": "core.start accepts max_turns=True because bool is an int. Reject booleans with the existing max_turns error.",
+   "files": [
+    "subtask/core.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_c5_max_turns_bool.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_c5_max_turns_bool.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/c5.patch"
+   },
+   "budget": {
+    "max_usd": 1.5,
+    "max_minutes": 20
+   },
+   "why_delegation": "one condition; needs no exploration",
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "1 failed, 1 passed in 0.04s",
+    "reference_tail": "2 passed in 0.04s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:57:52",
+    "seconds": 4.3
+   }
+  },
+  {
+   "id": "c6",
+   "kind": "code",
+   "split": "test",
+   "delegation_expected": false,
+   "prompt": "core.wait([]) sleeps until the timeout. Make it return at once with a message saying no job ids were given.",
+   "files": [
+    "subtask/core.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_c6_wait_empty.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_c6_wait_empty.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/c6.patch"
+   },
+   "budget": {
+    "max_usd": 1.5,
+    "max_minutes": 20
+   },
+   "why_delegation": "two lines; the caller already knows exactly where",
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "1 failed in 3.06s",
+    "reference_tail": "1 passed in 0.05s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:00",
+    "seconds": 7.6
+   }
+  },
+  {
+   "id": "h1",
+   "kind": "hard",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "SUBTASK_MAX_RUNNING is checked then acted on in core.start without a lock, so parallel processes overshoot it. Make admission atomic across processes (file lock), without holding the lock longer than needed.",
+   "files": [
+    "subtask/core.py",
+    "subtask/jobs.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_h1_admission_race.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_h1_admission_race.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/h1.patch"
+   },
+   "budget": {
+    "max_usd": 3.0,
+    "max_minutes": 40
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "1 failed in 2.17s",
+    "reference_tail": "1 passed in 6.24s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:13",
+    "seconds": 12.8
+   }
+  },
+  {
+   "id": "h2",
+   "kind": "hard",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Redaction only masks sk-ant keys. Extend worker.redact to mask OpenAI-style sk-/sk-proj- keys, GitHub tokens (ghp_, github_pat_), JWTs, AWS access key ids, PEM private key blocks and key=value secrets (password, secret, token, api_key), without touching ordinary text.",
+   "files": [
+    "subtask/worker.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_h2_redaction.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_h2_redaction.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/h2.patch"
+   },
+   "budget": {
+    "max_usd": 3.0,
+    "max_minutes": 40
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "3 failed, 1 passed in 0.04s",
+    "reference_tail": "4 passed in 0.03s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:17",
+    "seconds": 4.4
+   }
+  },
+  {
+   "id": "h3",
+   "kind": "hard",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "If the worker cannot be spawned after the git worktree was created, core.start leaves the worktree behind. Roll it back so a failed start leaves no worktree and the job is marked failed.",
+   "files": [
+    "subtask/core.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_h3_spawn_rollback.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_h3_spawn_rollback.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/h3.patch"
+   },
+   "budget": {
+    "max_usd": 3.0,
+    "max_minutes": 40
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "1 failed in 0.07s",
+    "reference_tail": "1 passed in 0.07s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:21",
+    "seconds": 4.5
+   }
+  },
+  {
+   "id": "h4",
+   "kind": "hard",
+   "split": "calibration",
+   "delegation_expected": true,
+   "prompt": "Money is reserved by the worker after the job is already admitted, so a start over the monthly cap creates a job folder and worktree and spawns a worker that then fails. Move the first-attempt reservation into core.start at admission (refuse before creating anything when the cap would be exceeded, release it if the start fails later); the worker must not reserve again on a first attempt (replies still reserve).",
+   "files": [
+    "subtask/core.py",
+    "subtask/worker.py",
+    "subtask/jobs.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_h4_reserve_at_admission.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_h4_reserve_at_admission.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/h4.patch"
+   },
+   "budget": {
+    "max_usd": 3.0,
+    "max_minutes": 40
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "2 failed, 1 passed in 0.58s",
+    "reference_tail": "3 passed in 0.52s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:27",
+    "seconds": 5.8
+   }
+  },
+  {
+   "id": "h5",
+   "kind": "hard",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "Make the version single-sourced: subtask.__version__ equals pyproject's version (0.1.0), `python -m subtask.cli --version` prints it, and fastserver serverInfo reports it.",
+   "files": [
+    "subtask/__init__.py",
+    "subtask/cli.py",
+    "subtask/fastserver.py",
+    "pyproject.toml"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_h5_version_single_source.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_h5_version_single_source.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/h5.patch"
+   },
+   "budget": {
+    "max_usd": 3.0,
+    "max_minutes": 40
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "3 failed in 0.20s",
+    "reference_tail": "3 passed in 0.19s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:32",
+    "seconds": 5.1
+   }
+  },
+  {
+   "id": "h6",
+   "kind": "hard",
+   "split": "test",
+   "delegation_expected": true,
+   "prompt": "A reservation made last month and still open is ignored by the monthly total, so the cap can be exceeded across a month boundary. Count open reservations whatever month they were made in, and only this month's settled costs.",
+   "files": [
+    "subtask/jobs.py"
+   ],
+   "acceptance": {
+    "type": "hidden_test",
+    "test": "bench/corpus/acceptance/test_h6_ledger_month_boundary.py",
+    "helpers": [],
+    "run": "python -m pytest -q -p no:cacheprovider bench_acceptance/test_h6_ledger_month_boundary.py",
+    "must_not_modify": [
+     "bench_acceptance/",
+     "tests/",
+     "pyproject.toml"
+    ],
+    "regressions": "python -m pytest -q -p no:cacheprovider tests",
+    "reference_patch": "bench/corpus/reference/h6.patch"
+   },
+   "budget": {
+    "max_usd": 3.0,
+    "max_minutes": 40
+   },
+   "validated": {
+    "fails_on_base": true,
+    "passes_with_reference": true,
+    "reference_keeps_suite_green": true,
+    "reference_respects_must_not_modify": true,
+    "base_tail": "2 failed, 2 passed in 0.06s",
+    "reference_tail": "4 passed in 0.03s",
+    "suite_failures_with_reference": [],
+    "suite_flaky_on_rerun": [],
+    "checked": "2026-10-14T03:58:37",
+    "seconds": 4.4
+   }
+  }
+ ],
+ "corpus_hash": "592aa4e779eaad7ecb472eb20536420cce7c670ef2452a51f448d7f508a02554"
+}

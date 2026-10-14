@@ -1,0 +1,13 @@
+diff --git a/subtask/fastserver.py b/subtask/fastserver.py
+index 947f661..1548422 100644
+--- a/subtask/fastserver.py
++++ b/subtask/fastserver.py
+@@ -123,7 +123,7 @@ def _handle(msg: dict) -> None:
+                 "result": {
+                     "protocolVersion": asked if asked in VERSIONS else VERSIONS[0],
+                     "capabilities": {"tools": {"listChanged": False}},
+-                    "serverInfo": {"name": "subtask", "version": "0.2.0"},
++                    "serverInfo": {"name": "subtask", "version": "0.1.0"},
+                     "instructions": SPEC["instructions"],
+                 },
+             }

@@ -1,0 +1,111 @@
+diff --git a/subtask/core.py b/subtask/core.py
+index 43dbcd2..282d851 100644
+--- a/subtask/core.py
++++ b/subtask/core.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import fcntl
+ import json
+ import math
+ import os
+@@ -69,49 +70,55 @@ def start(
+     repo = str(Path(repo).resolve()) if repo else None
+     if files:
+         task += "\n\nRead these first: " + ", ".join(files)
+-    if jobs.running_count() >= config.MAX_RUNNING:
+-        return f"{config.MAX_RUNNING} sub-tasks already running: use wait()"
+-    if readonly and engine in ("kimi", "opencode", "dsh"):
+-        return f"{engine} cannot run read-only; use another engine"
+-    job_id = jobs.new_id()
+-    folder = jobs.job_dir(job_id)
+-    folder.mkdir(parents=True)
+-    branch = git_dir = None
+-    if repo and not readonly:
+-        branch = f"subtask/{job_id}"
+-        workdir = str(config.WORKTREES / job_id)
+-        config.WORKTREES.mkdir(parents=True, exist_ok=True)
+-        try:
+-            base = _git(repo, "rev-parse", base)
+-            _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
+-            git_dir = str(Path(repo, _git(repo, "rev-parse", "--git-common-dir")).resolve())
+-        except subprocess.CalledProcessError as exc:
+-            folder.joinpath("spec.json").unlink(missing_ok=True)
+-            folder.rmdir() if not any(folder.iterdir()) else None
+-            return f"worktree not created: {exc.stderr.strip()[:200]}"
+-        task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
+-    else:
+-        workdir = str(Path(cwd or repo or os.getcwd()).resolve())
+-    jobs.write_json(
+-        folder / "spec.json",
+-        {
+-            "task": task,
+-            "engine": engine,
+-            "repo": repo,
+-            "base": base if branch else None,
+-            "branch": branch,
+-            "git_dir": git_dir,
+-            "cwd": workdir,
+-            "readonly": readonly,
+-            "model": model,
+-            "max_usd": budget,
+-            "max_turns": max_turns,
+-            "effort": effort,
+-            "sandbox": sandbox,
+-            "created": time.time(),
+-        },
+-    )
+-    jobs.update_status(job_id, state="queued")
++    config.HOME.mkdir(parents=True, exist_ok=True)
++    lock = (config.HOME / "admission.lock").open("a")  # count and claim a slot atomically, across processes
++    fcntl.flock(lock, fcntl.LOCK_EX)
++    try:
++        if jobs.running_count() >= config.MAX_RUNNING:
++            return f"{config.MAX_RUNNING} sub-tasks already running: use wait()"
++        if readonly and engine in ("kimi", "opencode", "dsh"):
++            return f"{engine} cannot run read-only; use another engine"
++        job_id = jobs.new_id()
++        folder = jobs.job_dir(job_id)
++        folder.mkdir(parents=True)
++        branch = git_dir = None
++        if repo and not readonly:
++            branch = f"subtask/{job_id}"
++            workdir = str(config.WORKTREES / job_id)
++            config.WORKTREES.mkdir(parents=True, exist_ok=True)
++            try:
++                base = _git(repo, "rev-parse", base)
++                _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
++                git_dir = str(Path(repo, _git(repo, "rev-parse", "--git-common-dir")).resolve())
++            except subprocess.CalledProcessError as exc:
++                folder.joinpath("spec.json").unlink(missing_ok=True)
++                folder.rmdir() if not any(folder.iterdir()) else None
++                return f"worktree not created: {exc.stderr.strip()[:200]}"
++            task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
++        else:
++            workdir = str(Path(cwd or repo or os.getcwd()).resolve())
++        jobs.write_json(
++            folder / "spec.json",
++            {
++                "task": task,
++                "engine": engine,
++                "repo": repo,
++                "base": base if branch else None,
++                "branch": branch,
++                "git_dir": git_dir,
++                "cwd": workdir,
++                "readonly": readonly,
++                "model": model,
++                "max_usd": budget,
++                "max_turns": max_turns,
++                "effort": effort,
++                "sandbox": sandbox,
++                "created": time.time(),
++            },
++        )
++        jobs.update_status(job_id, state="queued")
++    finally:
++        lock.close()
+     try:
+         pid = _spawn(job_id)
+     except OSError as exc:

@@ -1,0 +1,13 @@
+diff --git a/subtask/core.py b/subtask/core.py
+index 43dbcd2..cc0c89f 100644
+--- a/subtask/core.py
++++ b/subtask/core.py
+@@ -148,6 +148,8 @@ def wait(job_ids: list[str], timeout: int = 50, any_: bool = False, results: boo
+     One call replaces many status() polls, and with results=True it also
+     returns each finished job's summary, saving a result() call per job.
+     """
++    if not job_ids:
++        return "no job ids given"
+     unknown = [j for j in job_ids if not _known(j)]
+     if unknown:
+         return "unknown job: " + ", ".join(unknown)

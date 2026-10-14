@@ -1,0 +1,13 @@
+diff --git a/subtask/core.py b/subtask/core.py
+index 43dbcd2..85e6591 100644
+--- a/subtask/core.py
++++ b/subtask/core.py
+@@ -116,6 +116,8 @@ def start(
+         pid = _spawn(job_id)
+     except OSError as exc:
+         jobs.update_status(job_id, state="failed", error=f"worker not started: {exc}")
++        if branch and repo:  # roll back the worktree: nothing will ever work in it
++            subprocess.run(["git", "-C", repo, "worktree", "remove", "--force", workdir], capture_output=True, check=False)
+         return f"{job_id} failed to start: {exc}"
+     jobs.update_status(job_id, pid=pid)
+     where = f"branch {branch}" if branch else workdir
