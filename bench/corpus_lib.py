@@ -67,17 +67,18 @@ def git(*args: str, cwd: Path | str = REPO, check: bool = True) -> str:
 class Scratch:
     """A detached worktree of the target commit, removed on exit."""
 
-    def __init__(self, commit: str, parent: Path | None = None):
+    def __init__(self, commit: str, parent: Path | None = None, repo: Path = REPO):
         self.commit = commit
+        self.repo = repo
         self.parent = Path(parent or tempfile.mkdtemp(prefix="subtask-e2e-"))
         self.path = self.parent / f"wt-{commit[:7]}-{os.getpid()}-{id(self) & 0xFFFF:x}"
 
     def __enter__(self) -> Path:
-        git("worktree", "add", "-q", "--detach", str(self.path), self.commit)
+        git("worktree", "add", "-q", "--detach", str(self.path), self.commit, cwd=self.repo)
         return self.path
 
     def __exit__(self, *exc) -> None:
-        git("worktree", "remove", "--force", str(self.path), check=False)
+        git("worktree", "remove", "--force", str(self.path), cwd=self.repo, check=False)
         try:
             self.parent.rmdir()
         except OSError:
