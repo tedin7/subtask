@@ -33,7 +33,20 @@ def minimal_env(extra: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def bwrap_available() -> bool:
-    return shutil.which("bwrap") is not None
+    """bwrap installed AND able to create its namespaces here (some hosts forbid user namespaces)."""
+    exe = shutil.which("bwrap")
+    if not exe:
+        return False
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            [exe, "--ro-bind", "/", "/", "--unshare-pid", "--", "true"],
+            capture_output=True, timeout=10, check=False,
+        )  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
 
 
 def direct(argv: list[str], env: dict[str, str]) -> tuple[list[str], dict[str, str]]:
@@ -43,8 +56,8 @@ def direct(argv: list[str], env: dict[str, str]) -> tuple[list[str], dict[str, s
 def isolated(spec: dict, family: str):
     """A wrap() for RunContext that runs argv under bwrap, or raises if bwrap is missing."""
     bwrap = shutil.which("bwrap")
-    if not bwrap:
-        raise RuntimeError("policy isolated needs bubblewrap (bwrap) on PATH; refusing to run unisolated")
+    if not bwrap or not bwrap_available():
+        raise RuntimeError("policy isolated needs a working bubblewrap (bwrap); refusing to run unisolated")
     home = Path.home()
 
     def wrap(argv: list[str], env: dict[str, str]) -> tuple[list[str], dict[str, str]]:

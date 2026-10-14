@@ -44,6 +44,12 @@ def engines() -> list[dict]:
     return out
 
 
+def _bwrap() -> bool:
+    from .runners import bwrap_available
+
+    return bwrap_available()
+
+
 def checks() -> list[dict]:
     out = [
         _check("subtask", True, f"{__version__} on Python {platform.python_version()} ({sys.executable})"),

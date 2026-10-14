@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tomllib
@@ -61,13 +62,48 @@ def run_native(argv: list[str]) -> None:
         raise InstallError(f"{' '.join(argv[:3])} exited {proc.returncode}: {' | '.join(tail)}")
 
 
+def strip_jsonc(text: str) -> str:
+    """JSON with comments and trailing commas (OpenCode's opencode.jsonc) -> plain JSON text."""
+    out, i, n, in_str = [], 0, len(text), False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\":
+                out.append(text[i + 1 : i + 2])
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+            out.append(ch)
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            continue
+        else:
+            out.append(ch)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def _has_comments(raw: bytes) -> bool:
+    text = raw.decode("utf-8", errors="replace")
+    return strip_jsonc(text) != re.sub(r",(\s*[}\]])", r"\1", text)
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     raw = read_bytes(path)
     if raw is None or not raw.strip():
         return {}
     try:
-        data = json.loads(raw)
-    except ValueError as exc:
+        data = json.loads(strip_jsonc(raw.decode("utf-8")))
+    except (ValueError, UnicodeDecodeError) as exc:
         raise InstallError(f"{path} is not plain JSON ({exc}); edit it by hand") from exc
     if not isinstance(data, dict):
         raise InstallError(f"{path}: top level is not an object")
@@ -83,8 +119,18 @@ def _dig(data: dict[str, Any], keys: tuple[str, ...]) -> Any:
 
 
 def json_set(path: Path, keys: tuple[str, ...], value: Any | None) -> None:
-    """Set (or with None remove) one nested key; everything else is kept as parsed."""
+    """Set (or with None remove) one nested key; everything else is kept as parsed.
+
+    A file with comments is never rewritten (the comments would be lost): edit it by hand.
+    """
+    raw = read_bytes(path)
     data = _load_json(path)
+    if value is None and _dig(data, keys) is None:
+        return  # nothing to remove: the file is not touched
+    if raw is not None and _has_comments(raw):
+        raise InstallError(
+            f"{path} has comments; rewriting it would drop them: change {'.'.join(keys)} by hand"
+        )
     node = data
     for k in keys[:-1]:
         child = node.get(k)
@@ -279,8 +325,10 @@ class OpenCode(Client):
     def config_path(self, scope: str) -> Path:
         if scope == "project":
             return self.cwd / "opencode.json"
-        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-        return base / "opencode" / "opencode.json"
+        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+        if not (base / "opencode.json").exists() and (base / "opencode.jsonc").exists():
+            return base / "opencode.jsonc"  # what `opencode mcp add --global` writes by default
+        return base / "opencode.json"
 
     def read_entry(self, scope: str) -> dict[str, Any] | None:
         return _dig(_load_json(self.config_path(scope)), ("mcp", "servers", NAME))

@@ -5,7 +5,6 @@ Secrets here are synthetic. Nothing reads real credentials.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 
 import pytest
@@ -54,7 +53,13 @@ def test_start_refuses_what_it_cannot_enforce(home):
     assert "cannot run read-only" in core.start("x", engine="opencode-go", cwd=str(home), readonly=True)
 
 
-@pytest.mark.skipif(shutil.which("bwrap") is None, reason="bubblewrap not installed")
+def _bwrap_works() -> bool:
+    from subtask.runners import bwrap_available
+
+    return bwrap_available()
+
+
+@pytest.mark.skipif(not _bwrap_works(), reason="bubblewrap missing or user namespaces blocked on this host")
 def test_isolated_runner_hides_home_and_blocks_writes_outside(home, tmp_path, monkeypatch):
     from subtask import core
 
@@ -167,3 +172,11 @@ def test_cleanup_never_removes_ignored_or_dirty_work(home, tmp_path):
     from pathlib import Path
 
     assert (Path(jobs.spec(job)["cwd"]) / "build" / "out.bin").is_file()
+
+
+def test_isolated_is_refused_when_bwrap_cannot_run(home, monkeypatch):
+    from subtask import core, runners
+
+    monkeypatch.setattr(runners, "bwrap_available", lambda: False)
+    out = core.start("x", engine="kimi", cwd=str(home), policy="isolated")
+    assert "bubblewrap" in out and "started" not in out

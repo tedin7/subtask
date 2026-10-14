@@ -345,3 +345,22 @@ def test_symlinked_skill_folder_is_replaced_without_touching_its_target(tmp_path
     installer._apply(c, "user", [], plan, out)
     assert out.status == "done", out.notes
     assert dst.read_bytes() == installer.skill_source() and not dst.parent.is_symlink()
+
+
+def test_opencode_jsonc_is_read_and_never_rewritten_with_comments(tmp_path, monkeypatch):
+    from subtask.install import clients
+
+    cfg = tmp_path / "opencode"
+    cfg.mkdir()
+    text = '{\n  // my comment\n  "mcp": {"servers": {"subtask": {"type": "local", "command": ["/x/subtask-mcp"],},},},\n}\n'
+    (cfg / "opencode.jsonc").write_text(text)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    oc = clients.CLIENTS["opencode"]()
+    assert oc.config_path("user").name == "opencode.jsonc"
+    assert oc.read_entry("user")["command"] == ["/x/subtask-mcp"]
+    with pytest.raises(clients.InstallError, match="comments"):
+        clients.json_set(cfg / "opencode.jsonc", ("mcp", "servers", "subtask"), None)
+    assert (cfg / "opencode.jsonc").read_text() == text
+    assert (
+        clients.strip_jsonc('{"a": "http://x//y", /* c */ "b": [1,],}') == '{"a": "http://x//y",  "b": [1]}'
+    )

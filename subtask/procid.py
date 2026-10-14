@@ -23,13 +23,14 @@ def boot_id() -> str:
 
 def start_ticks(pid: int) -> str | None:
     """Kernel start time of `pid` (clock ticks since boot on Linux, lstart elsewhere)."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
-        return stat.rsplit(")", 1)[1].split()[19]  # field 22: starttime
-    except FileNotFoundError:
-        return None
-    except (OSError, IndexError):
-        pass
+    if Path("/proc/self/stat").exists():  # Linux: /proc is authoritative
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text()
+            return stat.rsplit(")", 1)[1].split()[19]  # field 22: starttime
+        except FileNotFoundError:
+            return None
+        except (OSError, IndexError):
+            pass
     if sys.platform == "win32":
         return None
     try:
