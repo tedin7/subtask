@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import sys
@@ -126,6 +125,8 @@ class ClaudeApi(Adapter):
         )
 
     def run(self, ctx: RunContext) -> Outcome:
+        import asyncio  # lazy: 60+ ms at import, only the worker needs it
+
         return asyncio.run(self._run(ctx))
 
     async def _run(self, ctx: RunContext) -> Outcome:

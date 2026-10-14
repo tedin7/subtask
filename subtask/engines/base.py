@@ -14,7 +14,6 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 ADAPTER_API = 1  # bump when the protocol below changes incompatibly
@@ -23,7 +22,48 @@ ADAPTER_API = 1  # bump when the protocol below changes incompatibly
 LEVELS = ("worktree", "sandbox", "isolated")
 
 
-@dataclass(frozen=True)
+class _Factory:
+    def __init__(self, make: Callable[[], object]) -> None:
+        self.make = make
+
+
+def field(default_factory: Callable[[], object]) -> object:
+    return _Factory(default_factory)
+
+
+def record(cls: type) -> type:
+    """A tiny stand-in for @dataclass: `dataclasses` pulls in `inspect` (~10 ms per cold start)."""
+    names = list(cls.__annotations__)  # own annotations (strings: postponed evaluation)
+    defaults = {n: cls.__dict__[n] for n in names if n in cls.__dict__}
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        values = dict(zip(names, args, strict=False))
+        values.update(kwargs)
+        for name in names:
+            if name not in values:
+                if name not in defaults:
+                    raise TypeError(f"{cls.__name__}() missing argument {name!r}")
+                d = defaults[name]
+                values[name] = d.make() if isinstance(d, _Factory) else d
+            object.__setattr__(self, name, values[name])
+
+    def as_dict(self) -> dict:
+        return {n: getattr(self, n) for n in names}
+
+    cls.__init__ = __init__
+    cls.__eq__ = lambda self, other: type(other) is type(self) and as_dict(self) == as_dict(other)
+    cls.__repr__ = lambda self: f"{cls.__name__}({as_dict(self)!r})"
+    if "as_dict" not in cls.__dict__:
+        cls.as_dict = as_dict
+    cls._fields = tuple(names)
+    return cls
+
+
+def asdict(obj: object) -> dict:
+    return {n: getattr(obj, n) for n in obj._fields}  # type: ignore[attr-defined]
+
+
+@record
 class Capabilities:
     readonly: bool  # can enforce a read-only run
     levels: tuple[str, ...]  # write isolation levels the adapter can enforce
@@ -38,7 +78,7 @@ class Capabilities:
         return asdict(self)
 
 
-@dataclass
+@record
 class Probe:
     installed: bool
     version: str | None = None
@@ -53,7 +93,7 @@ class Probe:
         return asdict(self)
 
 
-@dataclass
+@record
 class Capacity:
     value: float | None  # None = unknown, never a silent 50
     unit: str  # "pct_free" | "usd_left"
@@ -71,7 +111,7 @@ class Capacity:
         return {**asdict(self), "freshness_s": round(self.freshness_s, 1)}
 
 
-@dataclass
+@record
 class RunContext:
     job_id: str
     spec: dict
@@ -85,7 +125,7 @@ class RunContext:
     env: dict[str, str]  # minimal environment for the engine process
 
 
-@dataclass
+@record
 class Outcome:
     ok: bool
     subtype: str

@@ -72,3 +72,19 @@ def report() -> str:
             f"{engine:12} free {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"[:150]
         )
     return "\n".join(lines)
+
+
+def pick(kind: str = "code", max_usd: float | None = None, readonly: bool = False) -> tuple[str, str]:
+    """v0 API, kept for callers: (engine, reason). The router does the work."""
+    from . import policy, router
+
+    engine, reason, _ = router.pick(kind, max_usd, policy.demand(readonly=readonly))
+    return engine, reason
+
+
+def __getattr__(name: str):
+    if name == "KINDS":  # v0 API: the kind table now lives in the router
+        from .router import KINDS
+
+        return KINDS
+    raise AttributeError(name)

@@ -15,12 +15,11 @@ from __future__ import annotations
 
 import json
 import os
-import statistics
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import capacity, config, ledger, policy, telemetry
 from .engines import registry
+from .engines.base import field, record
 
 # Which engines fit which kind of task, best first. Plain `opencode` is manual-only.
 KINDS = {
@@ -45,6 +44,12 @@ DEFAULTS = {
 }
 
 
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+
+
 def settings() -> dict:
     path = Path(os.environ.get("SUBTASK_ROUTING", config.ENV_FILE.parent / "routing.json"))
     try:
@@ -54,7 +59,7 @@ def settings() -> dict:
     return {**DEFAULTS, **{k: v for k, v in data.items() if k in DEFAULTS}}
 
 
-@dataclass
+@record
 class Option:
     engine: str
     admissible: bool
@@ -124,10 +129,10 @@ def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
             p_success = max(0.05, cfg["prior_success_top"] - cfg["prior_success_step"] * rank_i)
             p_src = f"prior (rank {rank_i}, n={len(verified)} < {cfg['min_samples']})"
         minutes = [r["run_s"] / 60 for r in rows if isinstance(r.get("run_s"), (int, float))]
-        exp_min = statistics.median(minutes) if len(minutes) >= 3 else cfg["prior_minutes"]
+        exp_min = _median(minutes) if len(minutes) >= 3 else cfg["prior_minutes"]
         costs = [r["cost_charged"] for r in rows if isinstance(r.get("cost_charged"), (int, float))]
         if adapter.capabilities.paid:
-            exp_cost = statistics.median(costs) if len(costs) >= 3 else cfg["prior_cost_share"] * budget
+            exp_cost = _median(costs) if len(costs) >= 3 else cfg["prior_cost_share"] * budget
         else:
             exp_cost = 0.0  # subscription or unknown: its scarcity is the quota term, not dollars
         scarcity = 1 - free_used / 100

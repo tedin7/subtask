@@ -20,9 +20,9 @@ from __future__ import annotations
 import fcntl
 import json
 import math
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from pathlib import Path
 
 from . import config
@@ -39,7 +39,8 @@ def month_of(ts: str | None = None) -> str:
 
 
 def now() -> str:
-    return datetime.now(UTC).isoformat()
+    t = time.time()
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)) + f".{int(t % 1 * 1e6):06d}+00:00"
 
 
 @contextmanager
