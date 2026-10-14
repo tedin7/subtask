@@ -33,7 +33,9 @@ def compute(rows: list[dict] | None = None) -> dict:
         starts = [r for r in items if r.get("attempt_kind") == "start"]
         verified = [r for r in items if r.get("verified") is True]
         verified_jobs = {r.get("job") for r in verified}
-        done_unverified = {r.get("job") for r in items if r.get("outcome") == "done" and r.get("verified") is None}
+        done_unverified = {
+            r.get("job") for r in items if r.get("outcome") == "done" and r.get("verified") is None
+        }
         first_ok = [r for r in starts if r.get("verified") is True]
         usd = [float(r["cost_charged"]) for r in items if isinstance(r.get("cost_charged"), (int, float))]
         paid = any(r.get("cost_reserved") for r in items)
@@ -61,8 +63,10 @@ def report(rows: list[dict] | None = None) -> str:
     if not data:
         return "no telemetry yet"
     lines = [
-        "engine/kind: jobs · verified · done-unverified · 1st-try verified · $ (incl. failures) · $/verified · "
-        "median run · context saved (tokens, est. bytes/4 [3..5])",
+        (
+            "engine/kind: jobs · verified · done-unverified · 1st-try verified · $ (incl. failures) · $/verified · "
+            "median run · context saved (tokens, est. bytes/4 [3..5])"
+        ),
     ]
     for key, d in data.items():
         saved = d["context_saved_tokens_est"]

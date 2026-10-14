@@ -27,7 +27,9 @@ from .engines.dsh import dsh_cost  # noqa: F401 - v0 import path
 
 # engine name -> (family, default model), kept for callers of the v0 API.
 ENGINES = {name: (a.family, a.model) for name, a in registry.all_engines().items()}
-SECRET_NAME = re.compile(r"(ANTHROPIC|TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE)", re.IGNORECASE)
+SECRET_NAME = re.compile(
+    r"(ANTHROPIC|TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE)", re.IGNORECASE
+)
 
 
 def scrub_environ() -> None:

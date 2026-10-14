@@ -54,8 +54,8 @@ def _all() -> tuple[dict[str, Adapter], tuple[str, ...]]:
         from importlib.metadata import entry_points
 
         specs += [ep.value for ep in entry_points(group="subtask.engines")]
-    except Exception:  # noqa: BLE001 - broken metadata must not break the built-ins
-        pass
+    except Exception as exc:  # noqa: BLE001 - broken metadata must not break the built-ins
+        errors.append(f"entry points unreadable: {type(exc).__name__}: {exc}")
     for spec in specs:
         try:
             adapter = _load(spec.strip())

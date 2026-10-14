@@ -60,6 +60,7 @@ class Reporter:
         self.activity: dict[str, str] = {}
         self.states: dict[str, str] = {}
         self.sent_ok = 0
+        self.send_errors = 0
         for job_id in ids or []:
             self.add(job_id)
 
@@ -122,7 +123,7 @@ class Reporter:
             self.send(float(self.count), message, None)
             self.sent_ok += 1
         except Exception:  # noqa: BLE001 - a broken client never stops the work
-            pass
+            self.send_errors += 1
 
 
 def _busiest(ids: list[str], activity: dict[str, str]) -> str:

@@ -42,7 +42,9 @@ def du() -> dict:
 def _worktree_clean(path: str) -> bool | None:
     if not Path(path).exists():
         return None
-    done = subprocess.run(["git", "-C", path, "status", "--porcelain", "--ignored"], capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        ["git", "-C", path, "status", "--porcelain", "--ignored"], capture_output=True, text=True, check=False
+    )
     return done.returncode == 0 and not done.stdout.strip()
 
 
@@ -92,4 +94,6 @@ def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:
     verb = "removed" if apply else "would remove"
     head = f"{verb} {removed} job folders ({freed / 1e6:.1f} MB), kept {kept}; {verb} {len(old_telemetry)} telemetry files"
     usage = ", ".join(f"{k} {v / 1e6:.1f} MB" for k, v in du().items())
-    return "\n".join([head, f"disk: {usage}", *lines[:20]] + ([] if apply else ["(dry run: add --apply to delete)"]))
+    return "\n".join(
+        [head, f"disk: {usage}", *lines[:20]] + ([] if apply else ["(dry run: add --apply to delete)"])
+    )

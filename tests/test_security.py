@@ -39,7 +39,7 @@ def test_policy_matrix_is_enforced_not_scored(home):
 def test_router_never_trades_security_for_cost(home):
     from subtask import policy, router
 
-    engine, reason, options = router.pick("code", None, policy.demand(level="isolated"))
+    engine, _reason, options = router.pick("code", None, policy.demand(level="isolated"))
     for o in options:
         if o.engine in ("sonnet-api", "opus-api", "haiku-api", "dsh"):
             assert not o.admissible

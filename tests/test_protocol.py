@@ -136,7 +136,7 @@ def test_progress_arrives_during_wait_and_stdout_stays_json(home):
             "params": {"name": "wait", "arguments": {"ids": [job], "timeout": 60},
                        "_meta": {**MODERN, "progressToken": "tok-1"}}})  # fmt: skip
     reply, seen = c.until(2, timeout=60)
-    t_end = [t for t, m in seen if m.get("id") == 2][0]
+    t_end = next(t for t, m in seen if m.get("id") == 2)
     notes = [(t, m["params"]) for t, m in seen if m.get("method") == "notifications/progress"]
     assert notes, "no progress notification"
     assert all(p["progressToken"] == "tok-1" for _, p in notes)

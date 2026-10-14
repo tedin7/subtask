@@ -53,7 +53,11 @@ def start_many(tasks: list[dict]) -> str:
 
 @mcp.tool(structured_output=False)
 async def wait(
-    ids: list[str], timeout: int = 300, any: bool = False, since: str | None = None, ctx: Context | None = None
+    ids: list[str],
+    timeout: int = 300,
+    any: bool = False,
+    since: str | None = None,
+    ctx: Context | None = None,
 ) -> str:
     """Wait for jobs (any=True: first); returns summaries. since: cursor for changes."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
@@ -166,7 +170,9 @@ def dump_tools() -> dict:
     tools = asyncio.run(mcp.list_tools())
     return {
         "instructions": mcp.instructions,
-        "tools": [{"name": t.name, "description": t.description, "inputSchema": t.inputSchema} for t in tools],
+        "tools": [
+            {"name": t.name, "description": t.description, "inputSchema": t.inputSchema} for t in tools
+        ],
     }
 
 

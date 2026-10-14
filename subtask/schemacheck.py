@@ -90,14 +90,18 @@ def _walk(root: Any, node: Any, where: str, out: list[str], depth: int) -> None:
         if key == "properties" and isinstance(value, dict):
             for name, sub in value.items():
                 _walk(root, sub, f"{where}.properties.{name}", out, depth + 1)
-        elif key in ("items", "additionalProperties", "not", "if", "then", "else", "contains") or key in ("anyOf", "oneOf", "allOf", "prefixItems"):
+        elif key in ("items", "additionalProperties", "not", "if", "then", "else", "contains") or key in (
+            "anyOf",
+            "oneOf",
+            "allOf",
+            "prefixItems",
+        ):
             _walk(root, value, f"{where}.{key}", out, depth + 1)
         elif key in ("$defs", "definitions") and isinstance(value, dict):
             for name, sub in value.items():
                 _walk(root, sub, f"{where}.{key}.{name}", out, depth + 1)
-    if "default" in node and kinds:
-        if not _matches(node["default"], kinds):
-            out.append(f"{where}: default {node['default']!r} is not {kinds}")
+    if "default" in node and kinds and not _matches(node["default"], kinds):
+        out.append(f"{where}: default {node['default']!r} is not {kinds}")
 
 
 def _matches(value: Any, kinds: list[str]) -> bool:

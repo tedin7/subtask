@@ -48,7 +48,14 @@ def isolated(spec: dict, family: str):
     home = Path.home()
 
     def wrap(argv: list[str], env: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        args = [bwrap, "--die-with-parent", "--new-session", "--unshare-pid", "--unshare-ipc", "--unshare-uts"]
+        args = [
+            bwrap,
+            "--die-with-parent",
+            "--new-session",
+            "--unshare-pid",
+            "--unshare-ipc",
+            "--unshare-uts",
+        ]
         for path in SYSTEM_RO:
             if os.path.exists(path):
                 args += ["--ro-bind", path, path]

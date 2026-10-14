@@ -10,7 +10,9 @@ from pathlib import Path
 
 from .base import Capabilities, Capacity, CliAdapter, RunContext, describe_command, json_line, short_command
 
-LIMIT_RE = re.compile(r"try again at ([A-Z][a-z]{2}) (\d{1,2})(?:st|nd|rd|th)?, (\d{4}) (\d{1,2}:\d{2} [AP]M)")
+LIMIT_RE = re.compile(
+    r"try again at ([A-Z][a-z]{2}) (\d{1,2})(?:st|nd|rd|th)?, (\d{4}) (\d{1,2}:\d{2} [AP]M)"
+)
 
 
 class Codex(CliAdapter):
@@ -175,4 +177,6 @@ def codex_capacity(root: Path | None = None) -> Capacity:
                     f"{worst[0]:.0f}% used (resets {when})",
                     resets_at=worst[1],
                 )
-    return Capacity(None, "pct_free", "codex sessions", time.time(), "none", "no rate_limits block (format changed?)")
+    return Capacity(
+        None, "pct_free", "codex sessions", time.time(), "none", "no rate_limits block (format changed?)"
+    )

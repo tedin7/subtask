@@ -47,12 +47,20 @@ def engines() -> list[dict]:
 def checks() -> list[dict]:
     out = [
         _check("subtask", True, f"{__version__} on Python {platform.python_version()} ({sys.executable})"),
-        _check("platform", sys.platform.startswith("linux") or None,
-               f"{platform.system()} {platform.release()}: Linux supported; macOS degraded (no /proc start times, "
-               "no bwrap); Windows not supported (fcntl)"),  # fmt: skip
+        _check(
+            "platform",
+            sys.platform.startswith("linux") or None,
+            f"{platform.system()} {platform.release()}: Linux supported; macOS degraded (no /proc start times, "
+            "no bwrap); Windows not supported (fcntl)",
+        ),
         _check("git", bool(shutil.which("git")), shutil.which("git") or "git not found: repo= jobs need it"),
-        _check("bwrap", bool(shutil.which("bwrap")) or None,
-               "available: policy=isolated works" if shutil.which("bwrap") else "missing: policy=isolated refused"),
+        _check(
+            "bwrap",
+            bool(shutil.which("bwrap")) or None,
+            "available: policy=isolated works"
+            if shutil.which("bwrap")
+            else "missing: policy=isolated refused",
+        ),
         _check("socat", bool(shutil.which("socat")) or None, "Claude Code sandbox network proxy on Linux"),
     ]
     env = config.ENV_FILE
@@ -70,11 +78,19 @@ def checks() -> list[dict]:
     try:
         from . import admission, ledger
 
-        out.append(_check("active jobs", True, f"{len(admission.active())} of {config.MAX_RUNNING} slots used"))
-        out.append(_check("spend", True, f"{ledger.committed():.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$"))
+        out.append(
+            _check("active jobs", True, f"{len(admission.active())} of {config.MAX_RUNNING} slots used")
+        )
+        out.append(
+            _check("spend", True, f"{ledger.committed():.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$")
+        )
     except Exception as exc:  # noqa: BLE001
         out.append(_check("state", False, f"{type(exc).__name__}: {exc}"))
-    out.append(_check("mcp protocol", True, "dual-era: 2026-07-28 (stateless) and 2025-11-25..2024-11-05 (initialize)"))
+    out.append(
+        _check(
+            "mcp protocol", True, "dual-era: 2026-07-28 (stateless) and 2025-11-25..2024-11-05 (initialize)"
+        )
+    )
     return out
 
 

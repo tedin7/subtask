@@ -174,7 +174,10 @@ class ClaudeApi(Adapter):
                 for block in message.content:
                     if isinstance(block, ToolResultBlock) and block.tool_use_id in pending:
                         out.commands.append(
-                            {"command": pending.pop(block.tool_use_id), "exit_code": 1 if block.is_error else 0}
+                            {
+                                "command": pending.pop(block.tool_use_id),
+                                "exit_code": 1 if block.is_error else 0,
+                            }
                         )
             elif isinstance(message, ResultMessage):
                 usage = message.usage or {}

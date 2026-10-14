@@ -49,7 +49,10 @@ def effective(adapter: Adapter, wanted: dict) -> tuple[str | None, str]:
     native = [lvl for lvl in caps.levels if lvl != "isolated" and LEVELS.index(lvl) >= floor]
     if native:
         level = max(native, key=LEVELS.index)
-        return level, "engine sandbox, same user" if level == "sandbox" else "git worktree only, not a host sandbox"
+        return (
+            level,
+            "engine sandbox, same user" if level == "sandbox" else "git worktree only, not a host sandbox",
+        )
     if "isolated" in caps.levels:
         return "isolated", "bubblewrap runner (engine has no native sandbox)"
     return None, f"{adapter.name} cannot enforce {wanted['level']}"

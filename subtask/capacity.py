@@ -68,5 +68,7 @@ def report() -> str:
     for engine, info in snapshot(refresh=True).items():
         value = "?" if info["value"] is None else f"{info['value']:.0f}%"
         age = int(time.time() - float(info.get("ts") or time.time()))
-        lines.append(f"{engine:12} free {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"[:150])
+        lines.append(
+            f"{engine:12} free {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"[:150]
+        )
     return "\n".join(lines)

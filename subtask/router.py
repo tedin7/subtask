@@ -147,7 +147,9 @@ def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
     return sorted(options, key=lambda o: (o.admissible, o.utility or -1e9), reverse=True)
 
 
-def pick(kind: str = "code", max_usd: float | None = None, wanted: dict | None = None) -> tuple[str, str, list[Option]]:
+def pick(
+    kind: str = "code", max_usd: float | None = None, wanted: dict | None = None
+) -> tuple[str, str, list[Option]]:
     """(engine, one-line reason, full ranking). engine '' when nothing is admissible."""
     wanted = wanted or policy.demand()
     options = rank(kind, max_usd, wanted)
@@ -163,7 +165,9 @@ def pick(kind: str = "code", max_usd: float | None = None, wanted: dict | None =
             f"~{t['exp_minutes']}m, level {best.level})"
         )
     else:
-        reason = f"{kind} → {best.engine} (legacy: free {t['free']:.0f}%, rank {t['rank']}, level {best.level})"
+        reason = (
+            f"{kind} → {best.engine} (legacy: free {t['free']:.0f}%, rank {t['rank']}, level {best.level})"
+        )
     return best.engine, reason, options
 
 
