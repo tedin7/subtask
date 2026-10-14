@@ -1,0 +1,25 @@
+ "tools": {
+  "status": {
+   "median_ms": 52.8,
+   "p95_ms": 58.14
+  },
+  "engines": {
+   "median_ms": 11.11,
+   "p95_ms": 12.55
+  }
+ },
+ "reply_tokens_est": {
+  "status": 3,
+  "engines": 105
+ },
+ "fixed_tokens_est": 673,
+ "tool_count": 10,
+ "pick": {
+  "cold_ms": 9.43,
+  "warm": {
+   "median_ms": 0.07,
+   "p95_ms": 0.11
+  }
+ },
+ "note": "tokens = bytes/4, rough estimate"
+}
