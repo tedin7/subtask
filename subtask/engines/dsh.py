@@ -30,6 +30,7 @@ def dsh_cost(events: list[dict]) -> float:
 class Dsh(Adapter):
     name = "dsh"
     family = "dsh"
+    module = "deepseek_harness"
     model = "deepseek-v4-flash"
     capabilities = Capabilities(
         readonly=False,

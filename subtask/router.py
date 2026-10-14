@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,7 +73,7 @@ def _history(kind: str) -> dict[str, list[dict]]:
 
 
 def _installed(adapter) -> bool:
-    return adapter.binary is None or shutil.which(adapter.binary) is not None
+    return adapter.available()
 
 
 def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
@@ -99,7 +98,7 @@ def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
             option.why.append(reason)
         if not _installed(adapter):
             option.admissible = False
-            option.why.append(f"{adapter.binary} not installed")
+            option.why.append(f"{adapter.binary or getattr(adapter, 'module', adapter.name)} not installed")
         if adapter.capabilities.paid and left < budget:
             option.admissible = False
             option.why.append(f"monthly cap: {left:.2f}$ left < {budget:.2f}$ budget")

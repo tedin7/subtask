@@ -2,7 +2,12 @@
 
 subtask start "brief" [--engine auto] [--kind code] [--repo PATH] [--readonly] [--max-usd 2]
 subtask wait ID [ID...] [--timeout 50]
-subtask status [ID] | result ID [--full] | reply ID "msg" | stop ID | cleanup ID | spend | engines
+subtask status [ID] | result ID [--full|--evidence] | reply ID "msg" | stop ID | cleanup ID | spend | engines
+subtask doctor [--json] | gc [--days 30] [--apply] | du | roi | routing explain|calibrate | watch ID...
+
+Differences from the MCP tools: the CLI also has --model, --no-sandbox (same as
+--policy worktree), --untrusted, spend, steps, doctor, gc, du, roi, routing and
+watch. MCP `engines` returns capacity plus spend in one call.
 """
 
 from __future__ import annotations
@@ -32,16 +37,21 @@ def main() -> int:
     s.add_argument("--model")
     s.add_argument("--no-sandbox", action="store_true")
     s.add_argument("--file", action="append", dest="files", help="path the agent reads first")
+    s.add_argument("--policy", choices=["worktree", "sandbox", "isolated", "untrusted"])
+    s.add_argument("--untrusted", action="store_true")
+    s.add_argument("--verify", help="command subtask runs itself on the result (exit 0 = verified)")
     w = sub.add_parser("wait")
     w.add_argument("ids", nargs="+")
     w.add_argument("--timeout", type=int, default=300)
     w.add_argument("--no-results", action="store_true")
     w.add_argument("--any", action="store_true", help="return when the first job ends")
+    w.add_argument("--since", help="cursor from a previous wait ('' to start): adds what changed")
     st = sub.add_parser("status")
     st.add_argument("id", nargs="?")
     r = sub.add_parser("result")
     r.add_argument("id")
     r.add_argument("--full", action="store_true")
+    r.add_argument("--evidence", action="store_true", help="JSON envelope with sources")
     rp = sub.add_parser("reply")
     rp.add_argument("id")
     rp.add_argument("message")
@@ -55,6 +65,21 @@ def main() -> int:
     sub.add_parser("steps")
     sub.add_parser("spend")
     sub.add_parser("engines")
+    d = sub.add_parser("doctor")
+    d.add_argument("--json", action="store_true")
+    g = sub.add_parser("gc")
+    g.add_argument("--days", type=int, default=30)
+    g.add_argument("--apply", action="store_true")
+    sub.add_parser("du")
+    sub.add_parser("roi")
+    ro = sub.add_parser("routing")
+    ro.add_argument("action", choices=["explain", "calibrate"])
+    ro.add_argument("--kind", default="code", choices=["read", "code", "review", "hard"])
+    ro.add_argument("--policy", choices=["worktree", "sandbox", "isolated", "untrusted"])
+    ro.add_argument("--readonly", action="store_true")
+    wa = sub.add_parser("watch", help="terminal view of job progress (diagnostic, not the chat)")
+    wa.add_argument("ids", nargs="+")
+    wa.add_argument("--interval", type=float, default=2.0)
     a = p.parse_args()
 
     if a.cmd == "start":
@@ -73,13 +98,16 @@ def main() -> int:
             not a.no_sandbox,
             a.kind,
             a.files,
+            policy=a.policy,
+            verify=a.verify,
+            untrusted=a.untrusted,
         )
     elif a.cmd == "wait":
-        out = core.wait(a.ids, a.timeout, a.any, not a.no_results)
+        out = core.wait(a.ids, a.timeout, a.any, not a.no_results, since=a.since)
     elif a.cmd == "status":
         out = core.status(a.id)
     elif a.cmd == "result":
-        out = core.result(a.id, a.full)
+        out = core.result(a.id, a.full, a.evidence)
     elif a.cmd == "reply":
         out = core.reply(a.id, a.message)
     elif a.cmd == "step":
@@ -92,10 +120,51 @@ def main() -> int:
         out = core.cleanup(a.id)
     elif a.cmd == "engines":
         out = core.engines()
+    elif a.cmd == "doctor":
+        from . import doctor
+
+        out = doctor.report(a.json)
+    elif a.cmd == "gc":
+        from . import gc
+
+        out = gc.run(a.days, a.apply)
+    elif a.cmd == "du":
+        from . import gc
+
+        out = "\n".join(f"{k}: {v / 1e6:.1f} MB" for k, v in gc.du().items())
+    elif a.cmd == "roi":
+        from . import roi
+
+        out = roi.report()
+    elif a.cmd == "routing":
+        from . import policy, router
+
+        wanted = policy.demand(a.readonly, a.policy)
+        out = router.explain(a.kind, None, wanted) if a.action == "explain" else router.calibrate()
+    elif a.cmd == "watch":
+        return _watch(a.ids, a.interval)
     else:
         out = core.spend()
     print(out)
     return 0
+
+
+def _watch(ids: list[str], interval: float) -> int:
+    import time
+
+    from . import jobs
+    from .progress import Reporter
+
+    reporter = Reporter(lambda _v, message, _t: print(message, flush=True), ids, min_interval=interval)
+    try:
+        while True:
+            reporter.poll()
+            if all(jobs.status(j).get("state") in jobs.FINAL for j in ids):
+                reporter.phase(reporter.summary(), force=True)
+                return 0
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        return 130
 
 
 def run() -> int:

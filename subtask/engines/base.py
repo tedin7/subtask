@@ -125,6 +125,17 @@ class Adapter:
         probe.auth = self.auth_state()
         return probe
 
+    def available(self) -> bool:
+        """Cheap installed check for routing (no subprocess): binary on PATH or module importable."""
+        if self.binary:
+            return shutil.which(self.binary) is not None
+        module = getattr(self, "module", None)
+        if module:
+            import importlib.util
+
+            return importlib.util.find_spec(module) is not None
+        return True
+
     def help_args(self) -> list[str]:
         return []
 

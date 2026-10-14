@@ -82,6 +82,7 @@ def api_env() -> dict[str, str]:
 
 class ClaudeApi(Adapter):
     family = "api"
+    module = "claude_agent_sdk"
     capabilities = Capabilities(
         readonly=True,
         levels=("worktree", "sandbox"),
