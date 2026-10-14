@@ -7,7 +7,7 @@ unrelated project: never run `pip install subtask`.
 
 | Item | State | External step needed |
 |---|---|---|
-| git tag `v0.2.2` | missing | `git tag v0.2.2 && git push origin v0.2.2` (the `uvx --from git+...@v0.2.2` launchers and `scripts/install.sh` need it, and the repo must be public) |
+| git tag `v0.2.3` | missing | `git tag v0.2.3 && git push origin v0.2.3` (the `uvx --from git+...@v0.2.3` launchers and `scripts/install.sh` need it, and the repo must be public) |
 | PyPI `subtask-mcp` | not uploaded | `uv build && uv publish` with a PyPI token for the `subtask-mcp` project |
 | MCP Registry | `server.json` written, **not submitted** | publish to PyPI first, add `mcp-name: io.github.tedin7/subtask` to the README (PyPI ownership check), then `mcp-publisher login github && mcp-publisher publish` |
 | Claude / Codex marketplace listing | only the in-repo marketplaces exist | users add the repo as a marketplace (below); no listing in an official catalog was requested |
@@ -22,7 +22,7 @@ sh scripts/install.sh --yes        # same, and applies it
 sh scripts/install.sh --install-uv # also installs uv with its official installer if missing
 ```
 
-It runs `uv tool install "git+https://github.com/tedin7/subtask@${SUBTASK_REF:-v0.2.2}"`
+It runs `uv tool install "git+https://github.com/tedin7/subtask@${SUBTASK_REF:-v0.2.3}"`
 (falls back to `pipx`), then `subtask install --client all`.
 
 ## Automatic install (any client)
@@ -55,7 +55,7 @@ otherwise it reports it and leaves it. A failed step rolls back every file of th
   claude plugin install subtask@subtask
   ```
   The plugin's `.mcp.json` starts the server with
-  `uvx --from git+https://github.com/tedin7/subtask@v0.2.2 subtask-mcp` (cold start: uv
+  `uvx --from git+https://github.com/tedin7/subtask@v0.2.3 subtask-mcp` (cold start: uv
   downloads and builds on first use). It fails until the tag exists. If subtask is already
   installed, prefer the installed command: `subtask install --client claude --yes` and
   skip the plugin, or keep the plugin only for the skill and hook.
