@@ -7,6 +7,7 @@ they are kept short. The full usage guide is the `subtask` skill (skill/SKILL.md
 from __future__ import annotations
 
 import asyncio
+import json
 
 from mcp.server.fastmcp import FastMCP
 
@@ -104,13 +105,27 @@ async def step(
     return await asyncio.to_thread(core.step, title, path, how, decisions, repo)
 
 
-def _slim(schema: object) -> object:
-    """Drop what the client never needs: titles, and the null branch of optionals."""
+ANNOTATIONS = ("title",)
+
+
+def _slim(schema: object, names: bool = False) -> object:
+    """Drop what the client never needs: annotation titles, and the null branch of optionals.
+
+    `names=True` means `schema` maps property names to subschemas (the value of
+    "properties", "$defs"...): its keys are names, never annotations, so a
+    parameter called `title` survives.
+    """
     if isinstance(schema, list):
         return [_slim(item) for item in schema]
     if not isinstance(schema, dict):
         return schema
-    out = {k: _slim(v) for k, v in schema.items() if k != "title"}
+    if names:
+        return {k: _slim(v) for k, v in schema.items()}
+    out = {
+        k: _slim(v, names=k in ("properties", "$defs", "definitions", "patternProperties"))
+        for k, v in schema.items()
+        if k not in ANNOTATIONS
+    }
     branches = out.get("anyOf")
     if isinstance(branches, list):
         kept = [b for b in branches if b != {"type": "null"}]
@@ -126,7 +141,21 @@ for _tool in mcp._tool_manager.list_tools():
     _tool.parameters = _slim(_tool.parameters)
 
 
+def dump_tools() -> dict:
+    """The canonical published spec; tools.json is generated from it (`--dump-tools`)."""
+    tools = asyncio.run(mcp.list_tools())
+    return {
+        "instructions": mcp.instructions,
+        "tools": [{"name": t.name, "description": t.description, "inputSchema": t.inputSchema} for t in tools],
+    }
+
+
 def main() -> None:
+    import sys
+
+    if "--dump-tools" in sys.argv:
+        print(json.dumps(dump_tools(), ensure_ascii=False, indent=1))
+        return
     mcp.run(transport="stdio")
 
 

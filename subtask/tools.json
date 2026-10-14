@@ -193,6 +193,9 @@
    "description": "Before each significant step. Paste the reply verbatim; on STOP ask the user.",
    "inputSchema": {
     "properties": {
+     "title": {
+      "type": "string"
+     },
      "path": {
       "type": "string"
      },

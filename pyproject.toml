@@ -1,6 +1,6 @@
 [project]
-name = "subtask"
-version = "0.1.0"
+name = "subtask-mcp"
+dynamic = ["version"]
 description = "Background sub-agents for Claude Code, Codex, Kimi and OpenCode, over MCP or CLI, with a spend cap"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -20,6 +20,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["subtask"]
+
+[tool.setuptools.dynamic]
+version = { attr = "subtask.__version__" }
 
 [tool.setuptools.package-data]
 subtask = ["tools.json"]

@@ -1,0 +1,92 @@
+"""R01/R02: published schemas are semantically valid; one version everywhere."""
+
+from __future__ import annotations
+
+import json
+import tomllib
+from pathlib import Path
+
+import pytest
+
+from subtask import schemacheck
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _tools() -> list[dict]:
+    return json.loads((ROOT / "subtask" / "tools.json").read_text())["tools"]
+
+
+def test_published_tools_have_no_semantic_defects():
+    assert schemacheck.tool_problems(_tools()) == []
+
+
+def test_step_declares_its_title_parameter():
+    step = next(t for t in _tools() if t["name"] == "step")
+    assert step["inputSchema"]["properties"]["title"] == {"type": "string"}
+    assert "title" in step["inputSchema"]["required"]
+
+
+def test_slim_keeps_a_property_named_title_but_drops_annotations():
+    from subtask.server import _slim
+
+    schema = {
+        "title": "stepArguments",
+        "type": "object",
+        "properties": {
+            "title": {"title": "Title", "type": "string"},
+            "opt": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Opt"},
+        },
+        "required": ["title"],
+    }
+    assert _slim(schema) == {
+        "type": "object",
+        "properties": {"title": {"type": "string"}, "opt": {"type": "string"}},
+        "required": ["title"],
+    }
+
+
+@pytest.mark.parametrize(
+    "schema, expected",
+    [
+        ({"type": "object", "properties": {}, "required": ["x"]}, "required 'x' not declared"),
+        ({"type": "object", "properties": {"x": {"type": "str"}}}, "unknown type 'str'"),
+        ({"type": "object", "properties": {"x": {"type": "integer", "default": "a"}}}, "default 'a'"),
+        ({"type": "object", "properties": {"x": {"$ref": "#/$defs/nope"}}}, "unresolved $ref"),
+        ({"type": "object", "properties": {"x": {"$ref": "https://evil/x"}}}, "non-local $ref"),
+    ],
+)
+def test_checker_finds_defects(schema, expected):
+    assert any(expected in p for p in schemacheck.problems(schema))
+
+
+def test_checker_follows_ref_and_allof():
+    schema = {
+        "$defs": {"base": {"type": "object", "properties": {"a": {"type": "string"}}}},
+        "type": "object",
+        "allOf": [{"$ref": "#/$defs/base"}],
+        "properties": {"b": {"type": "integer"}},
+        "required": ["a", "b"],
+    }
+    assert schemacheck.problems(schema) == []
+
+
+def test_checker_does_not_judge_pattern_properties():
+    schema = {"type": "object", "patternProperties": {"^x": {}}, "required": ["xa"]}
+    assert schemacheck.problems(schema) == []
+
+
+def test_tools_json_is_generated_from_the_canonical_source():
+    from subtask import server
+
+    assert server.dump_tools() == json.loads((ROOT / "subtask" / "tools.json").read_text())
+
+
+def test_one_version_for_package_cli_and_mcp():
+    import subtask
+    from subtask import fastserver
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert "version" in project.get("dynamic", [])
+    assert fastserver.SERVER_INFO["version"] == subtask.__version__
+    assert subtask.__version__.count(".") == 2
