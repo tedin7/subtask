@@ -1,0 +1,16 @@
+{
+ "name": "smoke-fake-capabort",
+ "description": "Offline check that the global USD cap aborts runs cleanly (cap 10 < sum of run bounds).",
+ "parent_client": "claude",
+ "arms": ["subtask-fixed:fake"],
+ "split": "test",
+ "tasks": ["r2", "v3", "c3", "h2"],
+ "repetitions": 1,
+ "seed": 7,
+ "max_retries": 1,
+ "ablations": {"batching": "off", "summary": "full", "progress": "off", "narrator": "on"},
+ "budgets": {"max_total_usd": 10, "max_wall_minutes": 15, "max_concurrency": 2, "parent_usd_factor": 1.0},
+ "thresholds": {"min_test_tasks_for_claim": 16, "success_noninferiority_margin": 0.10, "ci_level": 0.95,
+                "bootstrap_resamples": 2000},
+ "fake": {"worker_sleep_s": 1, "outcomes": {"success": 0.5, "fail_then_success": 0.5}}
+}
