@@ -3,11 +3,12 @@
 subtask start "brief" [--engine auto] [--kind code] [--repo PATH] [--readonly] [--max-usd 2]
 subtask wait ID [ID...] [--timeout 50]
 subtask status [ID] | result ID [--full|--evidence] | reply ID "msg" | stop ID | cleanup ID | spend | engines
-subtask doctor [--json] | gc [--days 30] [--apply] | du | roi | routing explain|calibrate | watch ID...
+subtask install|uninstall --client claude|codex|kimi|opencode|all [--yes]
+subtask doctor [--json] [--client X] | gc [--days 30] [--apply] | du | roi | routing explain|calibrate | watch ID...
 
 Differences from the MCP tools: the CLI also has --model, --no-sandbox (same as
---policy worktree), --untrusted, spend, steps, doctor, gc, du, roi, routing and
-watch. MCP `engines` returns capacity plus spend in one call.
+--policy worktree), --untrusted, spend, steps, install, doctor, gc, du, roi,
+routing and watch. MCP `engines` returns capacity plus spend in one call.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import argparse
 import sys
 
 from . import core
+from .install import commands as install_commands
 
 
 def main() -> int:
@@ -65,8 +67,7 @@ def main() -> int:
     sub.add_parser("steps")
     sub.add_parser("spend")
     sub.add_parser("engines")
-    d = sub.add_parser("doctor")
-    d.add_argument("--json", action="store_true")
+    install_commands.add_parsers(sub)
     g = sub.add_parser("gc")
     g.add_argument("--days", type=int, default=30)
     g.add_argument("--apply", action="store_true")
@@ -81,6 +82,9 @@ def main() -> int:
     wa.add_argument("ids", nargs="+")
     wa.add_argument("--interval", type=float, default=2.0)
     a = p.parse_args()
+
+    if a.cmd in ("install", "uninstall") or (a.cmd == "doctor" and a.client):
+        return install_commands.run(a)
 
     if a.cmd == "start":
         task = sys.stdin.read() if a.task == "-" else a.task
