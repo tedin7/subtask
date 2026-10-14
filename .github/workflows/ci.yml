@@ -24,8 +24,8 @@ jobs:
           # macOS is degraded: fcntl works, but there is no /proc and no bwrap.
           - { os: macos-latest, python: "3.13", experimental: true }
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Install
@@ -47,8 +47,8 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
       - run: uv build
@@ -68,7 +68,7 @@ jobs:
           line = p.stdout.readline(); p.kill()
           assert json.loads(line)["result"]["serverInfo"], line
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/

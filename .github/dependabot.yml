@@ -4,6 +4,11 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    ignore:
+      # mcp 2.x breaks the FastMCP reference server (tested 2026-10-14 with 2.3.0);
+      # the default fast server does not use the library. Move by hand with a test run.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
