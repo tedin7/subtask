@@ -77,14 +77,22 @@ def evaluate(parts: list[dict], repo: Path, commit: str, answer: str, jobs: list
         return {"verified": all(s["verified"] for s in scores.values()),
                 "pieces": {k: s["verified"] for k, s in scores.items()}}  # fmt: skip
     head = cl.git("rev-parse", "HEAD", cwd=repo)
-    pieces = {}
+    pieces, detail = {}, {}
     with cl.Scratch(head, repo=repo) as wt:
+        changed = cl.git("diff", "--name-only", f"{commit}..HEAD", cwd=wt, check=False).splitlines()
+        # before any hidden test is copied in: those files would count as the agent's changes
+        forbidden_of = {p["id"]: cl.touched_forbidden(p, wt, commit) for p in parts}
         for p in parts:
-            pieces[p["id"]] = cl.acceptance(p, wt)["passed"] and not cl.touched_forbidden(p, wt, commit)
+            acc = cl.acceptance(p, wt)
+            forbidden = forbidden_of[p["id"]]
+            pieces[p["id"]] = acc["passed"] and not forbidden
+            detail[p["id"]] = {"acceptance": acc, "forbidden": forbidden}
         reg = cl.regressions(wt)
     return {
         "verified": all(pieces.values()),
         "pieces": pieces,
+        "detail": detail,
+        "changed_files": changed,
         "head_moved": head != commit,
         "regressions": reg["failed"] if not reg["passed"] else [],
         "conflicts": e2e.merge_conflicts(repo, commit, [f"subtask/{j}" for j in jobs]),
@@ -116,12 +124,14 @@ def main() -> int:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--live", action="store_true")
     ap.add_argument("--budget-usd", type=float, default=0.0)
+    ap.add_argument("--only", choices=list(COMPOSITES), help="run one composite")
     args = ap.parse_args()
     manifest = cl.load_manifest()
     if manifest.get("corpus_hash") != cl.corpus_hash(manifest):
         raise SystemExit("corpus changed since validation: run bench/validate_corpus.py first")
     tasks = {t["id"]: t for t in manifest["tasks"]}
-    plan = [(n, c, [tasks[i] for i in c["parts"]], a) for n, c in COMPOSITES.items() for a in ARMS]
+    chosen = {k: v for k, v in COMPOSITES.items() if not args.only or k == args.only}
+    plan = [(n, c, [tasks[i] for i in c["parts"]], a) for n, c in chosen.items() for a in ARMS]
     total = round(sum(bound(c, p, a) for _, c, p, a in plan), 2)
     print(json.dumps({"runs": len(plan), "usd_upper_bound": total}))
     if args.dry_run:

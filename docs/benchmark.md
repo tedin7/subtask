@@ -199,3 +199,28 @@ Reading (5 tasks, 1 repetition each: indicative only, no statistics):
 - Where delegation should win (parallel independent pieces, long noisy work) is not in this corpus yet:
   every task here is a single short sequential job. That is the next benchmark to build.
 Real API spend for these runs: 0.53 USD (workers); parent costs are Claude subscription estimates.
+
+## Parallel composites (2026-10-14, owner budget 15 USD)
+
+`bench/parallel.py`: three independent pieces in one request, each in a different file.
+P-code = c3 (worker.py) + c5 (core.py) + h6 (jobs.py), hidden tests; P-read = r3 + r6 + v2, rubrics.
+Arms: parent alone; native (Claude Code's own sub-agents allowed); subtask (one start_many of three
+jobs on sonnet-api, one wait, merge). Parent model sonnet, one repetition.
+The first P-code pass was scored wrong by the harness (the forbidden-file check ran after the hidden
+tests were copied in, so it counted them as the agent's edits); P-code was rerun with per-piece detail
+and re-scored, and the check now runs first.
+
+| composite | arm | verified | parent turns | parent $ | worker $ | total $ | wall s |
+|---|---|---|---|---|---|---|---|
+| P-code | parent | 3/3 | 5 | 0.095 | - | 0.095 | 24.1 |
+| P-code | native | 3/3 | 5 | 0.096 | - | 0.096 | 34.1 |
+| P-code | subtask | 3/3 | 9 | 0.128 | 0.202 | 0.330 | 57.8 |
+| P-read | parent | 3/3 | 5 | 0.140 | - | 0.140 | 28.2 |
+| P-read | native | 3/3 | 6 | 0.187 | - | 0.187 | 47.0 |
+| P-read | subtask | 3/3 | 6 | 0.109 | 0.320 | 0.429 | 43.9 |
+
+Reading: even with three independent pieces, each piece is small enough that the parent finishes all
+three in under 30 seconds. Parallel work (native or subtask) does not shorten that; subtask costs about
+3x and takes about 2x as long, native is close to the parent. Delegation can only pay off when each
+piece is long (minutes of work, many tool calls, noisy output); this corpus does not have such pieces.
+Real API spend for this section: 0.80 USD (workers).
