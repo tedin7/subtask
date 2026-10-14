@@ -31,6 +31,8 @@ EXPLAIN = (
     "You did not plan it. Explain it to the operator, who is smart but not technical: "
     "what the agent is about to do, which road it takes, how, and the decisions it made "
     "and why. Short sentences, plain words, no em dashes, bullets, at most 6 lines. "
+    "Keep two things apart: what the agent DECLARES it will do (an intention) and what "
+    "the repository state and the observed job activity SHOW (facts). If they disagree, say so. "
     "Never invent facts. Write in this language: {lang}."
 )
 
@@ -56,8 +58,27 @@ def repo_context(repo: str) -> str:
             and _git(repo, "diff", "--stat", "HEAD").splitlines()[-1],
         ),
     ]
+    parts.append(("observed sub-task activity", observed_activity(repo)))
     text = "\n\n".join(f"{k}:\n{v}" for k, v in parts if v)
     return text[:MAX_CONTEXT] or "(not a git repository)"
+
+
+def observed_activity(repo: str, limit: int = 5) -> str:
+    """Last real event of the active sub-tasks working on this repository (no model involved)."""
+    from . import admission, events, jobs
+
+    lines = []
+    try:
+        active = admission.active()
+    except OSError:
+        return ""
+    for job_id in active[:limit]:
+        spec = jobs.spec(job_id)
+        if spec.get("repo") != repo and spec.get("cwd") != repo:
+            continue
+        last = events.last(job_id)
+        lines.append(f"{job_id} {spec.get('engine')}: {last.get('phase', '?')} {last.get('msg', '')}"[:150])
+    return "\n".join(lines)
 
 
 def _call(spec: tuple[str, float, float], system: str, user: str) -> str:

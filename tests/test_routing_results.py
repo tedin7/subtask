@@ -206,3 +206,13 @@ def test_active_index_makes_counting_independent_of_history(home):
     for _ in range(20):
         admission.count()
     assert (time.perf_counter() - t) / 20 < 0.02  # does not scan 300 finished jobs
+
+
+def test_narrator_context_includes_observed_activity_not_only_intentions(home):
+    from subtask import core, narrate
+
+    fake_cli(home, "kimi", "sleep 3; echo hi")
+    job = core.start("x", engine="kimi", cwd=str(home)).split()[0]
+    context = narrate.repo_context(str(home))
+    assert "observed sub-task activity" in context and job in context
+    core.stop(job)
