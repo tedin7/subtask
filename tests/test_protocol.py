@@ -84,6 +84,8 @@ def test_modern_discover_and_stateless_calls(home):
     c.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {"_meta": MODERN}})
     tools, _ = c.until(2)
     assert tools["result"]["resultType"] == "complete" and len(tools["result"]["tools"]) == 10
+    for result in (disc["result"], tools["result"]):
+        assert result["ttlMs"] >= 0 and result["cacheScope"] == "public"
     c.send({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
             "params": {"name": "status", "arguments": {}, "_meta": MODERN}})  # fmt: skip
     status, _ = c.until(3)
@@ -232,3 +234,26 @@ def test_wait_cursor_fallback_reports_changes(home):
     cursor = first.rsplit("cursor=", 1)[1]
     second = core.wait([job], 1, since=cursor)
     assert "cursor=" in second and "admission" not in second  # old events are not repeated
+
+
+def test_reporter_follows_the_latest_change_and_admits_missing_detail(home):
+    from subtask import core, events, progress
+
+    fake_cli(home, "kimi", "sleep 8")
+    a = core.start("x", engine="kimi", cwd=str(home)).split()[0]
+    b = core.start("y", engine="kimi", cwd=str(home)).split()[0]
+    clock = [0.0]
+    sent: list[str] = []
+    rep = progress.Reporter(lambda v, m, t: sent.append(m), [a, b], now=lambda: clock[0], min_interval=0)
+    time.sleep(0.5)
+    rep.poll()
+    events.emit(a, "tool", "running tests: pytest -q", source="adapter")
+    clock[0] = 3
+    rep.poll()
+    assert sent[-1].endswith(f"{a} running tests: pytest -q")
+    clock[0] = 20
+    rep.poll()
+    assert progress.NO_DETAIL not in rep._what(a)
+    assert rep._what(b) == progress.NO_DETAIL  # kimi plain output: no structured activity
+    core.stop(a)
+    core.stop(b)

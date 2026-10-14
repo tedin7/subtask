@@ -33,6 +33,7 @@ VERSIONS = MODERN + LEGACY
 SERVER_INFO = {"name": "subtask", "version": __version__}
 META = "io.modelcontextprotocol/"
 WAIT_TICK_S = 0.5
+CACHE = {"ttlMs": 3_600_000, "cacheScope": "public"}  # MUST on discover and tools/list (2026-07-28)
 
 _out = threading.Lock()
 _pending: list[threading.Thread] = []  # calls still running when the client closes stdin
@@ -231,10 +232,12 @@ def _handle(msg: dict) -> None:
             "supportedVersions": list(VERSIONS),
             "capabilities": {"tools": {"listChanged": False}},
             "instructions": SPEC["instructions"],
+            **CACHE,
         }
         _send({"jsonrpc": "2.0", "id": msg_id, "result": _with_meta(True, result)})
     elif method == "tools/list":
-        _send({"jsonrpc": "2.0", "id": msg_id, "result": _with_meta(modern, {"tools": SPEC["tools"]})})
+        listing = {"tools": SPEC["tools"], **(CACHE if modern else {})}
+        _send({"jsonrpc": "2.0", "id": msg_id, "result": _with_meta(modern, listing)})
     elif method == "tools/call":
         _cancelled.setdefault(msg_id, threading.Event())  # a cancel may arrive before the thread runs
         worker = threading.Thread(

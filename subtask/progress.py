@@ -59,6 +59,8 @@ class Reporter:
         self.offsets: dict[str, int] = {}
         self.activity: dict[str, str] = {}
         self.states: dict[str, str] = {}
+        self.changed: dict[str, float] = {}  # monotonic time of each job's last real change
+        self.detailed: dict[str, bool] = {}  # True once the engine reported its own activity
         self.sent_ok = 0
         self.send_errors = 0
         for job_id in ids or []:
@@ -69,7 +71,10 @@ class Reporter:
             self.ids.append(job_id)
             # Start from the current end: only what happens during this call is news.
             _, self.offsets[job_id] = events.read_since(job_id, 0, limit=10**9)
-            self.activity[job_id] = _describe(events.last(job_id))
+            last = events.last(job_id)
+            self.activity[job_id] = _describe(last)
+            self.detailed[job_id] = last.get("source") == "adapter"
+            self.changed[job_id] = self.now()
 
     def phase(self, text: str, force: bool = False) -> None:
         """A step of this call itself (admission, worktree...), not of a job."""
@@ -81,12 +86,16 @@ class Reporter:
             new, self.offsets[job_id] = events.read_since(job_id, self.offsets[job_id])
             for event in new:
                 text = _describe(event)
+                if event.get("source") == "adapter":
+                    self.detailed[job_id] = True
                 if text and text != self.activity.get(job_id):
                     self.activity[job_id] = text
+                    self.changed[job_id] = self.now()
                     significant = True
             state = jobs.status(job_id).get("state", "unknown")
             if state != self.states.get(job_id):
                 self.states[job_id] = state
+                self.changed[job_id] = self.now()
                 significant = True
         self._maybe_send(self.summary(), significant)
 
@@ -98,15 +107,22 @@ class Reporter:
         if len(self.ids) == 1:
             job = self.ids[0]
             state = self.states.get(job, "?")
-            what = self.activity.get(job) or (NO_DETAIL if state == "running" else state)
-            return f"{job} · {state} — {what}" if state in jobs.FINAL else f"{job} — {what}"
+            if state in jobs.FINAL:
+                return f"{job} {state} — {self.activity.get(job) or state}"
+            return f"{job} — {self._what(job)}"
         head = f"{len(ended)}/{len(self.ids)} ended"
         if running:
-            job = running[-1] if len(running) == 1 else _busiest(running, self.activity)
-            what = self.activity.get(job) or NO_DETAIL
-            return f"{head} — {job} {what}"
+            job = max(running, key=lambda j: self.changed.get(j, 0.0))  # the latest real change
+            return f"{head} — {job} {self._what(job)}"
         failed = sum(1 for j in ended if self.states.get(j) != "done")
         return f"{head} — {len(ended) - failed} done, {failed} not done"
+
+    def _what(self, job: str) -> str:
+        """The job's latest activity; says so plainly when the engine exposes none."""
+        quiet = self.now() - self.changed.get(job, self.t0) > 5
+        if self.states.get(job) == "running" and not self.detailed.get(job) and quiet:
+            return NO_DETAIL
+        return self.activity.get(job) or NO_DETAIL
 
     def _maybe_send(self, text: str, significant: bool, force: bool = False) -> None:
         if not text:
@@ -124,11 +140,6 @@ class Reporter:
             self.sent_ok += 1
         except Exception:  # noqa: BLE001 - a broken client never stops the work
             self.send_errors += 1
-
-
-def _busiest(ids: list[str], activity: dict[str, str]) -> str:
-    with_detail = [j for j in ids if activity.get(j)]
-    return with_detail[-1] if with_detail else ids[-1]
 
 
 def _describe(event: dict) -> str:

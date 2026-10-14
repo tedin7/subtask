@@ -31,6 +31,10 @@ def _builtins() -> dict[str, Adapter]:
         OpenCode(),
         Dsh(),
     ]
+    if os.environ.get("SUBTASK_DEMO") == "1":
+        from .demo import Demo
+
+        engines.append(Demo())
     return {e.name: e for e in engines}
 
 
