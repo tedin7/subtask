@@ -1,0 +1,5 @@
+1791942903.11 S> {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":2,"progress":1.0,"message":"Subtask · 00:00 · starting 1/3"}}
+1791942906.35 S> {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":3,"progress":1.0,"message":"Subtask · 00:00 · 0/3 ended — st-c3bebdc828 worker started: demo attempt 1"}}
+1791942912.38 S> {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":3,"progress":2.0,"message":"Subtask · 00:06 · 0/3 ended — st-513a402109 running tests: pytest -q tests/test_core.py"}}
+1791942918.39 S> {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":3,"progress":3.0,"message":"Subtask · 00:12 · 1/3 ended — st-7e1eb49152 committing: git commit -m 'demo'"}}
+1791942923.40 S> {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":3,"progress":4.0,"message":"Subtask · 00:17 · 3/3 ended — 2 done, 1 not done"}}

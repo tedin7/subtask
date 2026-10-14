@@ -1,0 +1,29 @@
+   Subtask MCP run with success, +
+     ┃
+     ┃ The start result presumably returns ids. Let me call
+     ┃ start_many and then wait.
+     ✓ execute
+     › subtask.start_many
+     ┃ Thought: 490ms
+     ┃ Three ids: st-7e1eb49152, st-513a402109, st-c3bebdc828.
+     ┃ Now call wait once on the three ids with timeout 120.
+     ✓ execute
+     › subtask.wait [timeout=120]
+     ┃ Thought: 1.3s
+     ┃ Report results in one line. Wait — the tasks were
+     ┃ 'success A', 'fail B', 'silent C'. The wait output
+     ┃ shows st-7e1eb49152 done success, st-513a402109 failed,
+     ┃ st-c3bebdc828 done success. "silent C" shows done
+     ┃ success too? Hmm, the demo engine likely returns fixed
+     ┃ outputs. Anyway report in one line.
+     success A (st-7e1eb49152) done/success; fail B (st-
+     513a402109) failed (demo: tests failed, 1 failing);
+     silent C (st-c3bebdc828) done/success — all finished in
+     0m under demo engine in /tmp.
+     Build · DeepSeek V4.1 Flash · 35.7s · 45.4 tok/s
+  ┃
+  ┃
+  ┃
+  ┃  Build auto · DeepSeek V4.1 Flash OpenCode Go · max
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /…/aff020f7-ee59…/scratchpad/live/ocwork  12.9K (1%) · $0.00

@@ -1,0 +1,32 @@
+❯ Call the subtask MCP tool start_many with three tasks, each
+  with engine demo and cwd /tmp: task 'success A', task 'fail
+  B', task 'silent C'. Then call wait once on the three ids
+  with timeout 120. Then report results in one line.
+  Called subtask
+● Passo annunciato:
+  STEP: Avvio di tre subtask demo in parallelo
+  - Intenzione dichiarata: l'agente vuole avviare tre task demo
+    (A con successo, B con errore, C silenzioso) con una sola
+    chiamata start_many, nella cartella /tmp, poi aspettare i
+    tre risultati con un solo wait da 120 secondi.
+  - Fatto osservabile: /tmp non è un repository git, quindi non
+    c'è uno stato del codice da verificare; non ci sono
+    modifiche attese al progetto.
+  - Le due decisioni dichiarate (una sola start_many, un solo
+    wait con timeout 120) sono coerenti tra loro e con il piano.
+  - Nessun disaccordo tra intenzione e fatti: il passo è di
+    avvio e attesa, non di modifica.
+  - Attenzione: il task C è "silenzioso" e il wait ha un limite
+    di 120 secondi; se C non termina, il risultato sarà un
+    timeout, non un successo.
+  - Non posso confermare l'esito reale: va letto dai job dopo
+    l'esecuzione.
+● Calling subtask 2 times · 12s…
+  ⎿  Subtask · 00:07 · 0/3 ended — st-e40284e760 running tests:
+     pytest -q tests/test_core.py
+* Cooking… (26s · ↓ 1.3k tokens)
+────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────
+  Haiku 5.5 · effort: medium · work
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 4 agents
