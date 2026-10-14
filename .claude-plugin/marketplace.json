@@ -1,0 +1,13 @@
+{
+  "name": "subtask",
+  "owner": { "name": "tedin7" },
+  "metadata": { "description": "Background sub-agents over MCP with a spend cap" },
+  "plugins": [
+    {
+      "name": "subtask",
+      "source": "./plugins/claude/subtask",
+      "description": "subtask MCP server, its usage skill, and an MCP tool timing hook",
+      "version": "0.2.0"
+    }
+  ]
+}

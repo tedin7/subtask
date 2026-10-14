@@ -1,0 +1,20 @@
+{
+  "name": "subtask",
+  "version": "0.2.0",
+  "description": "Delegate work to background sub-agents (Claude, Codex, Kimi, OpenCode) with a spend cap.",
+  "author": { "name": "tedin7" },
+  "homepage": "https://github.com/tedin7/subtask",
+  "repository": "https://github.com/tedin7/subtask",
+  "license": "MIT",
+  "keywords": ["mcp", "subagents", "delegation"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "subtask",
+    "shortDescription": "Background sub-agents with a spend cap",
+    "longDescription": "Start, wait for and review background coding agents from Codex through the subtask MCP server.",
+    "developerName": "tedin7",
+    "category": "Coding",
+    "capabilities": ["Read", "Write"]
+  }
+}
