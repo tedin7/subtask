@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.11 - 2026-10-14
+
+### Fixed
+- Claude Code folds MCP results, so a `step` announcement the agent did not copy was never seen. The plugin's
+  PostToolUse hook now shows it in the chat (verified live), still without sending anything to the agent.
+
 ## 0.2.10 - 2026-10-14
 
 ### Fixed

@@ -39,7 +39,7 @@ The distribution is `subtask-mcp` (the PyPI name `subtask` is an unrelated
 project). Full guide, per client, with native commands: [docs/install.md](docs/install.md).
 
 ```sh
-uv tool install "git+https://github.com/tedin7/subtask@v0.2.10"   # or: uv tool install /path/to/checkout
+uv tool install "git+https://github.com/tedin7/subtask@v0.2.11"   # or: uv tool install /path/to/checkout
 subtask install --client all          # prints the plan for every detected client
 subtask install --client all --yes    # applies it: MCP server + skill
 subtask doctor --client all           # checks app, config entry and a real handshake

@@ -1,5 +1,8 @@
 """PostToolUse hook: print `mcp <server>/<tool> <duration> ok|error` as a user-visible systemMessage.
 
+For subtask's own `step` tool it shows the announcement itself: Claude Code folds MCP results
+under "Called ...", so without this the user never sees the explanation the agent asked for.
+
 Reads the hook input on stdin, stdlib only, never fails the tool call (always exits 0).
 """
 
@@ -22,7 +25,25 @@ def main() -> None:
     failed = data.get("hook_event_name") == "PostToolUseFailure" or (
         isinstance(resp, dict) and resp.get("isError") is True
     )
-    print(json.dumps({"systemMessage": f"mcp {server}/{tool} {took} {'error' if failed else 'ok'}"}))
+    line = f"mcp {server}/{tool} {took} {'error' if failed else 'ok'}"
+    if tool == "step" and "subtask" in server and not failed:
+        text = _text(resp).strip()
+        if text:
+            line = f"{text}\n({line})"
+    print(json.dumps({"systemMessage": line}))
+
+
+def _text(resp: object) -> str:
+    """The text of an MCP tool result, whatever shape the client hands over."""
+    if isinstance(resp, str):
+        return resp
+    if isinstance(resp, dict):
+        resp = resp.get("content", resp.get("result", ""))
+        if isinstance(resp, str):
+            return resp
+    if isinstance(resp, list):
+        return "\n".join(b.get("text", "") for b in resp if isinstance(b, dict))
+    return ""
 
 
 if __name__ == "__main__":
