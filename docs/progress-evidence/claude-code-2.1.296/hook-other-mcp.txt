@@ -1,0 +1,12 @@
+     0.1s ok
+● Done.
+  - 9 jobs listed.
+  - 7 succeeded.
+  - 2 failed: st-513a402109 and st-e40284e760. Each reported 1
+    failing test.
+✻ Crunched for 5s · done 3:58 AM
+────────────────────────────────────────────────────────────────
+❯ show why the two jobs failed
+────────────────────────────────────────────────────────────────
+  Haiku 5.5 · effort: medium · work
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 4 agents
