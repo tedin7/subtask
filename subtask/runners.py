@@ -18,7 +18,7 @@ BASE_ENV = ("PATH", "LANG", "LC_ALL", "TERM", "TZ", "SSL_CERT_FILE", "SSL_CERT_D
 # Per engine family: state directories under HOME the engine needs (read-write).
 STATE_DIRS = {
     "codex": [".codex"],
-    "kimi": [".kimi", ".config/kimi", ".local/share/kimi", ".cache/kimi"],
+    "kimi": [".kimi-code", ".kimi", ".config/kimi", ".local/share/kimi", ".cache/kimi"],
     "opencode": [".local/share/opencode", ".config/opencode", ".cache/opencode", ".local/state/opencode"],
     "api": [".claude", ".claude.json"],
 }
@@ -55,10 +55,17 @@ def isolated(spec: dict, family: str):
         args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", str(home)]
         exe = shutil.which(argv[0], path=env.get("PATH"))
         if exe:
-            real = Path(exe).resolve()
-            for candidate in {Path(exe).parent, real.parent.parent if home in real.parents else real.parent}:
-                if home in candidate.parents or candidate == home:
+            for candidate in {Path(exe).parent, Path(exe).resolve().parent}:
+                if not any(str(candidate).startswith(p + "/") or str(candidate) == p for p in SYSTEM_RO):
+                    # the engine binary lives outside the system dirs (e.g. ~/.local/bin): read-only
                     args += ["--ro-bind-try", str(candidate), str(candidate)]
+            real = Path(exe).resolve()
+            if home in real.parents:
+                parts = real.relative_to(home).parts
+                depth = 3 if parts[0] == ".local" else 1  # ~/.local/share/<tool>, or ~/.<tool>
+                if len(parts) > depth:
+                    root = home.joinpath(*parts[:depth])
+                    args += ["--ro-bind-try", str(root), str(root)]
         for rel in STATE_DIRS.get(family, []):
             target = home / rel
             if target.exists():
