@@ -191,7 +191,7 @@ class CliAdapter(Adapter):
             ok=code == 0 and not state.get("error") and bool(text),
             subtype=state.get("error_kind") or f"exit {code}",
             result=text[-20000:],
-            session_id=state.get("session") or ctx.resume,
+            session_id=state.get("session") or ctx.resume or ("continue" if self.capabilities.resume else None),
             cost_usd=state.get("cost"),
             tokens=state["tokens"],
             commands=state["commands"],
