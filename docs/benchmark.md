@@ -1,10 +1,8 @@
 # Benchmark: does delegating through subtask pay off?
 
-Status, 2026-10-14: **live end-to-end benefits are NOT measured.** No budget is
-authorized for model runs, so every live arm is code that has never run. What
-exists: a frozen, validated corpus; a harness that runs end to end offline on a
-fake engine; a dry-run cost bound; and an offline overhead microbenchmark.
-Nothing below is evidence that subtask saves tokens, money or time.
+Status, 2026-10-14: live runs so far are small (see the "Live" sections at the end):
+too few tasks for any general claim. The corpus is validated, the harness runs end to
+end offline and live, and an offline overhead microbenchmark exists.
 
 ## 1. Corpus (frozen)
 

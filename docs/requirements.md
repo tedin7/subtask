@@ -35,7 +35,7 @@ Benefits and numbers are in [benefits.md](benefits.md).
 | R22 | user_request | plugins, marketplaces, publication path | artifacts + validation + exact external steps | none | Claude plugin + marketplace (validated, installed in temp HOME), Codex plugin + marketplace (installed in temp HOME), Kimi manifest, server.json | `claude plugin validate`, install runs | implemented_verified: GitHub releases v0.2.0-0.2.3, PyPI `subtask-mcp` 0.2.3, MCP Registry `io.github.tedin7/subtask` 0.2.3 |
 | R23 | user_request | progress during every relevant call | events, throttling, heartbeat, cancellation, no stdout noise | none | `events.py`, `progress.py`, both servers; wait, stop, start/start_many phases; cursor fallback | test_progress_arrives_during_wait_and_stdout_stays_json, test_cancel_ends_the_wait_not_the_job, test_no_token_no_notifications, test_reporter_follows_the_latest_change... | implemented_verified |
 | R24a | user_request | visible in Claude Code chat | live line during the call | n/a | — | real TUI captures, docs/progress-evidence/claude-code-2.1.296 | implemented_verified |
-| R24b | user_request | OpenCode, Kimi | native or honest fallback | n/a | fallback `wait(since=cursor)` + skill rule | OpenCode TUI capture: received, not rendered; Kimi: no progress handler (binary) | implemented_verified (fallback; native rendering not offered by these clients) |
+| R24b | user_request | OpenCode, Kimi | native or honest fallback | n/a | fallback `wait(since=cursor)` + skill rule | OpenCode TUI capture: received, not rendered; Kimi: no progress handler (binary) | incomplete: progress is NOT visible in the chat of these clients (verified negative); only the `wait(since=…)` fallback is verified |
 | R24c | user_request | Codex | verify rendering | n/a | — | account at usage limit until 2026-10-20 | blocked_external |
 | R25 | user_request | other MCP calls, client-side | opt-in hook/plugin with name, duration, outcome | n/a | Claude plugin PostToolUse hook (verified live: `mcp subtask/status 0.1s ok`); OpenCode TS plugin written, not loaded | hook evidence file | implemented_verified: Claude hook in chat; OpenCode 2 plugin loaded live, timing to a file (OpenCode has no chat API for plugins) |
 | R26 | deep_research | "Su sistemi senza /proc, _alive() presume vivo" | unknown liveness visible, not alive by default | assumed alive | `procid` returns unknown; status shows `liveness unknown`; slot and money kept | test_unknown_liveness_keeps_slot_and_money | implemented_verified |
@@ -49,9 +49,11 @@ Benefits and numbers are in [benefits.md](benefits.md).
 | R34 | engineering_addition | FastMCP sent progress after the reply | progress stops at completion | n/a | progress awaited before return | test_progress_reaches_an_independent_client[fastmcp] | implemented_verified |
 | R35 | engineering_addition | dsh routed while its SDK is missing | not installed = not admissible | n/a | `available()` per adapter | routing explain output | implemented_verified |
 
-Coverage: 37 rows. implemented_verified 30 (incl. partial rows counted by their verified part),
-not_applicable_verified 1, conditional_not_triggered 1, blocked_external 3 (R17b, R22 publication part,
-R24c), incomplete 2 (R19 live part, R25 OpenCode part).
+Coverage (updated 2026-10-14 after the external review): implemented_verified for every row except
+R24b (incomplete: no native progress in OpenCode and Kimi chats, fallback only), R24c (blocked_external:
+Codex quota until 2026-10-20), R19 (incomplete: live benchmark still small, see docs/benchmark.md),
+R28 (not_applicable_verified) and R29 (conditional_not_triggered). R17b, R22 and R25 moved to
+implemented_verified after the push, the publications and the live OpenCode plugin load.
 
 ## Independent review (falsification, Sonnet, separate worktree)
 

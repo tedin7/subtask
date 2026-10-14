@@ -29,12 +29,27 @@ jobs:
       - run: uv run --no-sync pytest -q -p no:cacheprovider -m contract
 
   live:
-    # Manual only. No live test suite ships yet; this job is a placeholder gate.
+    # Manual only: real jobs cost money. Runs tests/test_live.py on the API engine
+    # (each job capped at 0.20 USD). Needs the repository secret ANTHROPIC_API_KEY;
+    # CLI engines (codex, kimi, opencode-go) need their own logins and run locally.
     if: github.event_name == 'workflow_dispatch' && inputs.live
     runs-on: ubuntu-latest
     env:
-      ENGINE_SECRET: ${{ secrets.SUBTASK_LIVE_ENGINE_KEY }}
+      KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - name: Skip when no secret
-        if: env.ENGINE_SECRET == ''
-        run: echo "No SUBTASK_LIVE_ENGINE_KEY secret set; live checks skipped."
+        if: env.KEY == ''
+        run: echo "No ANTHROPIC_API_KEY secret set; live checks skipped."
+      - uses: actions/checkout@v7
+        if: env.KEY != ''
+      - uses: astral-sh/setup-uv@v7
+        if: env.KEY != ''
+        with:
+          python-version: "3.13"
+      - name: Live adapter checks (haiku-api)
+        if: env.KEY != ''
+        run: |
+          mkdir -p ~/.config/subtask
+          umask 077 && printf 'ANTHROPIC_API_KEY=%s\n' "$KEY" > ~/.config/subtask/env
+          uv venv && uv pip install -e '.[dev]' -c constraints.txt
+          uv run --no-sync pytest -q -p no:cacheprovider -m live -k haiku tests/test_live.py -rs
