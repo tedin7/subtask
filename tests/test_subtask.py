@@ -77,8 +77,10 @@ def test_readonly_refused_for_engines_without_a_readonly_mode(st, tmp_path):
 
 
 def test_auto_never_picks_kimi_or_opencode_for_readonly(st):
-    for kind in st.capacity.KINDS:
-        engine, _ = st.capacity.pick(kind, 1, readonly=True)
+    from subtask import policy, router
+
+    for kind in router.KINDS:
+        engine, _, _ = router.pick(kind, 1, policy.demand(readonly=True))
         assert engine not in ("kimi", "opencode")
 
 
@@ -163,8 +165,8 @@ def test_result_redacts_keys(st):
 def test_capacity_cache_survives_zero_cap(st, monkeypatch):
     monkeypatch.setattr(st.config, "MONTHLY_CAP_USD", 0.0)
     snap = st.capacity.snapshot(refresh=True)
-    assert snap["sonnet-api"]["free"] == 0.0
-    assert json.loads(st.capacity.CACHE.read_text())
+    assert snap["sonnet-api"]["value"] == 0.0
+    assert json.loads(st.capacity._cache().read_text())
 
 
 def test_dead_worker_is_charged_once_under_concurrent_status(st):
@@ -312,8 +314,10 @@ def test_dsh_cost_counts_uncached_cached_and_output_tokens(st):
 def test_dsh_refused_read_only_and_skipped_by_auto(st, tmp_path):
     out = st.core.start("x", "dsh", None, str(tmp_path), "HEAD", True, None, 5, "low")
     assert "cannot run read-only" in out
-    engine, _ = st.capacity.pick("read", readonly=True)
-    assert engine not in ("dsh", "kimi", "opencode")
+    from subtask import policy, router
+
+    engine, _, _ = router.pick("read", None, policy.demand(readonly=True))
+    assert engine not in ("dsh", "kimi", "opencode", "opencode-go")
 
 
 def test_dsh_key_never_taken_from_environment(st, tmp_path, monkeypatch):

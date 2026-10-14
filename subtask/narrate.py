@@ -14,7 +14,7 @@ import subprocess
 import time
 import urllib.request
 
-from . import config, jobs
+from . import config, ledger
 
 # (model, USD per million input tokens, USD per million output tokens).
 # Override when prices change.
@@ -68,7 +68,8 @@ def _call(spec: tuple[str, float, float], system: str, user: str) -> str:
     if not key:
         raise RuntimeError("no API key")
     job = f"step-{time.time_ns()}"
-    if jobs.reserve(job, RESERVE_USD) is None:
+    rid = f"{job}#1"
+    if ledger.reserve(rid, job, RESERVE_USD) is None:
         raise RuntimeError("monthly cap reached")
     cost = 0.0
     try:
@@ -96,7 +97,7 @@ def _call(spec: tuple[str, float, float], system: str, user: str) -> str:
         cost = (usage.get("input_tokens", 0) * price_in + usage.get("output_tokens", 0) * price_out) / 1e6
         return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
     finally:
-        jobs.settle_open(job, cost)
+        ledger.close(rid, cost)
 
 
 def review(step_text: str, repo: str, lang: str) -> str:

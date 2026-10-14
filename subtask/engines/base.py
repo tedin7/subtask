@@ -170,6 +170,8 @@ class CliAdapter(Adapter):
             last_emit = 0.0
             for line in proc.stdout:
                 keep.write(line)
+                if not line.lstrip().startswith("{"):
+                    state.setdefault("plain", []).append(line.rstrip("\n"))
                 try:
                     activity = self.parse(line, state)
                 except (ValueError, KeyError, TypeError, AttributeError):
@@ -181,6 +183,8 @@ class CliAdapter(Adapter):
                     last_emit = time.monotonic()
             code = proc.wait()
         text = "\n".join(state["text"]).strip()
+        if not text and state.get("plain"):
+            text = "\n".join(state["plain"]).strip()  # engine printed no structured events: keep its output
         if state.get("error") and not text:
             text = state["error"]
         return Outcome(

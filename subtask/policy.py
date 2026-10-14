@@ -21,9 +21,11 @@ DEFAULT_LEVEL = "worktree"
 
 
 def demand(readonly: bool = False, level: str | None = None, untrusted: bool = False) -> dict:
+    if level == "untrusted":  # shorthand: sandbox at least, network off for commands
+        level, untrusted = "sandbox", True
     level = level or ("sandbox" if untrusted else DEFAULT_LEVEL)
     if level not in LEVELS:
-        raise ValueError(f"policy must be one of {', '.join(LEVELS)}")
+        raise ValueError(f"policy must be one of {', '.join(LEVELS)}, untrusted")
     if untrusted and LEVELS.index(level) < LEVELS.index("sandbox"):
         raise ValueError("untrusted needs policy sandbox or isolated")
     return {"level": level, "readonly": bool(readonly), "untrusted": bool(untrusted)}

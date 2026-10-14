@@ -3,7 +3,7 @@
  "tools": [
   {
    "name": "start",
-   "description": "Start a job. kind: read|code|review|hard. repo: new worktree. files: paths to read.",
+   "description": "Start a job. kind: read|code|review|hard. repo: new worktree. policy: worktree|sandbox|isolated|untrusted. verify: check command.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -47,6 +47,12 @@
      "max_turns": {
       "default": 60,
       "type": "integer"
+     },
+     "policy": {
+      "type": "string"
+     },
+     "verify": {
+      "type": "string"
      }
     },
     "required": [
@@ -76,7 +82,7 @@
   },
   {
    "name": "wait",
-   "description": "Wait for jobs (any=True: first); returns their summaries.",
+   "description": "Wait for jobs (any=True: first); returns summaries. since: cursor for changes.",
    "inputSchema": {
     "properties": {
      "ids": {
@@ -92,6 +98,9 @@
      "any": {
       "default": false,
       "type": "boolean"
+     },
+     "since": {
+      "type": "string"
      }
     },
     "required": [
@@ -114,13 +123,17 @@
   },
   {
    "name": "result",
-   "description": "Job summary; full=True for all.",
+   "description": "Job summary; full=True for all; evidence=True for the JSON envelope.",
    "inputSchema": {
     "properties": {
      "id": {
       "type": "string"
      },
      "full": {
+      "default": false,
+      "type": "boolean"
+     },
+     "evidence": {
       "default": false,
       "type": "boolean"
      }

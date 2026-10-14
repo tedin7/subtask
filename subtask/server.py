@@ -35,11 +35,14 @@ def start(
     effort: str = "medium",
     base: str = "HEAD",
     max_turns: int = 60,
+    policy: str | None = None,
+    verify: str | None = None,
 ) -> str:
-    """Start a job. kind: read|code|review|hard. repo: new worktree. files: paths to read."""
+    """Start a job. kind: read|code|review|hard. repo: new worktree. policy: worktree|sandbox|isolated|untrusted. verify: check command."""
     return core.start(
-        task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort, kind=kind, files=files
-    )
+        task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
+        kind=kind, files=files, policy=policy, verify=verify,
+    )  # fmt: skip
 
 
 @mcp.tool(structured_output=False)
@@ -49,13 +52,13 @@ def start_many(tasks: list[dict]) -> str:
 
 
 @mcp.tool(structured_output=False)
-async def wait(ids: list[str], timeout: int = 300, any: bool = False) -> str:
-    """Wait for jobs (any=True: first); returns their summaries."""
+async def wait(ids: list[str], timeout: int = 300, any: bool = False, since: str | None = None) -> str:
+    """Wait for jobs (any=True: first); returns summaries. since: cursor for changes."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     deadline = asyncio.get_running_loop().time() + max(1, min(timeout, 600))
     while True:
-        out = core.wait(ids, 0, any)
+        out = core.wait(ids, 0, any, since=since)
         if not out.startswith("still running") or asyncio.get_running_loop().time() >= deadline:
             return out
         await asyncio.sleep(1)
@@ -68,9 +71,9 @@ def status(id: str | None = None) -> str:
 
 
 @mcp.tool(structured_output=False)
-def result(id: str, full: bool = False) -> str:
-    """Job summary; full=True for all."""
-    return core.result(id, full)
+def result(id: str, full: bool = False, evidence: bool = False) -> str:
+    """Job summary; full=True for all; evidence=True for the JSON envelope."""
+    return core.result(id, full, evidence)
 
 
 @mcp.tool(structured_output=False)
