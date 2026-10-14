@@ -16,7 +16,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["claude-agent-sdk>=0.2", "mcp>=1.28,<2"]
+dependencies = ["claude-agent-sdk>=0.2", "mcp>=1.28,<3"]
 
 [project.optional-dependencies]
 dsh = ["deepseek-harness-sdk==0.1.5rc1"]
