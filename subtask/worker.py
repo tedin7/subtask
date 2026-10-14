@@ -147,6 +147,13 @@ def main() -> int:
                 error=None,
             )
         emit("start", f"{spec['engine']} attempt {attempt}", state="running")
+        if adapter.capabilities.paid and not rid:
+            # Started by an older server that left the booking to the worker (v0 jobs):
+            # reserve here, so the spend still counts against the monthly cap.
+            rid = f"{job_id}#w{attempt}-{os.getpid()}"
+            if ledger.reserve(rid, job_id, float(spec["max_usd"])) is None:
+                rid = None
+                raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
         if not Path(spec["cwd"]).is_dir():
             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
         level = (spec.get("policy") or {}).get("effective")

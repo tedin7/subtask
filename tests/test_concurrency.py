@@ -273,3 +273,27 @@ def test_missing_active_index_does_not_forget_running_jobs(home):
     assert sorted(admission.active()) == sorted([first, second])
     core.stop(first)
     core.stop(second)
+
+
+def test_job_started_by_an_old_server_still_books_its_spend(home, monkeypatch):
+    """v0 spec/status (no attempts, no reservation): the worker reserves and settles itself."""
+    import signal
+
+    from subtask import jobs, ledger, worker
+
+    job = "st-v0v0v0v0v0"
+    folder = jobs.job_dir(job)
+    folder.mkdir(parents=True)
+    jobs.write_json(folder / "spec.json", {"task": "x", "engine": "fake", "cwd": str(home), "max_usd": 2.0,
+                                           "max_turns": 5, "effort": "low", "created": time.time()})  # fmt: skip
+    jobs.write_json(folder / "status.json", {"state": "queued"})
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'echo \'{"say":"ok"}\'')
+    monkeypatch.setattr(sys, "argv", ["worker", job])
+    old = signal.getsignal(signal.SIGTERM)
+    try:
+        worker.main()
+    finally:
+        signal.signal(signal.SIGTERM, old)
+    assert jobs.status(job)["state"] == "done"
+    assert ledger.committed() == pytest.approx(0.25)
+    assert ledger.open_for(job) == []

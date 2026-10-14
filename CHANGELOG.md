@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 - 2026-10-14
+
+### Fixed
+- A paid job started by an older server (no reservation) is now booked by the worker, so its spend counts against the cap.
+
 ## 0.2.4 - 2026-10-14
 
 ### Changed
