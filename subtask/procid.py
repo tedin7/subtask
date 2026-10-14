@@ -59,9 +59,14 @@ def _exists(pid: int) -> bool | None:
 
 
 def alive(ident: dict | None) -> str:
-    if not ident or not ident.get("pid"):
+    if not isinstance(ident, dict) or not ident.get("pid"):
         return UNKNOWN
-    pid = int(ident["pid"])
+    try:
+        pid = int(ident["pid"])
+    except (TypeError, ValueError):
+        return UNKNOWN  # a corrupt identity proves nothing
+    if pid <= 0:
+        return UNKNOWN
     try:
         if os.waitpid(pid, os.WNOHANG)[0] == pid:
             return DEAD  # our own child that exited: reaped now

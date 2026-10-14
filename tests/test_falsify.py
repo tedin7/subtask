@@ -17,7 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _child(code: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    return subprocess.run(
+        [sys.executable, "-c", code], check=False, cwd=ROOT, capture_output=True, text=True, timeout=60
+    )
 
 
 def _crash_child(point: str, extra: str = "") -> None:
@@ -55,7 +57,9 @@ def test_crash_before_spawn_is_charged_full_price_though_nothing_ran(home):
     st = jobs.read_json(jobs.job_dir(job) / "status.json")
     jobs.write_json(jobs.job_dir(job) / "status.json", {**st, "updated": time.time() - 300})
     assert jobs.status(job)["state"] == "failed"
-    assert ledger.committed() == 0.0, "worker never started: docs say prudential charge only if it wrote 'running'"
+    assert ledger.committed() == 0.0, (
+        "worker never started: docs say prudential charge only if it wrote 'running'"
+    )
 
 
 def test_exception_in_reserve_after_admit_leaks_slot(home, monkeypatch):
@@ -71,7 +75,7 @@ def test_exception_in_reserve_after_admit_leaks_slot(home, monkeypatch):
 
 
 def test_failure_after_spawn_releases_slot_and_money_of_a_running_worker(home, monkeypatch):
-    from subtask import admission, core, ledger
+    from subtask import admission, core
 
     fake_script = 'sleep 2; echo \'{"say":"ok"}\''
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", fake_script)
@@ -100,14 +104,16 @@ def test_failure_after_spawn_loses_the_spend(home, monkeypatch):
     with pytest.raises(OSError):
         core.start("x", engine="fake", cwd=str(home))
     time.sleep(4)
-    assert ledger.committed() >= 0.25, "the worker ran and the fake engine reported 0.25 $: it is not in the ledger"
+    assert ledger.committed() >= 0.25, (
+        "the worker ran and the fake engine reported 0.25 $: it is not in the ledger"
+    )
 
 
 # ---------------------------------------------------------------- stop
 
 
 def test_stop_in_spawn_gap_says_stopped_while_worker_runs(home, monkeypatch):
-    from subtask import core, jobs, procid
+    from subtask import core, procid
 
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'sleep 4; echo \'{"say":"ok"}\'')
     seen = {}
@@ -141,7 +147,9 @@ def test_stop_does_not_kill_engine_child_that_ignores_sigterm(home, monkeypatch)
     res = core.stop(job)
     assert res.endswith("stopped"), res
     time.sleep(0.5)
-    left = subprocess.run(["ps", "-o", "pid=", "-g", str(pid)], capture_output=True, text=True).stdout.split()
+    left = subprocess.run(
+        ["ps", "-o", "pid=", "-g", str(pid)], check=False, capture_output=True, text=True
+    ).stdout.split()
     try:
         assert left == [], f"stop returned 'stopped' but the engine process group still has {left}"
     finally:
@@ -213,12 +221,12 @@ def test_reply_retry_blocked_forever_by_orphan_reservation(home):
 
 def test_worker_late_release_frees_the_slot_of_a_reply_started_meanwhile(home, monkeypatch):
     """Worker writes 'done', then releases admission[job]; a reply in between owns that same key."""
-    from subtask import admission, core, procid, worker
+    from subtask import admission, core, procid
 
     a = _done_fake_job(home)
     # second round: run the worker in-process so we can interleave
     sleeper = subprocess.Popen(["sleep", "30"])
-    real_release, real_spawn = admission.release, core._spawn
+    real_release = admission.release
     monkeypatch.setattr(core, "_spawn", lambda *x, **k: procid.identity(sleeper.pid))
     # re-arm job a as if it were a fresh running attempt
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'echo \'{"say":"ok"}\'')
@@ -240,7 +248,7 @@ def test_worker_late_release_frees_the_slot_of_a_reply_started_meanwhile(home, m
 
 
 def test_nan_reported_cost_is_booked_as_zero(home, monkeypatch):
-    from subtask import core, jobs, ledger, procid, worker
+    from subtask import core, ledger, procid, worker
     from tests import fake_engine
 
     monkeypatch.setattr(fake_engine.FakeEngine, "paid_cost", float("nan"))
@@ -283,7 +291,9 @@ def test_v0_ledger_with_bad_number_wedges_every_ledger_call(home):
     from subtask import config, ledger
 
     config.HOME.mkdir(parents=True)
-    (config.HOME / "ledger.jsonl").write_text(json.dumps({"ts": "2026-10-01T00:00:00", "job": "j", "reserve_usd": "n/a"}) + "\n")
+    (config.HOME / "ledger.jsonl").write_text(
+        json.dumps({"ts": "2026-10-01T00:00:00", "job": "j", "reserve_usd": "n/a"}) + "\n"
+    )
     ledger.committed()  # must not raise
 
 
@@ -293,8 +303,10 @@ def test_v0_ledger_nan_cost_disables_the_cap(home):
     config.HOME.mkdir(parents=True)
     month = time.strftime("%Y-%m")
     rows = [{"ts": f"{month}-01T00:00:00", "job": "j", "reserve_usd": 1.0},
-            '{"ts": "%s-01T00:00:01", "job": "j", "cost_usd": NaN}' % month]  # fmt: skip
-    (config.HOME / "ledger.jsonl").write_text("\n".join(r if isinstance(r, str) else json.dumps(r) for r in rows))
+            f'{{"ts": "{month}-01T00:00:01", "job": "j", "cost_usd": NaN}}']  # fmt: skip
+    (config.HOME / "ledger.jsonl").write_text(
+        "\n".join(r if isinstance(r, str) else json.dumps(r) for r in rows)
+    )
     assert ledger.reserve("st-zz#1", "st-zz", 1000.0, cap=10.0) is None
 
 

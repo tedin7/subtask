@@ -133,14 +133,19 @@ def main() -> int:
             raise RuntimeError(f"unknown engine: {spec['engine']}")
         prompt = Path(args.reply_file).read_text() if args.reply_file else spec["task"]
         resume = previous.get("session_id") if args.reply_file else None
-        jobs.update_status(
-            job_id,
-            state="running",
-            proc=procid.identity(),
-            liveness=procid.ALIVE,
-            last="starting",
-            error=None,
-        )
+        with jobs.job_lock(job_id):  # a stop that came before this point is honoured, not lost
+            if jobs.read_json(folder / "status.json").get("stop_requested"):
+                stopped = True
+                raise KeyboardInterrupt
+            jobs.update_status(
+                job_id,
+                locked=True,
+                state="running",
+                proc=procid.identity(),
+                liveness=procid.ALIVE,
+                last="starting",
+                error=None,
+            )
         emit("start", f"{spec['engine']} attempt {attempt}", state="running")
         if not Path(spec["cwd"]).is_dir():
             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")

@@ -20,6 +20,7 @@ from __future__ import annotations
 import fcntl
 import json
 import math
+import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -72,15 +73,30 @@ def _rows(month: str) -> list[dict]:
 
 def _append(month: str, row: dict) -> None:
     path = _dir() / f"{month}.jsonl"
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row) + "\n")
+    with path.open("ab+") as fh:
+        fh.seek(0, 2)
+        if fh.tell():
+            fh.seek(-1, 2)
+            if fh.read(1) != b"\n":
+                fh.write(b"\n")  # a torn last line must not swallow this row
+        fh.write((json.dumps(row) + "\n").encode())
         fh.flush()
+        os.fsync(fh.fileno())
 
 
 def _months() -> list[str]:
     if not _dir().is_dir():
         return []
     return sorted((p.stem for p in _dir().glob("????-??.jsonl")), reverse=True)
+
+
+def _usd(value: object) -> float | None:
+    """A finite, non-negative amount, or None."""
+    try:
+        amount = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return amount if math.isfinite(amount) and amount >= 0 else None
 
 
 def _summary(month: str) -> tuple[float, dict[str, dict], set[str]]:
@@ -93,13 +109,13 @@ def _summary(month: str) -> tuple[float, dict[str, dict], set[str]]:
         elif op in ("settle", "release") and rid not in closed:
             closed.add(rid)
             open_.pop(rid, None)
-            settled += float(row.get("usd") or 0)
+            settled += _usd(row.get("usd")) or 0.0
     return settled, open_, closed
 
 
 def _committed(month: str) -> float:
     settled, open_, _ = _summary(month)
-    return settled + sum(float(r.get("usd") or 0) for r in open_.values())
+    return settled + sum(_usd(r.get("usd")) or 0.0 for r in open_.values())
 
 
 def committed(month: str | None = None) -> float:
@@ -150,30 +166,30 @@ def _find(rid: str) -> tuple[str, dict | None] | None:
 
 
 def close(rid: str, usd: float, op: str = "settle") -> float | None:
-    """Close an open reservation once. Returns what was booked, None when nothing was open."""
+    """Close an open reservation once. Returns what was booked, None when nothing was open.
+
+    A settle is capped at the reservation (the cap must hold); an unknown cost
+    (NaN, inf, negative, not a number) is charged the whole reservation. Both
+    cases are noted on the row.
+    """
     if op not in ("settle", "release"):
         raise ValueError(op)
-    usd = 0.0 if op == "release" else float(usd)
-    if not math.isfinite(usd) or usd < 0:
-        usd = 0.0
+    reported = _usd(usd)
     with locked():
         found = _find(rid)
         if not found or found[1] is None:
             return None
         month, row = found[0], found[1] or {}
-        _append(
-            month,
-            {
-                "v": VERSION,
-                "ts": now(),
-                "op": op,
-                "rid": rid,
-                "job": row.get("job"),
-                "usd": round(usd, 6),
-                "month": month,
-            },
-        )
-        return usd
+        reserved = _usd(row.get("usd")) or 0.0
+        booked = 0.0 if op == "release" else reserved if reported is None else min(reported, reserved)
+        closing = {"v": VERSION, "ts": now(), "op": op, "rid": rid, "job": row.get("job"),
+                   "usd": round(booked, 6), "month": month}  # fmt: skip
+        if op == "settle" and reported is None:
+            closing["note"] = "unknown cost: charged the reservation"
+        elif op == "settle" and reported > reserved:
+            closing["note"] = f"reported {reported:.4f} above the reservation: capped"
+        _append(month, closing)
+        return booked
 
 
 def is_open(rid: str) -> bool:
@@ -197,48 +213,56 @@ def spend_rows(month: str | None = None) -> list[dict]:
 
 
 def _migrate_v0() -> None:
-    """Split the v0 single-file ledger into monthly v2 files, once (lock held)."""
+    """Split the v0 single-file ledger into monthly v2 files, once (lock held).
+
+    Rows that cannot be read are skipped and listed in ledger-migration.log; an
+    unreadable cost closes its reservation at the reserved amount (prudential).
+    """
     old = config.HOME / "ledger.jsonl"
     if not old.is_file():
         return
     counters: dict[str, int] = {}
-    open_rid: dict[str, str] = {}
-    for line in old.read_text().splitlines():
+    open_rid: dict[str, tuple[str, float]] = {}
+    skipped: list[str] = []
+
+    def row_for(op: str, rid: str, job: str, usd: float, ts: str, month: str) -> dict:
+        return {"v": VERSION, "ts": ts, "op": op, "rid": rid, "job": job, "usd": usd, "month": month}
+
+    for line in old.read_text(errors="replace").splitlines():
         try:
             row = json.loads(line)
         except json.JSONDecodeError:
+            if line.strip():
+                skipped.append(line[:200])
+            continue
+        if not isinstance(row, dict):
+            skipped.append(line[:200])
             continue
         job, ts = str(row.get("job", "?")), str(row.get("ts") or now())
-        month = month_of(ts)
+        month = month_of(ts) if len(ts) >= 7 and ts[4] == "-" else month_of()
         if "reserve_usd" in row:
+            usd = _usd(row["reserve_usd"])
+            if usd is None:
+                skipped.append(line[:200])
+                continue
             counters[job] = counters.get(job, 0) + 1
             rid = f"{job}#v0-{counters[job]}"
-            open_rid[job] = rid
-            usd = float(row["reserve_usd"])
-            _append(
-                month,
-                {"v": VERSION, "ts": ts, "op": "reserve", "rid": rid, "job": job, "usd": usd, "month": month},
-            )
-        else:
-            rid = open_rid.pop(job, None)
-            usd = float(row.get("cost_usd") or 0)
-            if rid is None:  # a cost without a reservation: book it as its own closed pair
-                counters[job] = counters.get(job, 0) + 1
-                rid = f"{job}#v0-{counters[job]}"
-                _append(
-                    month,
-                    {
-                        "v": VERSION,
-                        "ts": ts,
-                        "op": "reserve",
-                        "rid": rid,
-                        "job": job,
-                        "usd": usd,
-                        "month": month,
-                    },
-                )
-            _append(
-                month,
-                {"v": VERSION, "ts": ts, "op": "settle", "rid": rid, "job": job, "usd": usd, "month": month},
-            )
+            open_rid[job] = (rid, usd)
+            _append(month, row_for("reserve", rid, job, usd, ts, month))
+            continue
+        cost = _usd(row.get("cost_usd") or 0)
+        pending = open_rid.pop(job, None)
+        if pending is None:
+            if cost is None:
+                skipped.append(line[:200])
+                continue
+            counters[job] = counters.get(job, 0) + 1
+            rid = f"{job}#v0-{counters[job]}"
+            _append(month, row_for("reserve", rid, job, cost, ts, month))
+            _append(month, row_for("settle", rid, job, cost, ts, month))
+            continue
+        rid, reserved = pending
+        _append(month, row_for("settle", rid, job, reserved if cost is None else cost, ts, month))
+    if skipped:
+        (config.HOME / "ledger-migration.log").write_text("skipped v0 rows:\n" + "\n".join(skipped) + "\n")
     old.rename(old.with_name("ledger.jsonl.v0.bak"))

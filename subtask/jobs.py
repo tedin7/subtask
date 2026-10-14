@@ -123,7 +123,8 @@ def _close_dead(job_id: str, seen: dict, error: str = "worker died before finish
         charged = 0.0
         for row in ledger.open_for(job_id):
             # Spend possible but unknown: charge the whole reservation (prudential), else release.
-            amount = float(row.get("usd") or 0) if data.get("spend_possible", True) else 0.0
+            # v0 statuses (no "v") never recorded spend_possible: stay prudential for them.
+            amount = float(row.get("usd") or 0) if data.get("spend_possible", "v" not in data) else 0.0
             booked = ledger.close(row["rid"], amount, "settle" if amount else "release")
             charged += booked or 0.0
         data = update_status(
@@ -141,25 +142,62 @@ def _close_dead(job_id: str, seen: dict, error: str = "worker died before finish
     return data
 
 
+def _group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _kill_group(pgid: int, grace_s: float) -> bool:
+    """SIGTERM the worker's process group, then SIGKILL whatever is left. True when nothing is left."""
+    for sig, wait in ((signal.SIGTERM, grace_s), (signal.SIGKILL, 3.0)):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return False
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            try:
+                os.waitpid(pgid, os.WNOHANG)  # reap our own child, if it is one
+            except (ChildProcessError, OSError):
+                pass
+            if not _group_alive(pgid):
+                return True
+            time.sleep(0.1)
+    return not _group_alive(pgid)
+
+
 def stop(job_id: str, grace_s: float = 8.0) -> bool:
+    """Stop the work. True only when no process of the job is left."""
     current = status(job_id)
     if current.get("state") not in ACTIVE:
         return False
     proc = _proc(current)
-    if proc and liveness(job_id, current) == procid.ALIVE:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(int(proc["pid"]), sig)  # the worker leads its own process group
-            except (ProcessLookupError, PermissionError):
+    if not proc:
+        # Spawned but not recorded yet: ask the worker to stop itself, then wait for its identity.
+        update_status(job_id, stop_requested=True)
+        deadline = time.time() + grace_s
+        while time.time() < deadline:
+            current = read_json(job_dir(job_id) / "status.json")
+            proc = _proc(current)
+            if proc or current.get("state") not in ACTIVE:
                 break
-            deadline = time.time() + grace_s
-            while time.time() < deadline and liveness(job_id, current) == procid.ALIVE:
-                time.sleep(0.2)
-            if liveness(job_id, current) != procid.ALIVE:
-                break
+            time.sleep(0.1)
+        if current.get("state") not in ACTIVE:
+            return current.get("state") == "stopped"
+        if not proc:
+            return False  # no worker to prove stopped; the request stays and the worker honours it
+    if liveness(job_id, current) == procid.ALIVE and not _kill_group(int(proc["pid"]), grace_s):
+        return False  # something survived SIGKILL: do not pretend
     data = status(job_id)  # books a killed worker as failed and settles its reservation
     if data.get("state") in ACTIVE and _proc(data) and liveness(job_id, data) != procid.DEAD:
-        return False  # still alive or unprovable: do not pretend it stopped
+        return False
     if read_json(job_dir(job_id) / "status.json").get("state") != "stopped":
         from . import admission, events
 

@@ -15,7 +15,7 @@ Benefits and numbers are in [benefits.md](benefits.md).
 | R03 | deep_research | "la fast path non pubblicizza 2026-07-28" | negotiate the current MCP revision; FastMCP stays reference; independent client | 4 legacy versions only | dual-era server: `server/discover`, per-request `_meta`, `-32022`, `-32602`, `resultType`, caching hints; legacy `initialize` kept | test_protocol.py, test_independent_client.py (official `mcp` client, both servers); real Claude Code 2.1.296 loads 10 tools | implemented_verified |
 | R04 | deep_research | "MAX_RUNNING non è atomicamente globale" | global cap across CLI and MCP processes | confirmed: 3-7 jobs with cap 2 (docs/baseline/race-spike.md) | `admission.py`: flock + active index, owner/worker identity | test_cap_holds_across_processes (12 processes, barrier) | implemented_verified |
 | R05 | deep_research | "la reservation avviene nel worker... routing ottimistico" | select, reserve, prepare, start in order with compensations | reservation in the worker, after the worktree | core.start: slot + money in one critical section before git; `_compensate` on every later failure | test_paid_start_reserves_in_the_parent..., test_cap_refusal_happens_before_any_worktree, test_budget_never_overshoots_under_concurrency | implemented_verified |
-| R06 | deep_research | "PID reuse, reservation non settledata, reply fallita" | process identity beyond PID; idempotent settlement; unknown stays visible; month crossing | PID + cmdline only; settle by scanning | `procid.py` (pid+start ticks+boot id, alive/dead/unknown); ledger v2 rids, close once; closing row in the reservation's month; v0 migration with backup | test_concurrency.py (14), adversarial review (see below) | implemented_verified |
+| R06 | deep_research | "PID reuse, reservation non settledata, reply fallita" | process identity beyond PID; idempotent settlement; unknown stays visible; month crossing | PID + cmdline only; settle by scanning | `procid.py` (pid+start ticks+boot id, alive/dead/unknown); ledger v2 rids, close once; closing row in the reservation's month; v0 migration with backup | test_concurrency.py (15); independent review: 15 defects, 19 failing tests (tests/test_falsify.py), all fixed | implemented_verified |
 | R07 | deep_research | "adapter versionati, capability probing, contract tests" | versioned adapters, probing, contract tests on real output | if/elif in worker.py | `engines/` (one module per engine), `probe()` (installed, version, flags, auth), recorded real outputs as fixtures | test_engines.py (11) incl. Kimi 2.1.1, OpenCode 2.0.28, Codex usage-limit fixtures | implemented_verified |
 | R08 | deep_research | "UNKNOWN = 50... smetterei di convertire silenziosamente unknown in 50%" | value, unit, source, timestamp, freshness, confidence; unknown stays unknown | unknown = 50 silently | `Capacity` record; prior used only in routing and flagged `free_assumed`; quota exhaustion seen in runs remembered until reset | test_unknown_capacity_stays_unknown, test_codex_capacity_reads_rate_limits..., test_quota_exhaustion_seen_in_a_run_excludes_the_engine | implemented_verified |
 | R09 | deep_research | "funzione di utilità... expected_success, cost, latency, scarcity, risk" | admissibility first, explicit utility, explanation, calibration, legacy baseline | free% - 5*rank | `router.py`: hard filters (policy, install, budget, quota) then utility with units; `routing.json`; learned P only with >=10 verified samples; `legacy` mode; `routing explain|calibrate`. Correction: the report's `λ_risk * security_penalty` is a hard filter, not a score (security is not tradeable for cost) | test_routing_explains..., test_learned_success_only_after_enough..., test_legacy_mode..., test_router_never_trades_security_for_cost | implemented_verified |
@@ -52,3 +52,27 @@ Benefits and numbers are in [benefits.md](benefits.md).
 Coverage: 37 rows. implemented_verified 30 (incl. partial rows counted by their verified part),
 not_applicable_verified 1, conditional_not_triggered 1, blocked_external 3 (R17b, R22 publication part,
 R24c), incomplete 2 (R19 live part, R25 OpenCode part).
+
+## Independent review (falsification, Sonnet, separate worktree)
+
+Scope: admission, ledger, jobs, procid, core start/reply/stop, worker settlement.
+19 tests written to fail on the reviewed code; each failed 3/3. All 19 pass after
+the fixes, together with the rest of the suite (155 tests).
+
+| # | Severity | Defect | Fix |
+|---|---|---|---|
+| 1 | high | failure after spawn compensated: slot and money released while the worker ran, spend lost | no compensation after spawn; the worker settles |
+| 2 | high | `stop` in the spawn gap said "stopped" while the worker went on | `stop_requested` flag checked by the worker under the job lock |
+| 3 | high | engine child ignoring SIGTERM survived `stop` | stop kills the process group, SIGKILL after the grace; "stopped" only when the group is empty |
+| 4 | high | crash between admit and job folder: reservation open forever | a dropped admitting entry with no job releases its money |
+| 5 | high | crash before spawn charged the full budget | prudential charge only when the worker may have spent (v0 statuses stay prudential) |
+| 6 | high | reply's slot invisible while the job still read "done" | an admitting entry for a newer attempt holds its slot |
+| 7 | high | an old worker's late release freed a newer reply's slot | release only by the holder (owner or worker identity) or when the holder is dead |
+| 8 | medium-high | reply exception leaked slot and money; retry blocked by the rid | compensation on every failure; a fresh rid per try |
+| 9 | medium | exception in `reserve` leaked an admitting slot | slot dropped before re-raising |
+| 10 | medium | settle above the reservation broke the cap | settle capped at the reservation, noted on the row |
+| 11 | medium | NaN cost booked as 0 | unknown cost charged the reservation, noted |
+| 12 | medium | torn last ledger line swallowed the next row | newline repaired before appending; fsync |
+| 13 | medium | v0 migration: bad number wedged the ledger, NaN disabled the cap | tolerant migration, skipped rows logged |
+| 14 | low-medium | corrupt index forgot admitting jobs | per-job admission markers used by the rebuild |
+| 15 | low | bad pid in index or status raised everywhere | invalid identities dropped (index) or reported unknown (status) |

@@ -11,6 +11,7 @@ import base64
 import json
 import math
 import os
+import secrets
 import subprocess
 import sys
 import time
@@ -116,11 +117,17 @@ def start(
         refused = admission.admit_locked(job_id)
         if refused:
             return refused
-        if rid and ledger.reserve(rid, job_id, budget) is None:
+        try:
+            booked = ledger.reserve(rid, job_id, budget) if rid else True
+        except BaseException:
+            _drop_slot_locked(job_id)
+            raise
+        if booked is None:
             _drop_slot_locked(job_id)
             return f"monthly cap {config.MONTHLY_CAP_USD:.0f} $ reached: {ledger.committed():.2f} $ committed"
 
     folder = jobs.job_dir(job_id)
+    spawned = False
     try:
         folder.mkdir(parents=True)
         branch = git_dir = None
@@ -174,13 +181,15 @@ def start(
             ident = _spawn(job_id)
         except OSError as exc:
             raise _Compensate(f"worker not started: {exc}") from exc
+        spawned = True  # from here on the worker owns the slot and the money: never compensate
         jobs.update_status(job_id, proc=ident, liveness=procid.ALIVE)
         admission.running(job_id, ident)
     except _Compensate as exc:
         _compensate(job_id, rid, folder)
         return str(exc)
     except BaseException:
-        _compensate(job_id, rid, folder)
+        if not spawned:
+            _compensate(job_id, rid, folder)
         raise
     telemetry.count_call([job_id], "start")
     where = f"branch {branch}" if branch else workdir
@@ -208,6 +217,7 @@ def _drop_slot_locked(job_id: str) -> None:
         entries = admission.rebuild()
     entries.pop(job_id, None)
     admission._write(entries)
+    admission._unmark(job_id)
 
 
 def _compensate(job_id: str, rid: str | None, folder: Path) -> None:
@@ -410,43 +420,55 @@ def reply(job_id: str, message: str) -> str:
         if not st.get("session_id"):
             return f"{job_id} has no session to resume"
         n = int(st.get("attempt") or 1) + 1
-        rid = f"{job_id}#{n}" if adapter and adapter.capabilities.paid else None
+        # a fresh rid per try: a failed reply never blocks the next one
+        rid = f"{job_id}#{n}-{secrets.token_hex(3)}" if adapter and adapter.capabilities.paid else None
         with admission.locked():
-            refused = admission.admit_locked(job_id)
+            refused = admission.admit_locked(job_id, attempt=n)
             if refused:
                 return refused
-            if (
-                rid
-                and ledger.reserve(rid, job_id, float(sp.get("max_usd") or config.DEFAULT_MAX_USD)) is None
-            ):
+            try:
+                booked = (
+                    ledger.reserve(rid, job_id, float(sp.get("max_usd") or config.DEFAULT_MAX_USD))
+                    if rid
+                    else True
+                )
+            except BaseException:
+                _drop_slot_locked(job_id)
+                raise
+            if booked is None:
                 _drop_slot_locked(job_id)
                 return f"monthly cap {config.MONTHLY_CAP_USD:.0f} $ reached"
         reply_file = jobs.job_dir(job_id) / f"reply-{n}.md"
-        reply_file.write_text(message)
-        attempts = list(st.get("attempts") or []) + [
-            {"n": n, "kind": "reply", "reservation": rid, "created": time.time()}
-        ]
-        jobs.update_status(
-            job_id,
-            state="queued",
-            last="reply",
-            attempt=n,
-            attempts=attempts,
-            spend_possible=False,
-            locked=True,
-        )
+        try:
+            reply_file.write_text(message)
+            attempts = list(st.get("attempts") or []) + [
+                {"n": n, "kind": "reply", "reservation": rid, "created": time.time()}
+            ]
+            jobs.update_status(
+                job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False,
+                stop_requested=False, locked=True,
+            )  # fmt: skip
+        except BaseException:
+            _undo_reply(job_id, rid, st, locked=True)
+            raise
     events.emit(job_id, "reply", message[:80], state="queued", attempt=n)
     try:
         ident = _spawn(job_id, "--reply-file", str(reply_file))
     except OSError as exc:
-        if rid:
-            ledger.close(rid, 0.0, "release")
-        admission.release(job_id)
-        jobs.update_status(job_id, state="failed", error=f"worker not started: {exc}")
+        _undo_reply(job_id, rid, st, locked=False)
         return f"{job_id} failed to resume: {exc}"
     jobs.update_status(job_id, proc=ident, liveness=procid.ALIVE)
     admission.running(job_id, ident)
     return f"{job_id} resumed"
+
+
+def _undo_reply(job_id: str, rid: str | None, previous: dict, locked: bool) -> None:
+    """A reply that did not reach a worker: free its money and slot, restore the finished state."""
+    if rid:
+        ledger.close(rid, 0.0, "release")
+    admission.release(job_id)
+    keep = {k: previous.get(k) for k in ("state", "attempt", "attempts", "last", "error", "spend_possible")}
+    jobs.update_status(job_id, locked=locked, **keep)
 
 
 def stop(job_id: str) -> str:
