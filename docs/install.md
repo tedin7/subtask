@@ -3,16 +3,14 @@
 The Python distribution is **`subtask-mcp`**. The PyPI name `subtask` belongs to an
 unrelated project: never run `pip install subtask`.
 
-## Not published yet
+## Where it is published (2026-10-14)
 
-| Item | State | External step needed |
-|---|---|---|
-| git tag `v0.2.3` | missing | `git tag v0.2.3 && git push origin v0.2.3` (the `uvx --from git+...@v0.2.3` launchers and `scripts/install.sh` need it, and the repo must be public) |
-| PyPI `subtask-mcp` | not uploaded | `uv build && uv publish` with a PyPI token for the `subtask-mcp` project |
-| MCP Registry | `server.json` written, **not submitted** | publish to PyPI first, add `mcp-name: io.github.tedin7/subtask` to the README (PyPI ownership check), then `mcp-publisher login github && mcp-publisher publish` |
-| Claude / Codex marketplace listing | only the in-repo marketplaces exist | users add the repo as a marketplace (below); no listing in an official catalog was requested |
-
-Until the tag exists, install from a local checkout: `uv tool install /path/to/subtask`.
+| Channel | State |
+|---|---|
+| GitHub release | `v0.2.3` with wheel and sdist: https://github.com/tedin7/subtask/releases |
+| PyPI | `subtask-mcp` 0.2.3: `uv tool install subtask-mcp` |
+| MCP Registry | `io.github.tedin7/subtask` 0.2.3 |
+| Claude Code / Codex marketplaces | in this repository (`claude plugin marketplace add tedin7/subtask`); no official catalog listing |
 
 ## Clean machine
 

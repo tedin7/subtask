@@ -15,7 +15,10 @@ Three separate facts per client: the server **produced** progress, the client **
 The fallback is not streaming: each `wait(..., since=cursor)` is one more round trip. Cost per
 round trip: one tool call plus a reply of 2-6 lines (about 60-200 tokens, bytes/4 estimate).
 
-Other MCP servers: subtask cannot see inside them. The Claude Code plugin (opt-in) adds a
+Other MCP servers: subtask cannot see inside them. OpenCode 2.x: the plugin `plugins/opencode/subtask-progress.ts`
+(verified loaded in 2.0.28) records server/tool, duration and status of every MCP call to
+`~/.local/share/subtask/opencode-tool-timing.jsonl`; OpenCode offers plugins no way to write in the chat.
+ The Claude Code plugin (opt-in) adds a
 PostToolUse hook that reports server, tool, duration and outcome for every `mcp__*` call
 after it ends; it does not stream and shows only what the client observes.
 
