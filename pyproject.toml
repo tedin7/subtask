@@ -19,13 +19,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["subtask"]
+packages = ["subtask", "subtask.engines", "subtask.install"]
 
 [tool.setuptools.dynamic]
 version = { attr = "subtask.__version__" }
 
 [tool.setuptools.package-data]
-subtask = ["tools.json"]
+subtask = ["tools.json", "skill/SKILL.md"]
 
 [tool.ruff]
 line-length = 110

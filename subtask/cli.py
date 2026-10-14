@@ -3,6 +3,7 @@
 subtask start "brief" [--engine auto] [--kind code] [--repo PATH] [--readonly] [--max-usd 2]
 subtask wait ID [ID...] [--timeout 50]
 subtask status [ID] | result ID [--full] | reply ID "msg" | stop ID | cleanup ID | spend | engines
+subtask install|uninstall --client claude|codex|kimi|opencode|all [--yes] | doctor --client X
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import argparse
 import sys
 
 from . import core
+from .install import commands as install_commands
 
 
 def main() -> int:
@@ -55,7 +57,11 @@ def main() -> int:
     sub.add_parser("steps")
     sub.add_parser("spend")
     sub.add_parser("engines")
+    install_commands.add_parsers(sub)
     a = p.parse_args()
+
+    if a.cmd in ("install", "uninstall", "doctor"):
+        return install_commands.run(a)
 
     if a.cmd == "start":
         task = sys.stdin.read() if a.task == "-" else a.task

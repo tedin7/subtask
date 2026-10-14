@@ -1,7 +1,7 @@
 """MCP server (stdio).
 
 Instructions and tool descriptions are injected into every client session, so
-they are kept short. The full usage guide is the `subtask` skill (skill/SKILL.md).
+they are kept short. The full usage guide is the `subtask` skill (subtask/skill/SKILL.md).
 """
 
 from __future__ import annotations
