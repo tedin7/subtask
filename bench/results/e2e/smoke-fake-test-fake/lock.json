@@ -1,0 +1,46 @@
+{
+ "config_hash": "b31efd19e2528a601b70037705730fa13114f792e6aa128b40eec94b9f3ed398",
+ "corpus_hash": "592aa4e779eaad7ecb472eb20536420cce7c670ef2452a51f448d7f508a02554",
+ "config": {
+  "name": "smoke-fake",
+  "description": "Offline smoke of the whole pipeline on the fake engine. Not quality evidence.",
+  "parent_client": "claude",
+  "arms": [
+   "parent",
+   "native",
+   "subtask-fixed:fake",
+   "subtask-auto"
+  ],
+  "split": "test",
+  "repetitions": 1,
+  "seed": 20261014,
+  "max_retries": 1,
+  "ablations": {
+   "batching": "on",
+   "summary": "summary",
+   "progress": "on",
+   "narrator": "off"
+  },
+  "budgets": {
+   "max_total_usd": 50,
+   "max_wall_minutes": 30,
+   "max_concurrency": 4,
+   "parent_usd_factor": 1.0
+  },
+  "thresholds": {
+   "min_test_tasks_for_claim": 16,
+   "success_noninferiority_margin": 0.1,
+   "ci_level": 0.95,
+   "bootstrap_resamples": 2000
+  },
+  "fake": {
+   "worker_sleep_s": 1,
+   "outcomes": {
+    "success": 0.7,
+    "fail_then_success": 0.2,
+    "fail": 0.1
+   }
+  }
+ },
+ "locked": "2026-10-14T04:03:54"
+}

@@ -1,0 +1,19 @@
+{
+ "name": "pilot",
+ "description": "Live pilot (NOT RUN: no authorized budget). Parent client Claude Code.",
+ "parent_client": "claude",
+ "arms": ["parent", "native", "subtask-fixed:sonnet-api", "subtask-auto"],
+ "split": "test",
+ "repetitions": 3,
+ "seed": 20261014,
+ "max_retries": 1,
+ "ablations": {"batching": "on", "summary": "summary", "progress": "on", "narrator": "off"},
+ "budgets": {"max_total_usd": 250, "max_wall_minutes": 720, "max_concurrency": 2, "parent_usd_factor": 1.0},
+ "thresholds": {
+  "min_test_tasks_for_claim": 16,
+  "success_noninferiority_margin": 0.10,
+  "ci_level": 0.95,
+  "bootstrap_resamples": 10000
+ },
+ "fake": {"worker_sleep_s": 0, "outcomes": {"success": 1.0}}
+}

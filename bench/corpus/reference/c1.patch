@@ -1,0 +1,34 @@
+diff --git a/subtask/server.py b/subtask/server.py
+index c73c112..bbe7106 100644
+--- a/subtask/server.py
++++ b/subtask/server.py
+@@ -110,7 +110,14 @@ def _slim(schema: object) -> object:
+         return [_slim(item) for item in schema]
+     if not isinstance(schema, dict):
+         return schema
+-    out = {k: _slim(v) for k, v in schema.items() if k != "title"}
++    out = {}
++    for key, value in schema.items():
++        if key == "title":
++            continue  # schema metadata, not a property
++        if key == "properties" and isinstance(value, dict):
++            out[key] = {name: _slim(sub) for name, sub in value.items()}  # keep real property names
++        else:
++            out[key] = _slim(value)
+     branches = out.get("anyOf")
+     if isinstance(branches, list):
+         kept = [b for b in branches if b != {"type": "null"}]
+diff --git a/subtask/tools.json b/subtask/tools.json
+index 2701882..26067ba 100644
+--- a/subtask/tools.json
++++ b/subtask/tools.json
+@@ -193,6 +193,9 @@
+    "description": "Before each significant step. Paste the reply verbatim; on STOP ask the user.",
+    "inputSchema": {
+     "properties": {
++     "title": {
++      "type": "string"
++     },
+      "path": {
+       "type": "string"
+      },

@@ -1,0 +1,13 @@
+diff --git a/subtask/worker.py b/subtask/worker.py
+index 6ec62f5..d1a841c 100644
+--- a/subtask/worker.py
++++ b/subtask/worker.py
+@@ -224,7 +224,7 @@ def _run_cli(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
+     last = jobs.job_dir(job_id) / "last-message.txt"
+     readonly = spec.get("readonly", False)
+     if engine == "codex":
+-        mode = ["-s", "read-only"] if readonly else ["--dangerously-bypass-approvals-and-sandbox"]
++        mode = ["-s", "read-only"] if readonly else ["-s", "workspace-write", "-c", 'approval_policy="never"']
+         argv = ["codex", "exec", "--json", "--skip-git-repo-check", "-C", cwd, *mode, "-o", str(last)]
+         argv += ["resume", resume, "--", prompt] if resume else ["--", prompt]
+     elif engine == "kimi":

@@ -1,0 +1,13 @@
+diff --git a/subtask/worker.py b/subtask/worker.py
+index 6ec62f5..cfbffad 100644
+--- a/subtask/worker.py
++++ b/subtask/worker.py
+@@ -228,7 +228,7 @@ def _run_cli(job_id: str, spec: dict, prompt: str, resume: str | None) -> dict:
+         argv = ["codex", "exec", "--json", "--skip-git-repo-check", "-C", cwd, *mode, "-o", str(last)]
+         argv += ["resume", resume, "--", prompt] if resume else ["--", prompt]
+     elif engine == "kimi":
+-        argv = ["kimi", "--plan" if readonly else "--auto", "--output-format", "text"]
++        argv = ["kimi"] + (["--plan"] if readonly else []) + ["--output-format", "text"]  # Kimi 2.1: --auto conflicts with -p
+         argv += ["-S", resume] if resume and resume != "continue" else ["-c"] if resume else []
+         argv += ["-p", prompt]
+     elif engine == "opencode":

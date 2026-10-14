@@ -1,0 +1,13 @@
+diff --git a/subtask/core.py b/subtask/core.py
+index 43dbcd2..3684e2c 100644
+--- a/subtask/core.py
++++ b/subtask/core.py
+@@ -60,7 +60,7 @@ def start(
+     budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
+     if not (isinstance(budget, (int, float)) and math.isfinite(budget) and 0 < budget <= config.MAX_JOB_USD):
+         return f"max_usd must be between 0 and {config.MAX_JOB_USD}"
+-    if not isinstance(max_turns, int) or not 1 <= max_turns <= 500:
++    if not isinstance(max_turns, int) or isinstance(max_turns, bool) or not 1 <= max_turns <= 500:
+         return "max_turns must be between 1 and 500"
+     if base.startswith("-"):
+         return "invalid base"

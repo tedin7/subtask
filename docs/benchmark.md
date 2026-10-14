@@ -1,0 +1,154 @@
+# Benchmark: does delegating through subtask pay off?
+
+Status, 2026-10-14: **live end-to-end benefits are NOT measured.** No budget is
+authorized for model runs, so every live arm is code that has never run. What
+exists: a frozen, validated corpus; a harness that runs end to end offline on a
+fake engine; a dry-run cost bound; and an offline overhead microbenchmark.
+Nothing below is evidence that subtask saves tokens, money or time.
+
+## 1. Corpus (frozen)
+
+`bench/corpus/manifest.json` (v1, `corpus_hash` recorded). Target: this
+repository at `3f731f60ebcacba35c0d92f6cc4b917b836517ce`; each run works on a
+private clone of that commit, so job branches never land in the real repo.
+
+24 tasks, 6 per kind, split 2 calibration + 4 test per kind:
+
+| kind | ids | acceptance |
+|---|---|---|
+| read | r1-r6 | reference answer, required facts as regexes, forbidden regexes; score = facts found / facts; success = 1.0 |
+| review | v1-v6 | same, seeded on real defects at 3f731f6: `_slim()` drops `step.title`; MAX_RUNNING check-then-act race; Kimi 2.1 rejects `-p` with `--auto`; serverInfo 0.2.0 vs package 0.1.0; redaction only `sk-ant`; codex write path `--dangerously-bypass-approvals-and-sandbox` |
+| code | c1-c6 | hidden pytest file copied in AFTER the worker ends, run with pytest; `must_not_modify` paths |
+| hard | h1-h6 | same; cross-process admission race, redaction formats, worktree rollback, reserve at admission, single-source version, ledger month boundary |
+
+`delegation_expected: false` on r2, r5, v4, c2, c5, c6 (one-line lookups or
+edits where the brief is as long as the work).
+
+Validation (`python bench/validate_corpus.py`, recorded per task in the
+manifest under `validated`, log in `bench/results/corpus-validation.jsonl`):
+
+- code/hard: hidden test FAILS on 3f731f6 and PASSES with the reference patch
+  (`bench/corpus/reference/*.patch`, never shown to workers); the patch keeps
+  the target's own suite green and respects `must_not_modify`. 12/12 pass.
+- read/review: reference answer scores 1.0, empty answer fails. 12/12 pass.
+- The target suite has timing tests that flake under load; failed tests are
+  re-run once and reported as `flaky`, a test failing twice is a regression.
+
+Changing a task or an acceptance file changes `corpus_hash`; `e2e.py` refuses
+to run until the corpus is validated again.
+
+## 2. Arms and ablations
+
+| arm | what runs |
+|---|---|
+| `parent` | parent client alone: `claude -p --output-format json` with `--disallowedTools Task Agent`, or `codex exec --json` |
+| `native` | parent with native sub-agents allowed |
+| `subtask-fixed:<engine>` | parent delegates through the subtask MCP server to one engine |
+| `subtask-auto` | same with `engine="auto"` |
+
+Ablations (subtask arms): `--batching on|off` (start_many + one wait vs start +
+status polling), `--summary summary|full` (`result` vs `result(full=true)`),
+`--progress on|off` (progress token; off sets the reporter intervals to 1e9 s),
+`--narrator on|off` (step() calls).
+
+## 3. Protocol
+
+- Frozen run config `bench/configs/*.json`: arms, repetitions, seed, split,
+  budgets, thresholds, ablations. The effective config (file + CLI overrides)
+  and the corpus hash are hashed; the hash is written to `lock.json` in the
+  result folder before any run. A changed hash on a folder that has results
+  is refused (tested: `bench/results/e2e-hash-refusal.txt`).
+- Splits: calibration tasks may be used to tune prompts and thresholds and are
+  never reported; claims come from `--split test` only.
+- Order: every (task, repetition) block contains every arm once, arm order
+  shuffled per block, blocks shuffled, all from the config seed.
+- Global caps: max total USD (each run's upper bound is reserved before it
+  starts, actual cost settled after; unknown cost is charged at the bound),
+  max wall time, max concurrency (retries run inside their slot). When a cap
+  is hit the remaining runs are recorded `aborted` (tested:
+  `smoke-fake-capabort`).
+- Per run record: arm, task, rep, versions (subtask, `claude --version`,
+  `codex --version`), timestamps, wall time, parent tokens (exact from the
+  client JSON usage, else null), parent USD, worker cost and attempts from
+  subtask's job files, round trips, replies, verified success, first-attempt
+  success, regressions (full target suite), merge conflicts between job
+  branches, must-not-modify violations. Unknown cost is null, never 0.
+- Analysis (`bench/analyze.py`): repetitions are averaged inside (task, arm);
+  the task is the unit. Paired per-task differences against the comparator,
+  bootstrap CI over tasks. Costs include failures and retries; tasks with an
+  unknown cost are dropped from that comparison and counted. Estimated parent
+  tokens (bytes/3, /4, /5) are shown as a sensitivity band, never mixed with
+  exact usage. Unfavourable point estimates and CIs are listed as negative
+  results. Output: markdown table + raw JSON.
+- Claim thresholds (config): at least 16 test tasks paired; success
+  non-inferiority margin 0.10; 95 % CI.
+
+## 4. Offline results (smoke, not evidence)
+
+`python bench/e2e.py --config bench/configs/smoke-fake.json --fake`: 64
+planned runs on the 16 test tasks; the 32 subtask runs ran through the real
+fastserver and the fake engine, the 32 parent/native runs are `not_run`.
+Scripted outcomes (70 % success, 20 % fail then success after one reply, 10 %
+fail) were recovered exactly: 21 success verified, 5 verified after a reply,
+6 failures not verified; 0 regressions, 0 must-not-modify violations, 0
+errors. Median 4 round trips, ~2 KB read by the scripted parent, 4 progress
+notifications per run. `subtask-auto` cannot route to the test engine; its
+would-be choice is recorded (`haiku-api` for read, `sonnet-api` for code and
+review, `opus-api` for hard) and the job runs on the fake engine. The
+differences between arms in `bench/results/e2e-smoke-fake-analysis.md` only
+reflect the scripted outcomes. `smoke-fake-ablations` (status polling, full
+results, no progress token, narrator calls) ran 4/4.
+
+## 5. Progress and hot-path overhead (offline)
+
+`python bench/progress_overhead.py` (25 s fake job, real fastserver, production
+intervals 2 s / 10 s), `bench/results/progress-overhead-*.json`:
+
+| | with progressToken | without |
+|---|---|---|
+| notifications during a 25 s wait | 5 | 0 |
+| server stdout bytes for the wait | 1293 | 453 |
+| server CPU for the whole job | 0.15-0.25 s | 0.12 s |
+| status latency, median / p95 | 1.9 / 3.0 ms | 2.0 / 7.1 ms |
+| start latency, median / p95 | 3.9 / 5.4 ms | 4.4 / 10.5 ms |
+
+Progress costs about 0.8 KB and up to ~0.1 s of server CPU per 25 s of
+waiting, and no measurable latency on fast calls (differences are within
+run-to-run noise; two runs gave CPU 0.15 and 0.25 s).
+
+| history (jobs / ledger rows) | admission.count, index present | rebuild from corrupt index | ledger.committed |
+|---|---|---|---|
+| 0 / 0 | 0.24 ms | 0.6 ms | 0.18 ms |
+| 1k / 2k | 0.18 ms | 33 ms | 7.1 ms |
+| 10k / 20k | 0.16 ms | 433 ms | 146 ms |
+
+`admission.count()` is O(active) as designed. `ledger.committed()` is
+O(rows in the month): ~146 ms at 20k rows, and it runs under the ledger lock
+on every admission of a paid job. Not a problem at today's volumes; a running
+total per month file would make it O(1).
+
+## 6. Running live (when a budget is authorized)
+
+1. `python bench/validate_corpus.py` (must report 24 ok).
+2. Bound: `python bench/e2e.py --config bench/configs/pilot.json --split test --dry-run | tail -1`.
+   Today: 192 runs (16 tasks x 4 arms x 3 reps), `usd_upper_bound` 576 $
+   (parent budget = task `max_usd` via `--max-budget-usd`, plus worker
+   `max_usd` x 2 for one retry on subtask arms). The config caps total spend at
+   250 $; runs past the cap are recorded `aborted`, so lower the repetitions or
+   arms if the full plan must complete.
+3. Calibration first (96 runs, bound 288 $, same 250 $ cap): `--split calibration --dry-run`, then
+   `python bench/e2e.py --config bench/configs/pilot.json --split calibration --live --budget-usd <B>`.
+4. Test: `python bench/e2e.py --config bench/configs/pilot.json --split test --live --budget-usd 250`.
+   `--live` is refused unless `--budget-usd` covers min(bound, cap).
+5. `python bench/analyze.py bench/results/e2e/pilot-test-live/runs.jsonl --json out.json --md out.md`.
+6. Ablations: one extra config per ablation (a new name, so the lock does not
+   mix hashes), e.g. `--batching off`.
+
+Codex as parent bills plan quota, not dollars: its parent cost is recorded as
+null and analysed as unknown, never as 0.
+
+## 7. Not run
+
+- Every live arm (`parent`, `native`, `subtask-fixed:<real engine>`, `subtask-auto` on real engines).
+- Any measurement of parent context saved, dollars or latency against doing the work directly.
+- Exact parent tokens: only the client JSON can give them, and no client ran.

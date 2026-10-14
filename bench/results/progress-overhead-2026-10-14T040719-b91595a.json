@@ -1,0 +1,148 @@
+{
+ "when": "2026-10-14T04:07:19",
+ "commit": "b91595a",
+ "job_s": 25.0,
+ "progress_settings": {
+  "min_interval_s": 2,
+  "heartbeat_s": 10
+ },
+ "long_job": [
+  {
+   "progress_token": true,
+   "wall_s": 26.1,
+   "wait_calls": 1,
+   "notifications": 5,
+   "stdout_bytes": 1293,
+   "server_cpu_s": 0.25
+  },
+  {
+   "progress_token": false,
+   "wall_s": 26.04,
+   "wait_calls": 1,
+   "notifications": 0,
+   "stdout_bytes": 453,
+   "server_cpu_s": 0.12
+  }
+ ],
+ "fast_calls": [
+  {
+   "progress_token": true,
+   "status": {
+    "n": 15,
+    "median_ms": 1.91,
+    "p95_ms": 3.0
+   },
+   "start": {
+    "n": 15,
+    "median_ms": 3.85,
+    "p95_ms": 5.36
+   }
+  },
+  {
+   "progress_token": false,
+   "status": {
+    "n": 15,
+    "median_ms": 1.96,
+    "p95_ms": 7.08
+   },
+   "start": {
+    "n": 15,
+    "median_ms": 4.41,
+    "p95_ms": 10.47
+   }
+  }
+ ],
+ "hot_paths": [
+  {
+   "history": 0,
+   "ledger_rows": 0,
+   "active_index": "present",
+   "admission.count": {
+    "n": 15,
+    "median_ms": 0.24,
+    "p95_ms": 0.53
+   },
+   "ledger.committed": {
+    "n": 15,
+    "median_ms": 0.18,
+    "p95_ms": 0.26
+   }
+  },
+  {
+   "history": 0,
+   "ledger_rows": 0,
+   "active_index": "corrupt",
+   "admission.count": {
+    "n": 1,
+    "median_ms": 0.63,
+    "p95_ms": 0.63
+   },
+   "ledger.committed": {
+    "n": 1,
+    "median_ms": 0.24,
+    "p95_ms": 0.24
+   }
+  },
+  {
+   "history": 1000,
+   "ledger_rows": 2000,
+   "active_index": "present",
+   "admission.count": {
+    "n": 15,
+    "median_ms": 0.18,
+    "p95_ms": 0.41
+   },
+   "ledger.committed": {
+    "n": 15,
+    "median_ms": 7.14,
+    "p95_ms": 32.3
+   }
+  },
+  {
+   "history": 1000,
+   "ledger_rows": 2000,
+   "active_index": "corrupt",
+   "admission.count": {
+    "n": 1,
+    "median_ms": 33.45,
+    "p95_ms": 33.45
+   },
+   "ledger.committed": {
+    "n": 1,
+    "median_ms": 9.13,
+    "p95_ms": 9.13
+   }
+  },
+  {
+   "history": 10000,
+   "ledger_rows": 20000,
+   "active_index": "present",
+   "admission.count": {
+    "n": 15,
+    "median_ms": 0.16,
+    "p95_ms": 0.45
+   },
+   "ledger.committed": {
+    "n": 15,
+    "median_ms": 146.19,
+    "p95_ms": 172.5
+   }
+  },
+  {
+   "history": 10000,
+   "ledger_rows": 20000,
+   "active_index": "corrupt",
+   "admission.count": {
+    "n": 1,
+    "median_ms": 433.2,
+    "p95_ms": 433.2
+   },
+   "ledger.committed": {
+    "n": 1,
+    "median_ms": 220.35,
+    "p95_ms": 220.35
+   }
+  }
+ ],
+ "note": "offline, fake engine; server CPU from /proc/<pid>/stat (utime+stime, all threads)"
+}
