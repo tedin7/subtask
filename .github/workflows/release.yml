@@ -1,0 +1,91 @@
+name: release
+
+# On a tag vX.Y.Z: test, build, publish to PyPI with Trusted Publishing (no token),
+# attach the artifacts to a GitHub release, and publish server.json to the MCP Registry
+# with GitHub OIDC. One-time setup on pypi.org: project subtask-mcp -> Publishing ->
+# add a GitHub publisher: owner tedin7, repository subtask, workflow release.yml,
+# environment pypi.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+      - name: Version matches the tag
+        run: |
+          v=$(python -c "import re;print(re.search(r'__version__ = \"(.+)\"', open('subtask/__init__.py').read()).group(1))")
+          test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME but package $v"; exit 1; }
+          grep -q "\"version\": \"$v\"" server.json || { echo "server.json is not $v"; exit 1; }
+      - name: Tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          uv venv && uv pip install -e '.[dev]' -c constraints.txt
+          uv run --no-sync pytest -q -p no:cacheprovider
+      - name: Build
+        run: uv build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - name: Release with the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## "v" " {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "subtask $v" --notes-file notes.md dist/*
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish server.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R modelcontextprotocol/registry --pattern 'mcp-publisher_linux_amd64.tar.gz'
+          tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+          # PyPI needs a moment before the registry can verify the new version
+          for i in 1 2 3 4 5 6; do curl -sf "https://pypi.org/pypi/subtask-mcp/${GITHUB_REF_NAME#v}/json" >/dev/null && break; sleep 20; done
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

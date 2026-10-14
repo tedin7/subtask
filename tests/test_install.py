@@ -46,7 +46,8 @@ def env():
 
 
 def cli(e: dict, *args: str, cwd: Path | None = None) -> tuple[int, dict]:
-    proc = subprocess.run([sys.executable, "-m", "subtask.cli", *args, "--json"], env=e,
+    # These tests cover the `claude mcp add` route; plugin mode has its own tests below.
+    proc = subprocess.run([sys.executable, "-m", "subtask.cli", *args, "--json", "--no-plugin"], env=e,
                           capture_output=True, text=True, timeout=120, cwd=cwd or e["HOME"], check=False)  # fmt: skip
     return proc.returncode, json.loads(proc.stdout)
 
@@ -364,3 +365,54 @@ def test_opencode_jsonc_is_read_and_never_rewritten_with_comments(tmp_path, monk
     assert (
         clients.strip_jsonc('{"a": "http://x//y", /* c */ "b": [1,],}') == '{"a": "http://x//y",  "b": [1]}'
     )
+
+
+def test_claude_plugin_mode_replaces_the_legacy_entry_and_skill(tmp_path, monkeypatch):
+    from subtask.install import claude_plugin, clients, ownership
+    from subtask.install.fileops import sha256
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    c = clients.CLIENTS["claude"]()
+    (tmp_path / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"subtask": {"command": "/x/bin/subtask-mcp", "args": []}}})
+    )
+    skill = c.skill_path("user")
+    skill.parent.mkdir(parents=True)
+    skill.write_bytes(b"old skill")
+    ownership.put(ownership.key("claude", "user", "skill", skill), {"sha": sha256(b"old skill")})
+    ran: list[list[str]] = []
+    listings = {
+        "marketplace": "Configured marketplaces:\n\n  ❯ claude-code-lsps\n",
+        "plugin": "Installed plugins:\n",
+    }
+    monkeypatch.setattr(
+        claude_plugin,
+        "_out",
+        lambda argv, timeout=60: listings["marketplace" if "marketplace" in argv else "plugin"],
+    )
+    monkeypatch.setattr(claude_plugin, "run_native", lambda argv: ran.append(argv))
+    monkeypatch.setattr(c, "exe", lambda: "claude")
+    plan = claude_plugin.install(c, apply=False, force=False)
+    assert ran == [] and skill.is_file()  # plan only
+    out = claude_plugin.install(c, apply=True, force=False)
+    assert out.status == "done", out.notes
+    assert ran == [
+        ["claude", "plugin", "marketplace", "add", "tedin7/subtask"],
+        ["claude", "plugin", "install", "subtask@subtask"],
+        ["claude", "mcp", "remove", "-s", "user", "subtask"],
+    ]
+    assert not skill.exists() and plan.steps[-1].startswith("remove:")
+
+
+def test_claude_plugin_mode_refuses_a_foreign_entry_without_force(tmp_path, monkeypatch):
+    from subtask.install import claude_plugin, clients
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    c = clients.CLIENTS["claude"]()
+    (tmp_path / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"subtask": {"command": "/other/tool"}}})
+    )
+    monkeypatch.setattr(claude_plugin, "_out", lambda argv, timeout=60: "")
+    monkeypatch.setattr(claude_plugin, "run_native", lambda argv: (_ for _ in ()).throw(AssertionError(argv)))
+    monkeypatch.setattr(c, "exe", lambda: "claude")
+    assert claude_plugin.install(c, apply=True, force=False).status == "collision"

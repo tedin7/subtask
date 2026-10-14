@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.4 - 2026-10-14
+
+### Changed
+- Claude Code: `subtask install --client claude` installs the plugin (server, skill, timing hook) and removes the older
+  `claude mcp add` entry and skill copy, so the server is registered once. `--no-plugin` keeps the old route.
+- Plugin launcher: the installed `subtask-mcp` when present, otherwise `uvx --from subtask-mcp==X` from PyPI.
+- Releases publish themselves from a tag: PyPI via Trusted Publishing, GitHub release, MCP Registry via OIDC.
+
+### Fixed
+- OpenCode 2 plugin API (default `{id, setup}`), verified loaded in 2.0.28.
+
 ## 0.2.3 - 2026-10-14
 
 ### Added

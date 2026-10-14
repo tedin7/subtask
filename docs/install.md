@@ -7,7 +7,7 @@ unrelated project: never run `pip install subtask`.
 
 | Channel | State |
 |---|---|
-| GitHub release | `v0.2.3` with wheel and sdist: https://github.com/tedin7/subtask/releases |
+| GitHub release | `v0.2.4` with wheel and sdist: https://github.com/tedin7/subtask/releases |
 | PyPI | `subtask-mcp` 0.2.3: `uv tool install subtask-mcp` |
 | MCP Registry | `io.github.tedin7/subtask` 0.2.3 |
 | Claude Code / Codex marketplaces | in this repository (`claude plugin marketplace add tedin7/subtask`); no official catalog listing |
@@ -20,7 +20,7 @@ sh scripts/install.sh --yes        # same, and applies it
 sh scripts/install.sh --install-uv # also installs uv with its official installer if missing
 ```
 
-It runs `uv tool install "git+https://github.com/tedin7/subtask@${SUBTASK_REF:-v0.2.3}"`
+It runs `uv tool install "git+https://github.com/tedin7/subtask@${SUBTASK_REF:-v0.2.4}"`
 (falls back to `pipx`), then `subtask install --client all`.
 
 ## Automatic install (any client)
@@ -44,25 +44,22 @@ otherwise it reports it and leaves it. A failed step rolls back every file of th
 
 ## Claude Code
 
-- Automatic: `subtask install --client claude --yes`
-- Manual: `claude mcp add -s user subtask -- "$(uv tool dir --bin)/subtask-mcp"` and
-  `mkdir -p ~/.claude/skills/subtask && cp subtask/skill/SKILL.md ~/.claude/skills/subtask/`
-- Plugin (server + skill + MCP timing hook), from a checkout or the GitHub repo:
-  ```sh
-  claude plugin marketplace add /path/to/subtask      # or: tedin7/subtask
-  claude plugin install subtask@subtask
-  ```
-  The plugin's `.mcp.json` starts the server with
-  `uvx --from git+https://github.com/tedin7/subtask@v0.2.3 subtask-mcp` (cold start: uv
-  downloads and builds on first use). It fails until the tag exists. If subtask is already
-  installed, prefer the installed command: `subtask install --client claude --yes` and
-  skip the plugin, or keep the plugin only for the skill and hook.
-  The hook prints `mcp <server>/<tool> <seconds> ok|error` after every MCP tool call; it
-  is active only while the plugin is installed and enabled.
-- Verify: `claude mcp list`, `subtask doctor --client claude`
-- Uninstall: `subtask uninstall --client claude --yes`, or `claude mcp remove -s user subtask`;
-  plugin: `claude plugin uninstall subtask@subtask`
-- Tool timeout: Claude's default (`MCP_TOOL_TIMEOUT`, about 28 h) is enough; nothing set.
+One route: the plugin. It brings the MCP server, the skill and a timing hook, so the
+server is registered once.
+
+- Automatic: `subtask install --client claude --yes`. It runs `claude plugin marketplace add
+  tedin7/subtask` (or `update`), `claude plugin install subtask@subtask`, and removes an older
+  `claude mcp add` entry and skill copy made by subtask (a foreign `subtask` entry is reported,
+  `--force` replaces it).
+- Manual: `claude plugin marketplace add tedin7/subtask && claude plugin install subtask@subtask`.
+- The plugin starts `subtask-mcp` if it is installed (fast), otherwise
+  `uvx --from subtask-mcp==0.2.4 subtask-mcp` from PyPI (first start downloads it).
+- The hook prints `mcp <server>/<tool> <seconds> ok|error` after every MCP tool call.
+- Verify: `subtask doctor --client claude` (looks for `plugin:subtask:subtask · Connected`
+  in `claude mcp list` and warns about a duplicate entry).
+- Uninstall: `subtask uninstall --client claude --yes` (= `claude plugin uninstall subtask@subtask`).
+- Old route, without the plugin: `subtask install --client claude --no-plugin --yes`
+  (`claude mcp add` + skill copy).
 
 ## Codex
 
