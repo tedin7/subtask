@@ -169,3 +169,33 @@ money, 3x the time and more parent context, with the same verified success. The 
 13-14 subtask calls instead of start + one wait: the skill was not loaded in `-p` mode, only the
 short server instructions. Real API spend: 0.147 $ (workers); parent costs are Claude subscription
 estimates.
+
+## Live rerun on 0.2.7 and hard tasks (2026-10-14, owner budget 20 USD)
+
+The "13-14 subtask calls" reported for the first mini run were a counting error: the server polls
+`core.wait` every second inside ONE `wait` tool call, and each poll was logged as a round trip
+(fixed in 0.2.8: one tool call, one count). The parent's real turns are below (`turns`, from
+Claude's own JSON).
+
+| task | arm | verified | parent turns | parent $ | worker $ | total $ | wall s | parent cache read tok |
+|---|---|---|---|---|---|---|---|---|
+| r3 (read) | parent | yes | 2 | 0.071 | - | 0.071 | 8.9 | 32,061 |
+| r3 (read) | subtask sonnet-api | yes | 6 | 0.088 | 0.089 | 0.177 | 34.6 | 129,670 |
+| c3 (code) | parent | yes | 4 | 0.073 | - | 0.073 | 11.7 | 78,901 |
+| c3 (code) | subtask sonnet-api | yes | 7 | 0.096 | 0.092 | 0.188 | 36.1 | 155,931 |
+| h2 (hard) | parent | **no** | 7 | 0.127 | - | 0.127 | 39.0 | 158,570 |
+| h2 (hard) | subtask sonnet-api | yes | 7 | 0.103 | 0.107 | 0.210 | 59.8 | 157,347 |
+| h3 (hard) | parent | yes | 5 | 0.090 | - | 0.090 | 18.5 | 106,754 |
+| h3 (hard) | subtask sonnet-api | yes | 7 | 0.098 | 0.073 | 0.171 | 34.7 | 156,245 |
+| h5 (hard) | parent | yes | 6 | 0.099 | - | 0.099 | 31.1 | 133,158 |
+| h5 (hard) | subtask sonnet-api | yes | 6 | 0.091 | 0.084 | 0.175 | 51.6 | 130,269 |
+
+Reading (5 tasks, 1 repetition each: indicative only, no statistics):
+- Small tasks: delegating adds about 3-4 parent turns (start, wait, checking the diff), and each turn
+  re-reads ~20k tokens of context: about 2.5x the money and 3x the time for the same result.
+- Hard tasks: the parent's context is about the same with or without subtask (it works its way up to
+  similar turn counts either way); money about 1.7x, time about 1.7x; verified success 3/3 with subtask,
+  2/3 for the parent alone (h2). One task is not evidence of a quality advantage.
+- Where delegation should win (parallel independent pieces, long noisy work) is not in this corpus yet:
+  every task here is a single short sequential job. That is the next benchmark to build.
+Real API spend for these runs: 0.53 USD (workers); parent costs are Claude subscription estimates.

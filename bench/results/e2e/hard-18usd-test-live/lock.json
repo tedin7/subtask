@@ -1,0 +1,47 @@
+{
+ "config_hash": "94ec86ffc7750a41d7dcd388ce4e1371d7051ba93806c7e9d91b7283e3b187a1",
+ "corpus_hash": "592aa4e779eaad7ecb472eb20536420cce7c670ef2452a51f448d7f508a02554",
+ "config": {
+  "name": "hard-18usd",
+  "description": "Owner budget 20 USD (2026-10-14): 3 hard tasks, parent alone vs subtask on sonnet-api. Where delegation should pay off, if anywhere.",
+  "parent_client": "claude",
+  "arms": [
+   "parent",
+   "subtask-fixed:sonnet-api"
+  ],
+  "split": "test",
+  "tasks": [
+   "h2",
+   "h3",
+   "h5"
+  ],
+  "repetitions": 1,
+  "seed": 20261014,
+  "max_retries": 0,
+  "ablations": {
+   "batching": "on",
+   "summary": "summary",
+   "progress": "on",
+   "narrator": "off"
+  },
+  "budgets": {
+   "max_total_usd": 18,
+   "max_wall_minutes": 150,
+   "max_concurrency": 1,
+   "parent_usd_factor": 0.5
+  },
+  "thresholds": {
+   "min_test_tasks_for_claim": 16,
+   "success_noninferiority_margin": 0.1,
+   "ci_level": 0.95,
+   "bootstrap_resamples": 2000
+  },
+  "fake": {
+   "worker_sleep_s": 0,
+   "outcomes": {
+    "success": 1.0
+   }
+  }
+ },
+ "locked": "2026-10-14T17:22:30"
+}

@@ -7,7 +7,7 @@
       "name": "subtask",
       "source": "./plugins/claude/subtask",
       "description": "subtask MCP server, its usage skill, and an MCP tool timing hook",
-      "version": "0.2.7"
+      "version": "0.2.8"
     }
   ]
 }

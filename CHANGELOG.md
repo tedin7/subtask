@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.8 - 2026-10-14
+
+### Fixed
+- A long `wait` counted one round trip per second of polling; now one tool call counts once.
+
+### Added
+- Live adapter suite `pytest -m live` (one tiny real job per engine, capped at 0.20 USD); the manual
+  `contract` workflow runs it on the API engine with the `ANTHROPIC_API_KEY` secret.
+- Portable Codex plugin manifest (root `plugin.json` + `mcp.json`), `.codex-plugin/` kept as fallback.
+- Live benchmark: rerun on 0.2.7 and three hard tasks (docs/benchmark.md).
+
 ## 0.2.7 - 2026-10-14
 
 ### Fixed
