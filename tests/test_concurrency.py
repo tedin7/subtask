@@ -260,3 +260,16 @@ def test_concurrent_stop_and_reply_do_not_double_start(home):
     assert sum(o.endswith("resumed") for o in outs) == 1, outs
     assert core.stop(job).endswith("stopped")
     assert core.stop(job).endswith("was not running")
+
+
+def test_missing_active_index_does_not_forget_running_jobs(home):
+    from subtask import admission, config, core
+
+    fake_cli(home, "kimi", "sleep 6")
+    first = core.start("x", engine="kimi", cwd=str(home)).split()[0]
+    second = core.start("x", engine="kimi", cwd=str(home)).split()[0]
+    (config.HOME / "active.json").unlink()  # lost or deleted index
+    assert "already running" in core.start("x", engine="kimi", cwd=str(home))
+    assert sorted(admission.active()) == sorted([first, second])
+    core.stop(first)
+    core.stop(second)

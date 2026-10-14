@@ -1,0 +1,60 @@
+{
+ "v": 1,
+ "id": "st-80ce58c6ad",
+ "engine": "kimi",
+ "model": null,
+ "kind": "code",
+ "state": "done",
+ "detail": "exit 0",
+ "policy": {
+  "level": "isolated",
+  "readonly": false,
+  "untrusted": false,
+  "effective": "isolated",
+  "why": "bubblewrap runner"
+ },
+ "verification": {
+  "command": "grep -qx hi hello.txt",
+  "exit_code": 0,
+  "head": "4d32c277aa7fd8c4eb0ed750df1c03cb48b00480",
+  "dirty_after": false,
+  "seconds": 0.0,
+  "output_tail": "",
+  "level": "independently_verified"
+ },
+ "git": {
+  "level": "runner_observed",
+  "base": "cd234f436e0c3ab8eb4e358701f63f24ab8fcfdc",
+  "head": "4d32c277aa7fd8c4eb0ed750df1c03cb48b00480",
+  "branch": "subtask/st-80ce58c6ad",
+  "commits": 1,
+  "changed_files": [
+   "hello.txt"
+  ],
+  "uncommitted": false
+ },
+ "commands": {
+  "level": "runner_observed",
+  "seen": 1,
+  "tests": []
+ },
+ "tests_status": "none_observed",
+ "summary": {
+  "level": "worker_reported",
+  "text": "## Summary\nCreated hello.txt containing \"hi\".\nRan git add and git commit -m \"add hello\".\nCommit 4d32c27 created on subtask/st-80ce58c6ad, 1 file changed.\nNo push performed.\nFiles touched: hello.txt\nTests run: none (not applicable)\nLeft: nothing"
+ },
+ "cost": {
+  "unit": "USD",
+  "observed": null,
+  "charged_total": 0.0,
+  "reserved": null,
+  "billing": "none",
+  "note": "charged = observed, or the whole reservation when the real cost is unknown"
+ },
+ "tokens": {
+  "level": "missing"
+ },
+ "attempts": 1,
+ "round_trips": 3,
+ "error": null
+}

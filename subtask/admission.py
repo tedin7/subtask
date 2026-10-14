@@ -41,7 +41,7 @@ def _read() -> dict[str, dict] | None:
     try:
         data = json.loads(_index().read_text())
     except FileNotFoundError:
-        return {}
+        return None  # missing is not "nothing running": rebuild from the job folders
     except (json.JSONDecodeError, OSError):
         return None  # corrupt: rebuild
     if not isinstance(data, dict) or not isinstance(data.get("jobs"), dict):
@@ -161,8 +161,8 @@ def release(job_id: str) -> None:
         entries = _read()
         if entries is None:
             entries = rebuild()
-        if entries.pop(job_id, None) is not None or not _index().exists():
-            _write(entries)
+        entries.pop(job_id, None)
+        _write(entries)
 
 
 def active() -> list[str]:

@@ -203,7 +203,9 @@ def _effective(adapter, wanted: dict):
 
 
 def _drop_slot_locked(job_id: str) -> None:
-    entries = admission._read() or {}
+    entries = admission._read()
+    if entries is None:
+        entries = admission.rebuild()
     entries.pop(job_id, None)
     admission._write(entries)
 

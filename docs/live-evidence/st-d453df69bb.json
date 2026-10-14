@@ -1,0 +1,63 @@
+{
+ "v": 1,
+ "id": "st-d453df69bb",
+ "engine": "opencode-go",
+ "model": "opencode-go/deepseek-v4.1-flash#max",
+ "kind": "code",
+ "state": "done",
+ "detail": "exit 0",
+ "policy": {
+  "level": "worktree",
+  "readonly": false,
+  "untrusted": false,
+  "effective": "worktree",
+  "why": "git worktree only, not a host sandbox"
+ },
+ "verification": {
+  "command": "grep -qx hi hello.txt",
+  "exit_code": 0,
+  "head": "17249033dfd0250fc64756d723b73cb2ac392b33",
+  "dirty_after": false,
+  "seconds": 0.0,
+  "output_tail": "",
+  "level": "independently_verified"
+ },
+ "git": {
+  "level": "runner_observed",
+  "base": "cd234f436e0c3ab8eb4e358701f63f24ab8fcfdc",
+  "head": "17249033dfd0250fc64756d723b73cb2ac392b33",
+  "branch": "subtask/st-d453df69bb",
+  "commits": 1,
+  "changed_files": [
+   "hello.txt"
+  ],
+  "uncommitted": false
+ },
+ "commands": {
+  "level": "runner_observed",
+  "seen": 2,
+  "tests": []
+ },
+ "tests_status": "none_observed",
+ "summary": {
+  "level": "worker_reported",
+  "text": "## Summary\n- Created hello.txt containing \"hi\"\n- Ran git add hello.txt and git commit -m \"add hello\"\n- Commit 1724903 on branch subtask/st-d453df69bb; tree clean\n- No push, no other changes\n- Nothing left to do"
+ },
+ "cost": {
+  "unit": "USD",
+  "observed": null,
+  "charged_total": 0.0,
+  "reserved": null,
+  "billing": "usd",
+  "note": "charged = observed, or the whole reservation when the real cost is unknown"
+ },
+ "tokens": {
+  "level": "runner_observed",
+  "input": 9105,
+  "output": 291,
+  "reasoning": 185
+ },
+ "attempts": 1,
+ "round_trips": 3,
+ "error": null
+}
