@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.11", experimental: false }
+          - { os: ubuntu-latest, python: "3.12", experimental: false }
+          - { os: ubuntu-latest, python: "3.13", experimental: false }
+          - { os: ubuntu-latest, python: "3.14", experimental: false }
+          # macOS is degraded: fcntl works, but there is no /proc and no bwrap.
+          - { os: macos-latest, python: "3.13", experimental: true }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          uv venv
+          uv pip install -e '.[dev]' -c constraints.txt
+      - name: Lint
+        # Known: 5 findings exist on the base commit (S110, SIM102, RUF015, RUF059).
+        # Non-blocking until they are fixed; then drop continue-on-error.
+        continue-on-error: true
+        run: uv run --no-sync ruff check subtask tests
+      # `ruff format --check` is left out on purpose: 10 files are not formatted yet.
+      - name: Tool schema drift
+        run: uv run --no-sync python -m subtask.server --dump-tools | diff - subtask/tools.json
+      - name: Install bubblewrap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Tests (no live engines)
+        run: uv run --no-sync pytest -q -p no:cacheprovider
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv build
+      - name: Install the wheel in a fresh venv
+        run: |
+          uv venv /tmp/wheelenv
+          uv pip install --python /tmp/wheelenv/bin/python dist/*.whl
+      - name: CLI smoke
+        run: /tmp/wheelenv/bin/subtask --help
+      - name: MCP initialize smoke
+        run: |
+          /tmp/wheelenv/bin/python - <<'PY'
+          import json, subprocess
+          p = subprocess.Popen(["/tmp/wheelenv/bin/subtask-mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+          req = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "ci", "version": "0"}}}
+          p.stdin.write(json.dumps(req) + "\n"); p.stdin.flush()
+          line = p.stdout.readline(); p.kill()
+          assert json.loads(line)["result"]["serverInfo"], line
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

@@ -1,0 +1,40 @@
+name: contract
+
+# Weekly, offline only: adapter contract tests run on recorded engine output.
+# Live engine checks need real CLIs, secrets and budget, so they are manual and not run here.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Also run live engine checks (needs repository secrets; skipped when absent)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: |
+          uv venv
+          uv pip install -e '.[dev]' -c constraints.txt
+      - run: uv run --no-sync pytest -q -p no:cacheprovider -m contract
+
+  live:
+    # Manual only. No live test suite ships yet; this job is a placeholder gate.
+    if: github.event_name == 'workflow_dispatch' && inputs.live
+    runs-on: ubuntu-latest
+    env:
+      ENGINE_SECRET: ${{ secrets.SUBTASK_LIVE_ENGINE_KEY }}
+    steps:
+      - name: Skip when no secret
+        if: env.ENGINE_SECRET == ''
+        run: echo "No SUBTASK_LIVE_ENGINE_KEY secret set; live checks skipped."
