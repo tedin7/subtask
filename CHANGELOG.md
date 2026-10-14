@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.10 - 2026-10-14
+
+### Fixed
+- Automatic step announcements said the user's request was missing when it sat before 400 KB of tool output
+  (seen live); the whole transcript is now streamed line by line (83 ms on a very large session).
+
 ## 0.2.9 - 2026-10-14
 
 ### Added

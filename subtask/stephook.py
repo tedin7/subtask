@@ -43,36 +43,40 @@ def _text(content: object) -> str:
     return ""
 
 
-def read_transcript(path: str | None, max_bytes: int = 400_000) -> tuple[str, list[str]]:
-    """(last user request, recent agent actions) from a Claude Code session transcript."""
+def read_transcript(path: str | None) -> tuple[str, list[str]]:
+    """(last user request, recent agent actions) from a Claude Code session transcript.
+
+    The whole file is streamed line by line: the request can sit before megabytes of tool output.
+    Lines that are not user prompts or tool calls are skipped without being parsed.
+    """
     if not path or not Path(path).is_file():
         return "", []
-    with open(path, "rb") as fh:
-        fh.seek(0, 2)
-        fh.seek(max(0, fh.tell() - max_bytes))
-        lines = fh.read().decode("utf-8", errors="replace").splitlines()
     request, actions = "", []
-    for line in lines:
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        msg = row.get("message") if isinstance(row, dict) else None
-        if not isinstance(msg, dict):
-            continue
-        content = msg.get("content")
-        if row.get("type") == "user":
-            is_tool_result = isinstance(content, list) and any(
-                isinstance(b, dict) and b.get("type") == "tool_result" for b in content
-            )
-            text = _text(content).strip()
-            if text and not is_tool_result and not text.startswith("<"):
-                request, actions = text, []  # a new request starts a new chain of actions
-        elif row.get("type") == "assistant" and isinstance(content, list):
-            for b in content:
-                if isinstance(b, dict) and b.get("type") == "tool_use":
-                    actions.append(_action(b.get("name", ""), b.get("input") or {}))
-    return request[-2000:], [a for a in actions if a][-12:]
+    with open(path, "rb") as fh:
+        for raw in fh:
+            if b'"tool_use"' not in raw and b'"type":"user"' not in raw and b'"type": "user"' not in raw:
+                continue
+            try:
+                row = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            msg = row.get("message") if isinstance(row, dict) else None
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content")
+            if row.get("type") == "user":
+                is_tool_result = isinstance(content, list) and any(
+                    isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+                )
+                text = _text(content).strip()
+                if text and not is_tool_result and not text.startswith("<"):
+                    request, actions = text, []  # a new request starts a new chain of actions
+            elif row.get("type") == "assistant" and isinstance(content, list):
+                for b in content:
+                    if isinstance(b, dict) and b.get("type") == "tool_use":
+                        actions.append(_action(b.get("name", ""), b.get("input") or {}))
+                        actions = actions[-12:]
+    return request[-2000:], [a for a in actions if a]
 
 
 def _action(name: str, args: dict) -> str:

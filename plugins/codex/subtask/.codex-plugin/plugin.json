@@ -1,6 +1,6 @@
 {
   "name": "subtask",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Delegate work to background sub-agents (Claude, Codex, Kimi, OpenCode) with a spend cap.",
   "author": { "name": "tedin7" },
   "homepage": "https://github.com/tedin7/subtask",

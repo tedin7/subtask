@@ -87,3 +87,27 @@ def test_cli_hook_exits_zero_and_prints_json_only(home, tmp_path):
     bad = subprocess.run([sys.executable, "-m", "subtask.cli", "narrate-hook"], input="not json",
                          capture_output=True, text=True, timeout=30, check=False)  # fmt: skip
     assert bad.returncode == 0
+
+
+def test_request_far_back_in_a_large_transcript_is_found(tmp_path):
+    """The request can sit before megabytes of tool output: the whole file is read, line by line."""
+    from subtask import stephook
+
+    rows = [{"type": "user", "message": {"role": "user", "content": "ripara i 10 errori"}}]
+    big = "x" * 50_000
+    rows += [
+        {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": big}]}}
+    ] * 40
+    rows += [
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "git commit -m x"}}]
+            },
+        }
+    ]
+    path = tmp_path / "big.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows))
+    assert path.stat().st_size > 1_000_000
+    request, actions = stephook.read_transcript(str(path))
+    assert request == "ripara i 10 errori" and actions == ["Bash git commit -m x"]
