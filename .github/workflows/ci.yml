@@ -68,7 +68,7 @@ jobs:
           line = p.stdout.readline(); p.kill()
           assert json.loads(line)["result"]["serverInfo"], line
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
