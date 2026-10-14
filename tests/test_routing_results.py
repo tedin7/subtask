@@ -196,16 +196,23 @@ def test_doctor_reports_without_spending(home):
 
 
 def test_active_index_makes_counting_independent_of_history(home):
+    """Counting must not grow with finished jobs: compare with an empty history, not a fixed time."""
     from subtask import admission, config, jobs
 
+    def per_call() -> float:
+        t = time.perf_counter()
+        for _ in range(20):
+            admission.count()
+        return (time.perf_counter() - t) / 20
+
+    admission.count()
+    empty = per_call()
     for i in range(300):
         folder = config.JOBS / f"st-old{i:05d}"
         folder.mkdir(parents=True)
         jobs.write_json(folder / "status.json", {"state": "done"})
-    t = time.perf_counter()
-    for _ in range(20):
-        admission.count()
-    assert (time.perf_counter() - t) / 20 < 0.02  # does not scan 300 finished jobs
+    full = per_call()
+    assert full < empty * 3 + 0.005, (empty, full)  # O(history) would be ~300x
 
 
 def test_narrator_context_includes_observed_activity_not_only_intentions(home):

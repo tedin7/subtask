@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.2.5 - 2026-10-14
+## 0.2.6 - 2026-10-14
+
+Same content as 0.2.5, which never reached PyPI: its release stopped on a timing test too strict for CI runners (now relative).
+
+## 0.2.5 - 2026-10-14 (not published)
 
 ### Fixed
 - A paid job started by an older server (no reservation) is now booked by the worker, so its spend counts against the cap.

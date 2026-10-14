@@ -4,13 +4,13 @@
   "title": "subtask",
   "description": "Background sub-agents for Claude Code, Codex, Kimi and OpenCode, over MCP, with a spend cap.",
   "repository": { "url": "https://github.com/tedin7/subtask", "source": "github" },
-  "version": "0.2.5",
+  "version": "0.2.6",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "subtask-mcp",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "runtimeHint": "uvx",
       "transport": { "type": "stdio" }
     }
