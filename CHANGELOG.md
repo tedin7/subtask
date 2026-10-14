@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 - 2026-10-14
+
+### Fixed
+- macOS: process start times read with `ps` (liveness was always unknown).
+- `policy=isolated` checks that bubblewrap can really create namespaces; refused otherwise.
+- OpenCode: `opencode.jsonc` is read; a config with comments is never rewritten.
+- CI collects only `tests/`.
+
 ## 0.2.1 - 2026-10-14
 
 ### Fixed
