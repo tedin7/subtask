@@ -43,14 +43,17 @@ def _read_reply(proc: subprocess.Popen[bytes], want_id: int, deadline: float) ->
 
 
 def handshake(
-    argv: list[str], env: dict[str, str] | None = None, timeout: float = HANDSHAKE_TIMEOUT_S
+    argv: list[str],
+    env: dict[str, str] | None = None,
+    timeout: float = HANDSHAKE_TIMEOUT_S,
+    cwd: str | None = None,
 ) -> dict:
     """Spawn the server, send initialize + tools/list, return server name and tool count."""
     deadline = time.monotonic() + timeout
     full_env = {**os.environ, **(env or {})}
     try:
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, env=full_env)  # fmt: skip
+                                stderr=subprocess.DEVNULL, env=full_env, cwd=cwd)  # fmt: skip
     except OSError as exc:
         return {"ok": False, "error": f"cannot start: {exc}"}
     assert proc.stdin is not None
