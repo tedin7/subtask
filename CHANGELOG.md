@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 - 2026-10-14
+
+### Fixed
+- Jobs failed with `UnicodeDecodeError` when the progress log's 4096-byte tail started inside a multi-byte character
+  (accents, `…`). The tail is read as bytes, the cut line is skipped, and a progress write can no longer fail a job.
+
 ## 0.2.6 - 2026-10-14
 
 Same content as 0.2.5, which never reached PyPI: its release stopped on a timing test too strict for CI runners (now relative).

@@ -4,7 +4,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "command -v subtask-mcp >/dev/null 2>&1 && exec subtask-mcp; exec uvx --from 'subtask-mcp==0.2.6' subtask-mcp"
+        "command -v subtask-mcp >/dev/null 2>&1 && exec subtask-mcp; exec uvx --from 'subtask-mcp==0.2.7' subtask-mcp"
       ]
     }
   }

@@ -180,3 +180,19 @@ def test_isolated_is_refused_when_bwrap_cannot_run(home, monkeypatch):
     monkeypatch.setattr(runners, "bwrap_available", lambda: False)
     out = core.start("x", engine="kimi", cwd=str(home), policy="isolated")
     assert "bubblewrap" in out and "started" not in out
+
+
+def test_progress_log_survives_multibyte_text_across_the_tail_boundary(home):
+    """Reading the last event seeks back 4096 bytes: that may land inside a UTF-8 character."""
+    import json
+
+    from subtask import events, jobs
+
+    folder = jobs.job_dir("st-utf8utf800")
+    folder.mkdir(parents=True)
+    line = json.dumps({"seq": 1, "msg": "…" * 50}, ensure_ascii=False) + "\n"  # "…" is 3 bytes
+    for pad in range(3):  # one of the three alignments puts byte -4096 inside a "…"
+        body = ("x" * pad + "\n" + line * 40).encode()
+        (folder / "progress.jsonl").write_bytes(body)
+        assert events.emit("st-utf8utf800", "tool", "dopo", source="adapter") is not None, pad
+        assert events.last("st-utf8utf800")["msg"] == "dopo"

@@ -36,10 +36,23 @@ def emit(
     source: str = "lifecycle",
     attempt: int | None = None,
 ) -> dict | None:
+    """Append one event. Never raises: progress must not be able to fail a job."""
+    try:
+        return _emit(job_id, phase, msg, state, source, attempt)
+    except (OSError, ValueError, TypeError) as exc:
+        import sys
+
+        print(f"subtask: progress event not written: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return None
+
+
+def _emit(
+    job_id: str, phase: str, msg: str, state: str | None, source: str, attempt: int | None
+) -> dict | None:
     path = _path(job_id)
     if not path.parent.is_dir():
         return None
-    with path.open("a+", encoding="utf-8") as fh:
+    with path.open("ab+") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         last = _last(fh)
         seq = int(last.get("seq", 0)) + 1
@@ -57,16 +70,21 @@ def emit(
             "source": source,
         }
         fh.seek(0, os.SEEK_END)
-        fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+        fh.write((json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8"))
         fh.flush()
     return event
 
 
 def _last(fh) -> dict:
+    """The last complete event, reading only the tail (bytes: the cut may split a UTF-8 character)."""
     fh.seek(0, os.SEEK_END)
     size = fh.tell()
     fh.seek(max(0, size - 4096))
-    lines = fh.read().splitlines()
+    data = fh.read()
+    text = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data
+    lines = text.splitlines()
+    if size > 4096 and lines:
+        lines = lines[1:]  # the first line is cut by the seek: never trust it
     for line in reversed(lines):
         try:
             return json.loads(line)
@@ -99,7 +117,7 @@ def read_since(job_id: str, offset: int = 0, limit: int = 500) -> tuple[list[dic
 def last(job_id: str) -> dict:
     path = _path(job_id)
     try:
-        with path.open("r", encoding="utf-8") as fh:
+        with path.open("rb") as fh:
             return _last(fh)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError):
         return {}
