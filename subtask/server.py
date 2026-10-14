@@ -16,7 +16,7 @@ from . import core
 mcp = FastMCP(
     "subtask",
     instructions=(
-        "Background sub-agents for parallel, long or review work; small edits do yourself. "
+        "Delegate long work to cheap engines; do small things yourself (measured: small tasks cost 2-3x). "
         "Pattern: ONE start_many([...]) with every job, then ONE wait(ids): it blocks and returns "
         "the summaries. Never poll status(); call wait() again only if it said 'still running'. "
         "result(id, full/evidence) only when the summary is not enough. "

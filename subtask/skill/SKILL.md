@@ -17,6 +17,12 @@ Delegate when one of these is true:
 - complex code needs a reviewer who did not write it (concurrency, saved data
   or migrations, security, money, logic shared by many callers).
 
+Measured (docs/benchmark.md): on small tasks delegating cost 2-3x the money
+and time for the same result; on long, many-step pieces given to cheaper
+engines (haiku-api, opencode-go, kimi) it cost 38-57 % less with about half
+the parent context, but took 2-8x longer. So: delegate long work to cheap
+engines; do small things yourself.
+
 Do NOT delegate when:
 - the change is small (a few lines, one file) or you already know the fix;
 - it needs what is in your context right now (a decision you just made with
