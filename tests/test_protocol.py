@@ -35,6 +35,7 @@ class Client:
         )
         self.lines: queue.Queue = queue.Queue()
         self.raw: list[str] = []
+        self.early: dict = {}  # replies that arrived while waiting for another id
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self) -> None:
@@ -49,6 +50,8 @@ class Client:
         self.proc.stdin.flush()
 
     def until(self, msg_id, timeout: float = 30) -> tuple[dict, list[tuple[float, dict]]]:
+        if msg_id in self.early:
+            return self.early.pop(msg_id), []
         seen = []
         end = time.monotonic() + timeout
         while time.monotonic() < end:
@@ -57,8 +60,10 @@ class Client:
             except queue.Empty:
                 continue
             seen.append((t, msg))
-            if msg.get("id") == msg_id and ("result" in msg or "error" in msg):
-                return msg, seen
+            if "result" in msg or "error" in msg:
+                if msg.get("id") == msg_id:
+                    return msg, seen
+                self.early[msg.get("id")] = msg
         raise AssertionError(f"no reply to {msg_id}; seen {seen}")
 
     def close(self) -> None:

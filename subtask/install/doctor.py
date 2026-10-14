@@ -78,7 +78,10 @@ def handshake(
     except (TimeoutError, ConnectionError, OSError) as exc:
         return {"ok": False, "error": str(exc)}
     finally:
-        proc.stdin.close()
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass  # the server already died: nothing to flush
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
