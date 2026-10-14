@@ -278,3 +278,38 @@ def test_wheel_installs_and_serves_outside_checkout():
         assert res["ok"] and res["tools"] >= 5, res
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def test_plugin_manifests_are_consistent():
+    import re
+
+    skill = (ROOT / "subtask/skill/SKILL.md").read_bytes()
+    for d in ("claude", "codex", "kimi"):
+        assert (ROOT / f"plugins/{d}/subtask/skills/subtask/SKILL.md").read_bytes() == skill, d
+    mkt = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+    assert (ROOT / mkt["plugins"][0]["source"] / ".claude-plugin/plugin.json").is_file()
+    hooks = json.loads((ROOT / "plugins/claude/subtask/hooks/hooks.json").read_text())["hooks"]
+    assert hooks["PostToolUse"][0]["matcher"] == "mcp__.*"
+    cmkt = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+    assert (ROOT / cmkt["plugins"][0]["source"]["path"] / ".codex-plugin/plugin.json").is_file()
+    kimi = json.loads((ROOT / "plugins/kimi/subtask/kimi.plugin.json").read_text())
+    known = {"name", "version", "description", "keywords", "author", "homepage", "license", "skills", "mcpServers"}
+    assert set(kimi) <= known and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", kimi["name"])
+    assert all(s.startswith("./") for s in kimi["skills"])
+    versions = {json.loads((ROOT / p).read_text())["version"] for p in (
+        "plugins/claude/subtask/.claude-plugin/plugin.json", "plugins/codex/subtask/.codex-plugin/plugin.json",
+        "plugins/kimi/subtask/kimi.plugin.json", "server.json")}  # fmt: skip
+    from subtask import __version__
+
+    assert versions == {__version__}
+
+
+def test_claude_hook_script_prints_system_message():
+    script = ROOT / "plugins/claude/subtask/hooks/mcp_timing.py"
+    event = {"hook_event_name": "PostToolUse", "tool_name": "mcp__subtask__wait", "duration_ms": 1500}
+    out = subprocess.run([sys.executable, "-I", str(script)], input=json.dumps(event), capture_output=True,
+                         text=True, check=True).stdout  # fmt: skip
+    assert json.loads(out) == {"systemMessage": "mcp subtask/wait 1.5s ok"}
+    out = subprocess.run([sys.executable, "-I", str(script)], input='{"tool_name": "Bash"}', capture_output=True,
+                         text=True, check=True).stdout  # fmt: skip
+    assert out == ""
