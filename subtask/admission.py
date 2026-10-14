@@ -6,7 +6,7 @@ job folders when the index is missing or corrupt. Entries:
 
   {"job": id, "phase": "admitting"|"running", "owner": identity, "worker": identity|None, "since": ts}
 
-Lock order: admission.lock, then the ledger lock, then a job lock. Nothing
+Lock order: a job lock, then admission.lock, then the ledger lock. Nothing
 slow (git, spawn, network) runs while admission.lock is held.
 """
 

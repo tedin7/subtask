@@ -1,133 +1,130 @@
 # subtask
 
-Background sub-agents for any coding agent: Claude Code, Codex, Kimi, OpenCode.
-One MCP server (and a twin CLI) to start work in parallel, wait for it with a
-single call, and read back a short summary. It picks the engine with the most
-free quota, and keeps a monthly spend cap on API credit.
+A local delegation scheduler for coding agents. One MCP server (and a twin
+CLI) lets Claude Code, Codex, Kimi Code or OpenCode start work in parallel,
+wait for it with a single call, and read back a short summary with evidence.
+It picks an engine that can take the job, books money and slots safely across
+processes, and says honestly how isolated each run is.
 
 ```
-start("Fix the flaky test in tests/test_sync.py", repo="/src/app")
-  -> st-4f2a91 started · sonnet-api · branch subtask/st-4f2a91
-wait(["st-4f2a91", "st-77c0de"])
-  -> st-4f2a91 done · sonnet-api · 6m · 0.412$ · success
-     st-77c0de done · haiku-api  · 2m · 0.018$ · success
-result("st-4f2a91")
-  -> ## Summary  (≤10 lines: the answer, files, commits, tests, what is left)
+start_many([{task: "Fix the flaky test in tests/test_sync.py", repo: "/src/app", verify: "pytest -q tests/test_sync.py"},
+            {task: "List every caller of parse_date()", kind: "read", readonly: true, cwd: "/src/app"}])
+  -> st-4f2a91 started · sonnet-api · branch subtask/st-4f2a91 · sandbox
+     st-77c0de started · haiku-api · /src/app · readonly
+wait(["st-4f2a91", "st-77c0de"])          # Claude Code shows: Subtask · 01:16 · 1/2 ended — st-4f2a91 running tests: pytest -q
+  -> st-4f2a91 done · sonnet-api · 6m · 0.412$ · verified · ...
+     ## Summary (≤10 lines: the answer, files, commits, tests, what is left)
+result("st-4f2a91", evidence=True)        # JSON: base/head, changed files, observed commands, verify exit code, cost
 ```
 
 ## Why
 
-- **Save the caller's context.** A sub-agent's search, test runs and dead ends
-  stay in its own session. The caller reads a summary of about ten lines.
-- **Fewer tokens spent waiting.** `wait()` blocks until all jobs end, so one
-  call replaces a loop of status checks.
-- **Use whatever has room.** `engine="auto"` reads the free quota of each
-  engine and picks the best fit for the kind of task.
-- **Safe by default.** Each writing job gets its own git worktree and branch.
-  It never pushes. Bash runs in the Claude Code OS sandbox.
-
-## When an agent should delegate
-
-Delegate:
-- two or more independent pieces that can run in parallel;
-- long or noisy work whose details you do not need (broad searches, audits,
-  refactors across many files, test-and-fix loops);
-- an independent reviewer for complex code (concurrency, persistence,
-  security, money, logic shared by many callers).
-
-Do it yourself when the change is small, needs your current context, or the
-brief would be longer than the work.
-
-These rules are also in the MCP server instructions, so every client reads them.
-
-## Engines
-
-| engine       | pays with                 | good for                     |
-|--------------|---------------------------|------------------------------|
-| `haiku-api`  | API key                   | reading, search, summaries   |
-| `sonnet-api` | API key                   | coding, review (default)     |
-| `opus-api`   | API key                   | hard design only             |
-| `dsh`        | DeepSeek key, same cap    | coding, reading (cheap)      |
-| `codex`      | Codex login               | coding                       |
-| `kimi`       | Kimi CLI login            | coding, reading              |
-| `opencode`   | OpenCode login            | coding, reading              |
-
-`engine="auto"` with `kind` = `read`, `code`, `review` or `hard` picks among the
-fitting engines the one with the most free quota (`engines()` shows it). There is
-no Claude Code subscription engine: inside Claude Code use its own Agent tool.
-Choosing never touches the network:
-
-- API engines: monthly cap minus the local ledger.
-- `dsh`: DeepSeek Harness SDK (`pip install deepseek-harness-sdk`); key in
-  `~/.config/deepseek/api-key` or `DEEPSEEK_API_KEY` in the env file; cost from
-  token usage at list price, charged to the monthly cap. No read-only mode.
-- `codex`: the `rate_limits` block in the newest Codex session file.
-- `kimi`, `opencode`: no quota data, treated as half free.
-
-The `*-api` engines run through the
-[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/python), with
-`max_budget_usd`, `effort`, the OS sandbox and the built-in prompt caching.
-The other engines run their own CLI in headless mode.
+- **Save the caller's context.** The worker's search, test runs and dead ends
+  stay in its own session; the caller reads about ten lines.
+- **Few round trips.** `start_many` + one `wait` replace a polling loop.
+- **Use whatever has room.** `engine="auto"` filters engines that can enforce
+  the requested isolation, are installed, fit the budget and have quota, then
+  ranks them with an explicit utility (`subtask routing explain`).
+- **Money is a primitive.** Paid engines reserve their budget before any work,
+  under one lock with the slot; every reservation is closed exactly once.
+- **Evidence, not claims.** `verify="..."` runs your check on the commit the
+  worker left; `result(evidence=True)` separates what subtask observed from
+  what the worker reported.
 
 ## Install
 
-```bash
-git clone https://github.com/<you>/subtask && cd subtask
-python3 -m venv .venv && .venv/bin/pip install -e .
-mkdir -p ~/.config/subtask
-printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > ~/.config/subtask/env
-chmod 600 ~/.config/subtask/env
+The distribution is `subtask-mcp` (the PyPI name `subtask` is an unrelated
+project). Full guide, per client, with native commands: [docs/install.md](docs/install.md).
+
+```sh
+uv tool install "git+https://github.com/tedin7/subtask@v0.2.0"   # or: uv tool install /path/to/checkout
+subtask install --client all          # prints the plan for every detected client
+subtask install --client all --yes    # applies it: MCP server + skill
+subtask doctor --client all           # checks app, config entry and a real handshake
 ```
 
-If your key is not scoped to a workspace, add `ANTHROPIC_WORKSPACE_ID=wrkspc_...`.
-The OS sandbox needs `bubblewrap` and `socat` on Linux.
+Claude Code plugin: `claude plugin marketplace add tedin7/subtask` then
+`claude plugin install subtask@subtask`. Codex: `codex plugin marketplace add tedin7/subtask`.
+API engines read `ANTHROPIC_API_KEY` from `~/.config/subtask/env` (chmod 600).
 
-### Register the MCP server
+## Engines
 
-Claude Code:
-```bash
-claude mcp add --scope user --transport stdio subtask -- /path/to/subtask/.venv/bin/subtask-mcp
-```
+| engine | pays with | read-only | isolation it can enforce |
+|---|---|---|---|
+| `haiku-api`, `sonnet-api`, `opus-api` | API key, monthly cap | yes | sandbox (Claude Code OS sandbox) |
+| `codex` | Codex login (quota from local session files) | yes | sandbox (`workspace-write`), isolated |
+| `opencode-go` | opencode-go subscription | no | worktree, isolated |
+| `kimi` | Kimi login | no | worktree, isolated |
+| `dsh` | DeepSeek key, same cap (`subtask-mcp[dsh]`) | no | worktree |
+| `opencode` | OpenCode default provider (manual only) | no | worktree, isolated |
 
-Codex (`~/.codex/config.toml`):
-```toml
-[mcp_servers.subtask]
-command = "/path/to/subtask/.venv/bin/subtask-mcp"
-tool_timeout_sec = 660
-```
+Add an engine without touching the core: an `EngineAdapter` registered under the
+`subtask.engines` entry point (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
-OpenCode:
-```bash
-opencode mcp add --global subtask -- /path/to/subtask/.venv/bin/subtask-mcp
-```
+## Isolation, honestly
 
-Any agent with a shell can use the CLI instead: `subtask --help`.
+- `worktree` (default): a git worktree and branch per writing job. It prevents
+  collisions; it is **not** a host sandbox.
+- `sandbox`: the engine's own sandbox. Same user: a guard rail.
+- `isolated`: bubblewrap. Read-only system, writable worktree and git dir only,
+  a private HOME with only the engine's own state. Needs `bwrap`.
+- `untrusted`: sandbox or stronger, and no network for the worker's commands.
 
-## Tools
+A job that cannot get the policy it asked for is refused, never downgraded.
+Output is redacted for common secret formats before it is saved or shown;
+redaction is a second layer, not a guarantee. See [SECURITY.md](SECURITY.md).
+
+## Tools (MCP) and CLI
 
 | tool | what it does |
-|------|--------------|
-| `start(task, engine="auto", kind="code", repo=None, cwd=None, base="HEAD", readonly=False, max_usd=None, max_turns=60, effort="medium")` | start a job, return its id |
-| `wait(ids, timeout=300, any=False)` | block until all (or the first) end, max 600 s |
-| `status(id=None)` | one line per job |
-| `result(id, full=False)` | the summary, branch and commit count |
-| `reply(id, message)` | continue a finished job in the same session |
-| `stop(id)` / `cleanup(id)` | stop a job / remove its worktree, keep the branch |
-| `spend()` / `engines()` | API spend this month / free quota per engine |
-| `step(title, path, how, decisions=[])` | Haiku announces the step in plain words from the repo state (repo read from an absolute `path` if `repo` is missing); the agent shows it to the user (~3 s, <$0.01); CLI `subtask steps` lists them |
+|---|---|
+| `start(task, kind, repo, cwd, files, readonly, engine, max_usd, effort, base, max_turns, policy, verify)` | start one job |
+| `start_many(tasks)` | start several; partial success is listed per item |
+| `wait(ids, timeout=300, any=False, since=None)` | block until they end; progress notifications while waiting; `since` cursor for clients without progress |
+| `status(id)` / `result(id, full, evidence)` | one line / summary or full text or JSON envelope |
+| `reply(id, message)` / `stop(id)` / `cleanup(id)` | continue / stop the work / remove a clean worktree (branch kept) |
+| `engines()` | capacity per engine with source, freshness and confidence, plus spend |
+| `step(title, path, how, decisions)` | an independent cheap model narrates the step from the repo's real state |
+
+CLI only: `subtask doctor`, `gc [--apply]`, `du`, `roi`, `routing explain|calibrate`,
+`watch ID...`, `install`, `uninstall`, and `--model`, `--no-sandbox`, `--untrusted` on start.
+
+## Progress in the chat
+
+| client | during a `wait` |
+|---|---|
+| Claude Code 2.1 (TUI) | live line under the tool call, verified |
+| OpenCode 2.0 | notifications received, not shown: use `wait(since=...)` |
+| Kimi Code 2.1 | client does not request progress: `wait(since=...)` |
+| Codex 0.162 | not yet verified (account at its usage limit) |
+
+Details and evidence: [docs/progress-matrix.md](docs/progress-matrix.md).
 
 ## Settings
 
 | variable | default |
-|----------|---------|
-| `SUBTASK_HOME` | `~/.local/share/subtask` (jobs, worktrees, ledger) |
+|---|---|
+| `SUBTASK_HOME` | `~/.local/share/subtask` (jobs, worktrees, ledger, telemetry) |
 | `SUBTASK_ENV_FILE` | `~/.config/subtask/env` |
-| `SUBTASK_MONTHLY_CAP_USD` | `180` |
-| `SUBTASK_DEFAULT_MAX_USD` | `2` |
-| `SUBTASK_MAX_RUNNING` | `4` |
+| `SUBTASK_MONTHLY_CAP_USD` / `SUBTASK_DEFAULT_MAX_USD` / `SUBTASK_MAX_JOB_USD` | `180` / `2` / `20` |
+| `SUBTASK_MAX_RUNNING` | `4` (global across all processes) |
+| `SUBTASK_ROUTING` | `~/.config/subtask/routing.json` (weights, `"mode": "legacy"`) |
+| `SUBTASK_JOB_RETENTION_DAYS` / `SUBTASK_TELEMETRY_DAYS` | `30` / `90` |
+| `SUBTASK_PROGRESS_MIN_S` / `SUBTASK_PROGRESS_HEARTBEAT_S` | `2` / `10` |
 
-Costs come from the SDK's estimate (`total_cost_usd`), not from billing. A
-stopped API job is charged its full budget, because its real cost is unknown.
+Costs of API engines come from the SDK's estimate; a run whose real cost is
+unknown is charged its whole reservation. Telemetry stays on this machine.
+
+## Platforms
+
+Linux: supported. macOS: degraded (no `/proc` start times for liveness, no
+bwrap: `isolated` refused). Windows: not supported (`fcntl`).
+
+## Documentation
+
+[Architecture](docs/architecture.md) · [Requirements matrix](docs/requirements.md) ·
+[Benefits and measurements](docs/benefits.md) · [Benchmark protocol](docs/benchmark.md) ·
+[Install](docs/install.md) · [Releasing](RELEASING.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 

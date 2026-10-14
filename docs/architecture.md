@@ -56,7 +56,8 @@ select -> admit(slot + money) -> prepare(worktree) -> spawn -> confirm -> run ->
 
 1. **select** (no lock): router filters engines that satisfy the policy, are
    installed, have budget; ranks the rest; returns a ranked list and the reason.
-2. **admit** (lock `admission.lock`, then `ledger` lock; never the reverse):
+2. **admit** (lock order everywhere: job lock, then `admission.lock`, then the
+   ledger lock; never the reverse; `reply` holds the job lock while admitting):
    rebuild the active index from entries whose owner or worker is not alive,
    count, refuse at `MAX_RUNNING`; for paid engines write `reserve` for
    `rid = job#1`. Release both locks. No git, network or spawn under the lock.
@@ -103,6 +104,8 @@ timestamp; stale data is labelled.
 ## 5. Security
 
 Policy levels, strongest last: `readonly` < `worktree` < `sandbox` < `isolated`.
+The default demand is `worktree`; each engine then runs at its strongest
+native level at or above it (Codex and the Claude engines run `sandbox`).
 A job asks for a minimum level; the router only keeps engines whose
 capabilities can enforce it, and the runner fails closed when enforcement is
 missing. No automatic downgrade. `untrusted=True` implies `sandbox` or
