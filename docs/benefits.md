@@ -47,6 +47,6 @@ month (monthly files bound it; before, one file for all months).
 | H2 | routing by quality/cost/latency beats fixed engines | utility + calibration | verified success per USD | — | — | **hypothesis**: priors only until >=10 verified outcomes per cell |
 | H3 | batching beats polling | start_many + wait | round trips per task | fake smoke: 4 per run | — | pipeline checked offline only |
 
-Costs of these changes: about 3,000 lines added (from ~2,400), 13 new modules,
+Costs of these changes: the package grew from 1,824 to 6,114 lines (installers included), 13 new core modules,
 +10 % fixed schema tokens, +6 ms on `engines()`, +10 ms on a cold pick, a
 second protocol era to maintain in the fast server.
