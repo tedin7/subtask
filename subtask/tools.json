@@ -3,7 +3,7 @@
  "tools": [
   {
    "name": "start",
-   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only.",
+   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -79,6 +79,24 @@
      "tier": {
       "default": "auto",
       "type": "string"
+     },
+     "invariants": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "allowed_paths": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "symbol_scope": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
      }
     },
     "required": [

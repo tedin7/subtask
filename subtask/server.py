@@ -46,13 +46,17 @@ def start(
     context_refs: list[str] | None = None,
     auto_repomap: bool = False,
     tier: str = "auto",
+    invariants: list[str] | None = None,
+    allowed_paths: list[str] | None = None,
+    symbol_scope: list[str] | None = None,
 ) -> str:
-    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only."""
+    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
         kind=kind, files=files, policy=policy, verify=verify,
         isolation=isolation, max_retries=max_retries, adversarial=adversarial,
         context_refs=context_refs, auto_repomap=auto_repomap, tier=tier,
+        invariants=invariants, allowed_paths=allowed_paths, symbol_scope=symbol_scope,
     )  # fmt: skip
 
 

@@ -97,6 +97,9 @@ def start(
     context_refs: list[str] | None = None,
     auto_repomap: bool = False,
     tier: str = "auto",
+    invariants: list[str] | None = None,
+    allowed_paths: list[str] | None = None,
+    symbol_scope: list[str] | None = None,
     _breaker: str | None = None,
     _group: str | None = None,
 ) -> str:
@@ -112,6 +115,13 @@ def start(
         return "max_retries needs verify"
     if tier not in TIERS:
         return "tier must be " + "|".join(TIERS)
+    from . import invariants as inv
+
+    problem = inv.validate(invariants, allowed_paths, symbol_scope)
+    if problem:
+        return problem
+    if (allowed_paths or symbol_scope) and not (repo or isolation == "worktree"):
+        return "allowed_paths and symbol_scope need a worktree (repo or isolation=worktree)"
     tier, budget_warning = _degrade(tier)
     if tier == "fast" and effort == "medium":
         effort = "low"
@@ -147,7 +157,8 @@ def start(
         breaker = broke.split()[0]
         built = start(
             task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
-            files, policy, verify, untrusted, progress, max_retries=max_retries, _breaker=breaker, _group=_group,
+            files, policy, verify, untrusted, progress, max_retries=max_retries, invariants=invariants,
+            allowed_paths=allowed_paths, symbol_scope=symbol_scope, _breaker=breaker, _group=_group,
         )  # fmt: skip
         if "already running" in built:  # no slot now: a group starts the Builder when one frees
             from . import groups
@@ -156,6 +167,7 @@ def start(
                 "task": task, "engine": engine, "repo": repo, "base": base, "max_usd": max_usd,
                 "max_turns": max_turns, "effort": effort, "model": model, "kind": kind, "files": files,
                 "policy": policy, "verify": verify, "untrusted": untrusted, "max_retries": max_retries,
+                "invariants": invariants, "allowed_paths": allowed_paths, "symbol_scope": symbol_scope,
                 "_breaker": breaker,
             }])  # fmt: skip
             return f"breaker {broke}\nbuilder queued in {queued.split()[0]}"
@@ -220,6 +232,10 @@ def start(
             except subprocess.CalledProcessError as exc:
                 raise _Compensate(f"worktree not created: {exc.stderr.strip()[:200]}") from exc
             task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
+            if allowed_paths:
+                task += "\nChange only these paths; anything else is reverted: " + ", ".join(allowed_paths)
+            if symbol_scope:
+                task += "\nIn those Python files change only these top-level symbols: " + ", ".join(symbol_scope)
         else:
             workdir = str(Path(cwd or repo or os.getcwd()).resolve())
             if not Path(workdir).is_dir():
@@ -243,6 +259,9 @@ def start(
             "policy": {**wanted, "effective": effective, "why": why},
             "verify": verify,
             "max_retries": max_retries,
+            "invariants": inv.DEFAULT if invariants is None else invariants,
+            "allowed_paths": allowed_paths,
+            "symbol_scope": symbol_scope,
             "breaker": _breaker,
             "port": _free_port() if branch else None,
             "group": _group,

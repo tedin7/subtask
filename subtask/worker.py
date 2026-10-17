@@ -86,6 +86,30 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
     }
 
 
+def _guard(job_id: str, spec: dict) -> tuple[dict | None, list[str]]:
+    """Invariants before the check. Returns (a failed verification or None, files reverted)."""
+    if not spec.get("branch"):
+        return None, []
+    from . import invariants
+
+    reverted = []
+    if spec.get("allowed_paths"):
+        reverted = invariants.revert_outside(spec["cwd"], spec["base"], spec["allowed_paths"])
+        if reverted:
+            events.emit(job_id, "verify", f"reverted outside allowed_paths: {', '.join(reverted[:5])}")
+    found = invariants.check(spec["cwd"], spec["base"], spec.get("invariants") or [], spec.get("symbol_scope"))
+    if not found:
+        return None, reverted
+    events.emit(job_id, "verify", f"invariant violated: {found[0][:80]}")
+    return {
+        "command": spec["verify"],
+        "exit_code": 1,
+        "invariants": found,
+        "output_tail": "Invariant violated, the check did not run:\n" + "\n".join(found),
+        "level": "invariants",
+    }, reverted
+
+
 def _git(cwd: str, *args: str) -> str:
     try:
         done = subprocess.run(
@@ -204,7 +228,10 @@ def main() -> int:
                     if adapter and level == "isolated"
                     else runners.direct
                 )
-                verification = _verify(spec, wrap, _isolated_vars(job_id, spec, folder, level))
+                verification, reverted = _guard(job_id, spec)
+                verification = verification or _verify(spec, wrap, _isolated_vars(job_id, spec, folder, level))
+                if reverted:
+                    verification["reverted"] = reverted
                 verification["score"] = verifier.score(verification)
                 if breaker:
                     verification["breaker"] = breaker

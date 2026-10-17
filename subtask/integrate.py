@@ -12,7 +12,7 @@ import secrets
 import shutil
 import subprocess
 
-from . import config, jobs, verifier
+from . import ast_merge, config, jobs, verifier
 
 ACTIONS = ("diff", "apply", "discard")
 MAX_DIFF = 30000
@@ -81,9 +81,13 @@ def _apply(found: list[tuple[str, dict]], auto_resolve: bool) -> str:
     if made.returncode != 0:
         return f"scratch worktree not created: {made.stderr.strip()[:200]}"
     try:
+        grafted, problem = _graft(repo, scratch, found)
+        if problem:
+            return f"conflict: {problem}. Nothing changed."
+        skip = [f":(exclude){p}" for p in grafted]
         conflicts = []
         for job_id, sp in found:
-            patch = _git(repo, "diff", "--binary", f"{sp['base']}..{sp['branch']}").stdout
+            patch = _git(repo, "diff", "--binary", f"{sp['base']}..{sp['branch']}", "--", ".", *skip).stdout
             if not patch.strip():
                 continue
             done = _git(scratch, "apply", "--3way", "--index", "-", stdin=patch)
@@ -107,7 +111,42 @@ def _apply(found: list[tuple[str, dict]], auto_resolve: bool) -> str:
     if done.returncode != 0:
         return f"not applied: the working tree changed under the patches ({done.stderr.strip()[:200]})"
     names = _git(repo, "diff", "--name-only").stdout.split()
-    return f"applied {len(found)} job(s) to {repo} (uncommitted): " + ", ".join(names[:15])
+    joined = f" · merged by symbol: {', '.join(grafted)}" if grafted else ""
+    return f"applied {len(found)} job(s) to {repo} (uncommitted): " + ", ".join(names[:15]) + joined
+
+
+def _files(repo: str, sp: dict) -> list[str]:
+    return _git(repo, "diff", "--name-only", "--no-renames", f"{sp['base']}..{sp['branch']}").stdout.split()
+
+
+def _graft(repo: str, scratch: str, found: list[tuple[str, dict]]) -> tuple[list[str], str | None]:
+    """Python files changed by two or more jobs that all declared symbol_scope: merged by symbol."""
+    touched: dict[str, list[tuple[str, dict]]] = {}
+    for job_id, sp in found:
+        for path in _files(repo, sp):
+            touched.setdefault(path, []).append((job_id, sp))
+    grafted = []
+    for path, owners in sorted(touched.items()):
+        if len(owners) < 2 or not path.endswith(".py"):
+            continue
+        if not all(any(s.startswith(path + "::") for s in sp.get("symbol_scope") or []) for _, sp in owners):
+            continue
+        base = _git(scratch, "show", f"HEAD:{path}")
+        if base.returncode != 0:
+            return [], f"{path} is new in several jobs"
+        versions = [
+            (j, _git(repo, "show", f"{sp['base']}:{path}").stdout, _git(repo, "show", f"{sp['branch']}:{path}").stdout)
+            for j, sp in owners
+        ]
+        try:
+            merged = ast_merge.graft(base.stdout, versions)
+        except ast_merge.Conflict as exc:
+            return [], f"{path}: {exc}"
+        with open(f"{scratch}/{path}", "w", encoding="utf-8") as fh:
+            fh.write(merged)
+        _git(scratch, "add", "--", path)
+        grafted.append(path)
+    return grafted, None
 
 
 def _conflict(found: list[tuple[str, dict]], conflicts: list[str], auto_resolve: bool) -> str:
