@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-10-17
+
+### Fixed
+- Breaker tests already in the worktree on a retry count as applied; results carry `cost_usd` and
+  `budget_remaining_usd`; `engine_stats.json` now steers the automatic engine choice per repository.
+
 ## 0.3.0 - 2026-10-17
 
 ### Added
