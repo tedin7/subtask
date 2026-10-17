@@ -81,7 +81,20 @@ def _installed(adapter) -> bool:
     return adapter.available()
 
 
-def rank(kind: str, max_usd: float | None, wanted: dict, free_only: bool = False) -> list[Option]:
+def _repo_rate(repo: str | None, engine: str) -> tuple[int, int]:
+    """(passed, verified) of `engine` on `repo` from engine_stats.json, written by every worker."""
+    if not repo:
+        return 0, 0
+    try:
+        row = json.loads((config.HOME / "engine_stats.json").read_text()).get(repo, {}).get(engine, {})
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return 0, 0
+    return int(row.get("passed") or 0), int(row.get("verified") or 0)
+
+
+def rank(
+    kind: str, max_usd: float | None, wanted: dict, free_only: bool = False, repo: str | None = None
+) -> list[Option]:
     cfg = settings()
     candidates = KINDS.get(kind, KINDS["code"])
     snap = capacity.snapshot()
@@ -125,7 +138,11 @@ def rank(kind: str, max_usd: float | None, wanted: dict, free_only: bool = False
             continue
         rows = history.get(name, [])
         verified = [r for r in rows if r.get("verified") is not None]
-        if len(verified) >= cfg["min_samples"]:
+        passed_here, verified_here = _repo_rate(repo, name)
+        if verified_here >= cfg["min_samples"]:  # this repository's own record wins over the global one
+            p_success = (passed_here + 1) / (verified_here + 2)
+            p_src = f"repo stats n={verified_here}"
+        elif len(verified) >= cfg["min_samples"]:
             wins = sum(1 for r in verified if r["verified"])
             p_success, p_src = (wins + 1) / (len(verified) + 2), f"learned n={len(verified)}"
         else:
@@ -156,11 +173,15 @@ def rank(kind: str, max_usd: float | None, wanted: dict, free_only: bool = False
 
 
 def pick(
-    kind: str = "code", max_usd: float | None = None, wanted: dict | None = None, free_only: bool = False
+    kind: str = "code",
+    max_usd: float | None = None,
+    wanted: dict | None = None,
+    free_only: bool = False,
+    repo: str | None = None,
 ) -> tuple[str, str, list[Option]]:
     """(engine, one-line reason, full ranking). engine '' when nothing is admissible."""
     wanted = wanted or policy.demand()
-    options = rank(kind, max_usd, wanted, free_only)
+    options = rank(kind, max_usd, wanted, free_only, repo)
     best = next((o for o in options if o.admissible), None)
     if best is None:
         why = "; ".join(f"{o.engine}: {', '.join(o.why)}" for o in options)

@@ -79,8 +79,8 @@ def prune(days: int = RETENTION_DAYS, dry_run: bool = True) -> list[Path]:
 def engine_stats(repo: str | None, engine: str, verified: bool | None, cost: float) -> None:
     """Per repo and engine: runs, verified passes and spend, in HOME/engine_stats.json (informational).
 
-    Routing itself learns from the telemetry rows above; this file is the
-    per-repository view of the same outcomes.
+    router.rank reads it back: with enough verified runs on this repository,
+    its pass rate replaces the global one for that engine.
     """
     import fcntl
 

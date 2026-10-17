@@ -171,7 +171,10 @@ def start(
     reason = ""
     _phase(progress, None, "admission", "choosing engine")
     if engine == "auto":
-        engine, reason, _ = router.pick(kind, max_usd, wanted, free_only=tier == "free_only")
+        engine, reason, _ = router.pick(
+            kind, max_usd, wanted, free_only=tier == "free_only",
+            repo=str(Path(repo or cwd or os.getcwd()).resolve()),
+        )  # fmt: skip
         if not engine:
             return reason
     elif tier == "free_only" and not budget_warning and registry.get(engine).capabilities.paid:
@@ -622,6 +625,8 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
         return json.dumps(ev.envelope(job_id), ensure_ascii=False, indent=1)
     text = (folder / "result.md").read_text() if (folder / "result.md").is_file() else ""
     head = _line(job_id)
+    left = config.MONTHLY_CAP_USD - ledger.committed()
+    head += f"\ncost_usd: {float(st.get('cost_usd') or 0):.4f} · budget_remaining_usd: {left:.2f}"
     if sp.get("branch") and sp.get("repo"):
         try:
             commits = _git(sp["repo"], "rev-list", "--count", f"{sp['base']}..{sp['branch']}")

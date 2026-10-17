@@ -146,4 +146,24 @@ def apply_breaker(spec: dict) -> dict:
         return {"job": breaker, "applied": False, "why": "breaker wrote no tests"}
     names = _git(spec["repo"], "diff", "--name-only", rng, "--", "tests", "test").stdout.split()
     done = _git(spec["cwd"], "apply", "--3way", "-", stdin=patch)
-    return {"job": breaker, "applied": done.returncode == 0, "files": names[:20], "why": done.stderr[:200]}
+    if done.returncode == 0:
+        return {"job": breaker, "applied": True, "files": names[:20], "why": ""}
+    # A retry finds the tests already there (staged or not): applied if they are still the Breaker's.
+    changed = [
+        n for n in names if not _same(spec["cwd"], n, _git(spec["repo"], "show", f"{bspec['branch']}:{n}"))
+    ]
+    if not changed:
+        return {"job": breaker, "applied": True, "files": names[:20], "why": "already in the worktree"}
+    return {"job": breaker, "applied": False, "files": names[:20],
+            "why": f"Breaker tests changed or missing: {', '.join(changed[:5])}"}  # fmt: skip
+
+
+def _same(cwd: str, name: str, shown: subprocess.CompletedProcess) -> bool:
+    path = os.path.join(cwd, name)
+    if shown.returncode != 0:
+        return not os.path.exists(path)  # deleted by the Breaker, absent here too
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read() == shown.stdout
+    except OSError:
+        return False
