@@ -123,6 +123,10 @@ def _call(name: str, args: dict, call: Call) -> str:
         return core.step(a["title"], a["path"], a["how"], a["decisions"], a["repo"])
     if name == "result":
         return core.result(args["id"], args.get("full", False), args.get("evidence", False))
+    if name == "integrate":
+        from . import integrate
+
+        return integrate.integrate(args["ids"], args.get("action", "apply"), args.get("auto_resolve", False))
     if name == "inspect":
         return core.inspect(args["id"], args.get("tail", 80), args.get("grep"))
     if name == "steer":
@@ -145,7 +149,7 @@ def _call(name: str, args: dict, call: Call) -> str:
 
 START_ARGS = {
     "task", "kind", "repo", "cwd", "files", "readonly", "engine", "max_usd", "effort",
-    "base", "max_turns", "policy", "verify",
+    "base", "max_turns", "policy", "verify", "isolation", "max_retries", "adversarial",
 }  # fmt: skip
 
 

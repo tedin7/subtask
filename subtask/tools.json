@@ -3,7 +3,7 @@
  "tools": [
   {
    "name": "start",
-   "description": "Start a job. kind: read|code|review|hard. repo: new worktree. policy: worktree|sandbox|isolated|untrusted. verify: check command.",
+   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -53,6 +53,18 @@
      },
      "verify": {
       "type": "string"
+     },
+     "isolation": {
+      "default": "shared",
+      "type": "string"
+     },
+     "max_retries": {
+      "default": 0,
+      "type": "integer"
+     },
+     "adversarial": {
+      "default": false,
+      "type": "boolean"
      }
     },
     "required": [
@@ -224,6 +236,32 @@
     },
     "required": [
      "id"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "integrate",
+   "description": "Worktree jobs back: diff|apply (uncommitted, all or nothing)|discard. auto_resolve: reconcile job on conflict.",
+   "inputSchema": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "action": {
+      "default": "apply",
+      "type": "string"
+     },
+     "auto_resolve": {
+      "default": false,
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ids"
     ],
     "type": "object"
    }

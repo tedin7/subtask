@@ -40,11 +40,15 @@ def start(
     max_turns: int = 60,
     policy: str | None = None,
     verify: str | None = None,
+    isolation: str = "shared",
+    max_retries: int = 0,
+    adversarial: bool = False,
 ) -> str:
-    """Start a job. kind: read|code|review|hard. repo: new worktree. policy: worktree|sandbox|isolated|untrusted. verify: check command."""
+    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
         kind=kind, files=files, policy=policy, verify=verify,
+        isolation=isolation, max_retries=max_retries, adversarial=adversarial,
     )  # fmt: skip
 
 
@@ -126,6 +130,14 @@ async def steer(id: str, action: str, instruction: str | None = None) -> str:
 def inspect(id: str, tail: int = 80, grep: str | None = None) -> str:
     """Raw log lines of a job, only when the summary is not enough."""
     return core.inspect(id, tail, grep)
+
+
+@mcp.tool(structured_output=False)
+async def integrate(ids: list[str], action: str = "apply", auto_resolve: bool = False) -> str:
+    """Worktree jobs back: diff|apply (uncommitted, all or nothing)|discard. auto_resolve: reconcile job on conflict."""
+    from . import integrate as ig
+
+    return await asyncio.to_thread(ig.integrate, ids, action, auto_resolve)
 
 
 @mcp.tool(structured_output=False)

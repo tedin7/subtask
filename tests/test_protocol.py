@@ -88,7 +88,7 @@ def test_modern_discover_and_stateless_calls(home):
     assert disc["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "subtask"
     c.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {"_meta": MODERN}})
     tools, _ = c.until(2)
-    assert tools["result"]["resultType"] == "complete" and len(tools["result"]["tools"]) == 12
+    assert tools["result"]["resultType"] == "complete" and len(tools["result"]["tools"]) == 13
     for result in (disc["result"], tools["result"]):
         assert result["ttlMs"] >= 0 and result["cacheScope"] == "public"
     c.send({"jsonrpc": "2.0", "id": 3, "method": "tools/call",

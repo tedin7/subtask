@@ -17,11 +17,13 @@ import sys
 import time
 from pathlib import Path
 
-from . import admission, config, events, jobs, ledger, policy, procid, router, telemetry, watchdog
+from . import admission, config, events, jobs, ledger, policy, procid, router, telemetry, verifier, watchdog
 from .engines import registry
 from .redact import redact
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
+ISOLATIONS = ("shared", "worktree")
+PORT_BASE = 18100
 KINDS = ("read", "code", "review", "hard")
 
 
@@ -87,11 +89,44 @@ def start(
     verify: str | None = None,
     untrusted: bool = False,
     progress=None,
+    isolation: str = "shared",
+    max_retries: int = 0,
+    adversarial: bool = False,
+    _breaker: str | None = None,
 ) -> str:
     budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
     problem = _validate(task, engine, kind, budget, max_turns, base, effort)
     if problem:
         return problem
+    if isolation not in ISOLATIONS:
+        return "isolation must be " + "|".join(ISOLATIONS)
+    if not isinstance(max_retries, int) or isinstance(max_retries, bool) or not 0 <= max_retries <= 5:
+        return "max_retries must be between 0 and 5"
+    if max_retries and not verify:
+        return "max_retries needs verify"
+    if isolation == "worktree" and not repo and not readonly:
+        repo = _repo_of(str(Path(cwd or os.getcwd()).resolve()))
+        if not repo:
+            return "isolation worktree needs a git repository"
+    if adversarial:
+        if not (repo and verify) or readonly:
+            return "adversarial needs a repo (worktree) and verify"
+        from .verifier import BREAKER_TASK
+
+        broke = start(
+            BREAKER_TASK + task, engine, repo, None, base, False, max_usd, max_turns, effort, model,
+            sandbox, kind="code", policy=policy, untrusted=untrusted, progress=progress,
+        )  # fmt: skip
+        if " started " not in broke:
+            return f"breaker not started: {broke}"
+        breaker = broke.split()[0]
+        built = start(
+            task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
+            files, policy, verify, untrusted, progress, max_retries=max_retries, _breaker=breaker,
+        )  # fmt: skip
+        if " started " not in built:
+            stop(breaker)
+        return f"breaker {broke}\nbuilder {built}"
     level = policy or (None if sandbox else "worktree")
     try:
         wanted = _policy_demand(readonly, level, untrusted)
@@ -166,6 +201,9 @@ def start(
             "readonly": readonly,
             "policy": {**wanted, "effective": effective, "why": why},
             "verify": verify,
+            "max_retries": max_retries,
+            "breaker": _breaker,
+            "port": _free_port() if branch else None,
             "model": model,
             "max_usd": budget,
             "max_turns": max_turns,
@@ -198,6 +236,15 @@ def start(
         progress.add(job_id)
     note = "" if effective in ("sandbox", "isolated", "readonly") else " · not a host sandbox"
     return f"{job_id} started · {engine} · {where} · {effective}{note}" + (f"\n({reason})" if reason else "")
+
+
+def _free_port() -> int:
+    """The lowest SUBTASK_PORT from PORT_BASE that no active job holds."""
+    used = {jobs.spec(j).get("port") for j in jobs.all_jobs() if jobs.status(j).get("state") in jobs.ACTIVE}
+    port = PORT_BASE
+    while port in used:
+        port += 1
+    return port
 
 
 class _Compensate(Exception):
@@ -370,7 +417,9 @@ def wait(
     while True:
         _deliver_hints(job_ids)
         statuses = {j: jobs.status(j) for j in job_ids}
-        ended = [j for j in job_ids if statuses[j].get("state") in jobs.FINAL]
+        ended = [
+            j for j in job_ids if statuses[j].get("state") in jobs.FINAL and not verifier.pending(statuses[j])
+        ]
         stalled = [j for j in job_ids if watchdog.check(j, statuses[j], stall_timeout)]
         if mode == "first_success":
             winner = next((j for j in ended if _succeeded(j)), None)
@@ -451,6 +500,7 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
         try:
             commits = _git(sp["repo"], "rev-list", "--count", f"{sp['base']}..{sp['branch']}")
             head += f"\nbranch {sp['branch']} · {commits} commits on top of {sp['base'][:9]}"
+            head += _changes(sp["repo"], f"{sp['base']}..{sp['branch']}")
         except subprocess.CalledProcessError:
             pass
     verification = st.get("verification")
@@ -459,8 +509,28 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
         head += (
             f"\nverify `{verification.get('command')}` → exit {code} on {str(verification.get('head'))[:9]}"
         )
+        tries = len([a for a in st.get("attempts") or [] if a.get("verification")])
+        if tries > 1:
+            head += f" · {tries} verified attempts"
+        if st.get("rolled_back_to"):
+            head += f" · rolled back to attempt {st['rolled_back_to']}"
+        if verification.get("breaker"):
+            b = verification["breaker"]
+            head += f"\nbreaker {b.get('job')}: " + (
+                "tests applied" if b.get("applied") else b.get("why", "")
+            )
     body = text if full else summary_of(text)
     return f"{head}\n{body}"
+
+
+def _changes(repo: str, rng: str) -> str:
+    """files_modified and diff_stat of a job's branch, one line each."""
+    names = _git(repo, "diff", "--name-only", rng).splitlines()
+    if not names:
+        return ""
+    stat = _git(repo, "diff", "--shortstat", rng)
+    shown = ", ".join(names[:10]) + (f" (+{len(names) - 10} more)" if len(names) > 10 else "")
+    return f"\nfiles_modified: {shown}\ndiff_stat: {stat}"
 
 
 def reply(job_id: str, message: str) -> str:

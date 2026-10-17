@@ -19,7 +19,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import admission, capacity, config, events, jobs, ledger, procid, runners, telemetry
+from . import admission, capacity, config, events, jobs, ledger, procid, runners, telemetry, verifier
 from . import redact as _redact
 from .engines import registry
 from .engines.claude_api import SUMMARY_RULE
@@ -55,11 +55,11 @@ class Started(threading.Event):
             jobs.update_status(self.job_id, spend_possible=True)
 
 
-def _verify(spec: dict, wrap) -> dict:
+def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
     """Run the parent's verify command in the worktree, on the head the worker left."""
     cwd = spec["cwd"]
     head = _git(cwd, "rev-parse", "HEAD")
-    argv, env = wrap(["sh", "-c", spec["verify"]], runners.minimal_env())
+    argv, env = wrap(["sh", "-c", spec["verify"]], runners.minimal_env(extra))
     t0 = time.monotonic()
     try:
         done = subprocess.run(
@@ -161,6 +161,7 @@ def main() -> int:
         env = runners.minimal_env(
             {k: os.environ[k] for k in os.environ if k.startswith(("XDG_", "KIMI_", "CODEX_HOME"))}
         )
+        env.update(_isolated_vars(job_id, spec, folder, level))
         if adapter.family not in ("api", "dsh") and not prompt.rstrip().endswith(SUMMARY_RULE.strip()):
             prompt += SUMMARY_RULE
         from .engines.base import RunContext
@@ -196,15 +197,22 @@ def main() -> int:
         if ok and spec.get("verify"):
             emit("verify", spec["verify"][:80])
             try:
+                breaker = verifier.apply_breaker(spec) if spec.get("breaker") else None
                 level = (spec.get("policy") or {}).get("effective")
                 wrap = (
                     runners.isolated(spec, adapter.family)
                     if adapter and level == "isolated"
                     else runners.direct
                 )
-                verification = _verify(spec, wrap)
+                verification = _verify(spec, wrap, _isolated_vars(job_id, spec, folder, level))
+                verification["score"] = verifier.score(verification)
+                if breaker:
+                    verification["breaker"] = breaker
+                if spec.get("branch"):
+                    verification["snapshot"] = verifier.snapshot(spec["cwd"])
             except Exception as exc:
                 verification = {"command": spec["verify"], "exit_code": None, "error": str(exc)[:200]}
+        failed_check = bool(verification) and verification.get("exit_code") != 0 and not stopped
         if outcome and outcome.quota_exhausted:
             from .engines.codex import parse_reset
 
@@ -236,6 +244,7 @@ def main() -> int:
             error=None if ok else _redact.redact((error or (outcome.result if outcome else ""))[:300]),
             attempts=attempts,
             verification=verification,
+            retry_pending=failed_check,
             proc=None,
             pid=None,
             liveness=None,
@@ -243,7 +252,33 @@ def main() -> int:
         admission.release(job_id)
         emit("end", f"{state}: {detail}", state=state)
         _telemetry(job_id, spec, record, previous, text, verification)
+        if failed_check:
+            verifier.after_failure(job_id, spec, attempts)
+        elif verification and verification.get("exit_code") == 0:
+            _learn(job_id, spec, attempts)
     return 0
+
+
+def _learn(job_id: str, spec: dict, attempts: list[dict]) -> None:
+    """A check that failed before and passes now leaves an engram for the repo."""
+    try:
+        from . import memory
+
+        memory.learn(spec, attempts)
+    except Exception as exc:  # memory never fails a job
+        print(f"subtask: engram not written: {exc}", file=sys.stderr)
+
+
+def _isolated_vars(job_id: str, spec: dict, folder: Path, level: str | None) -> dict[str, str]:
+    """Per-job variables so parallel jobs do not share a port or a temp folder."""
+    out = {"SUBTASK_ID": job_id}
+    if spec.get("port"):
+        out["SUBTASK_PORT"] = str(spec["port"])
+    if level != "isolated":  # bubblewrap mounts its own /tmp
+        tmp = folder / "tmp"
+        tmp.mkdir(exist_ok=True)
+        out["TMPDIR"] = str(tmp)
+    return out
 
 
 def _telemetry(
