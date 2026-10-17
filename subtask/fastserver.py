@@ -81,7 +81,14 @@ class Call:
 
 
 def _wait(
-    core, call: Call, ids: list[str], timeout: int = 300, any: bool = False, since: str | None = None
+    core,
+    call: Call,
+    ids: list[str],
+    timeout: int = 300,
+    any: bool = False,
+    since: str | None = None,
+    mode: str | None = None,
+    stall_timeout: float | None = None,
 ) -> str:
     deadline = time.monotonic() + max(1, min(int(timeout), 600))
     if call.reporter:
@@ -91,7 +98,7 @@ def _wait(
         call.reporter.poll()
     first = True
     while True:
-        out = core.wait(ids, 0, any, since=since, count=first)
+        out = core.wait(ids, 0, any, since=since, count=first, mode=mode, stall_timeout=stall_timeout)
         first = False
         if not out.startswith("still running") or time.monotonic() >= deadline:
             if call.reporter:
@@ -116,6 +123,10 @@ def _call(name: str, args: dict, call: Call) -> str:
         return core.step(a["title"], a["path"], a["how"], a["decisions"], a["repo"])
     if name == "result":
         return core.result(args["id"], args.get("full", False), args.get("evidence", False))
+    if name == "inspect":
+        return core.inspect(args["id"], args.get("tail", 80), args.get("grep"))
+    if name == "steer":
+        return core.steer(args["id"], args["action"], args.get("instruction"))
     if name == "engines":
         return core.engines() + "\n" + core.spend()
     with _core_lock:

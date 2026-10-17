@@ -82,7 +82,9 @@ redaction is a second layer, not a guarantee. See [SECURITY.md](SECURITY.md).
 |---|---|
 | `start(task, kind, repo, cwd, files, readonly, engine, max_usd, effort, base, max_turns, policy, verify)` | start one job |
 | `start_many(tasks)` | start several; partial success is listed per item |
-| `wait(ids, timeout=300, any=False, since=None)` | block until they end; progress notifications while waiting; `since` cursor for clients without progress |
+| `wait(ids, timeout=300, mode="all", since=None, stall_timeout=None)` | block until they end (`any`: the first; `first_success`: the first done and verified, the others are stopped); returns early on a stalled job; progress notifications while waiting; `since` cursor for clients without progress |
+| `steer(id, action, instruction=None)` | `hint` (queued, sent as a reply when the attempt ends), `abort`, `retry` (fresh job with the instruction) |
+| `inspect(id, tail=80, grep=None)` | raw log lines, only when the summary is not enough |
 | `status(id)` / `result(id, full, evidence)` | one line / summary or full text or JSON envelope |
 | `reply(id, message)` / `stop(id)` / `cleanup(id)` | continue / stop the work / remove a clean worktree (branch kept) |
 | `engines()` | capacity per engine with source, freshness and confidence, plus spend |

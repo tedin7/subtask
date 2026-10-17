@@ -358,7 +358,7 @@ def test_fast_server_speaks_json_rpc(st, tmp_path):
     )
     out = {r.get("id"): r for r in map(json.loads, proc.stdout.splitlines())}
     assert out[1]["result"]["protocolVersion"] == "2025-06-18"
-    assert len(out[2]["result"]["tools"]) == 10
+    assert len(out[2]["result"]["tools"]) == 12
     assert out[4]["result"]["isError"] is True
     assert out[5]["error"]["code"] == -32601
     assert out[None]["error"]["code"] == -32700

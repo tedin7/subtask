@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `wait(mode="all"|"any"|"first_success")`: `first_success` returns the first job that is done and passed
+  `verify`, and stops the others. `any=True` still works.
+- Stall watchdog: a running job with no event for `SUBTASK_STALL_S` (600 s) or `stall_timeout`, or with the
+  same error three times, is shown `STALLED` and ends `wait`. Nothing is killed.
+- `steer(id, hint|abort|retry, instruction)` and `inspect(id, tail, grep)` tools.
+
 ## 0.2.11 - 2026-10-14
 
 ### Fixed

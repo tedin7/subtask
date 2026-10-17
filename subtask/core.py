@@ -17,8 +17,9 @@ import sys
 import time
 from pathlib import Path
 
-from . import admission, config, events, jobs, ledger, policy, procid, router, telemetry
+from . import admission, config, events, jobs, ledger, policy, procid, router, telemetry, watchdog
 from .engines import registry
+from .redact import redact
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 KINDS = ("read", "code", "review", "hard")
@@ -253,6 +254,9 @@ def _line(job_id: str) -> str:
         or ""
     )
     live = " · liveness unknown" if st.get("liveness") == procid.UNKNOWN and not final else ""
+    stall = watchdog.check(job_id, st)
+    if stall:
+        live += f" · STALLED ({stall})"
     verified = ""
     if st.get("verification"):
         verified = " · verified" if st["verification"].get("exit_code") == 0 else " · verify FAILED"
@@ -305,6 +309,33 @@ def _delta(job_ids: list[str], since: str) -> tuple[str, str]:
     return "\n".join(lines), _encode(offsets)
 
 
+WAIT_MODES = ("all", "any", "first_success")
+
+
+def _succeeded(job_id: str) -> bool:
+    st = jobs.status(job_id)
+    verification = st.get("verification")
+    return st.get("state") == "done" and (not verification or verification.get("exit_code") == 0)
+
+
+def _deliver_hints(job_ids: list[str]) -> list[str]:
+    """Send hints queued by steer() to jobs whose attempt ended. Returns the resumed ids."""
+    resumed = []
+    for job_id in job_ids:
+        st = jobs.status(job_id)
+        if st.get("state") not in jobs.FINAL or not st.get("hints"):
+            continue
+        hints = list(st["hints"])
+        jobs.update_status(job_id, hints=[])
+        out = reply(job_id, "\n\n".join(hints))
+        if out.endswith("resumed"):
+            resumed.append(job_id)
+        else:
+            jobs.update_status(job_id, hint_error=out[:200])
+            events.emit(job_id, "steer", f"hint not delivered: {out[:120]}")
+    return resumed
+
+
 def wait(
     job_ids: list[str],
     timeout: int = 50,
@@ -312,28 +343,43 @@ def wait(
     results: bool = True,
     since: str | None = None,
     count: bool = True,
+    mode: str | None = None,
+    stall_timeout: float | None = None,
 ) -> str:
-    """Block until all jobs end (or the first one, with any_), or timeout.
+    """Block until the jobs end (mode all), the first ends (any), or one succeeds (first_success).
 
     One call replaces many status() polls, and with results=True it also
     returns each finished job's summary. `since` (a cursor from a previous
     wait, or "" to start) adds what changed meanwhile: the fallback for
-    clients that do not show progress notifications.
+    clients that do not show progress notifications. A stalled job (see
+    watchdog.py) ends the wait in every mode, so the caller can act on it.
+    first_success stops the other jobs once one is done and verified.
     """
     if not isinstance(job_ids, list) or not job_ids:
         return "no job ids"
+    mode = mode or ("any" if any_ else "all")
+    if mode not in WAIT_MODES:
+        return "mode must be " + "|".join(WAIT_MODES)
     unknown = [j for j in job_ids if not known(j)]
     if unknown:
         return "unknown job: " + ", ".join(unknown)
     if count:  # servers poll wait() every second inside one tool call: count that call once
         telemetry.count_call(job_ids, "wait")
     deadline = time.time() + max(0, min(timeout, 600))
+    winner = None
     while True:
-        ended = [j for j in job_ids if jobs.status(j).get("state") in jobs.FINAL]
-        if ended and (any_ or len(ended) == len(job_ids)):
+        _deliver_hints(job_ids)
+        statuses = {j: jobs.status(j) for j in job_ids}
+        ended = [j for j in job_ids if statuses[j].get("state") in jobs.FINAL]
+        stalled = [j for j in job_ids if watchdog.check(j, statuses[j], stall_timeout)]
+        if mode == "first_success":
+            winner = next((j for j in ended if _succeeded(j)), None)
+            if winner or len(ended) == len(job_ids):
+                break
+        elif ended and (mode == "any" or len(ended) == len(job_ids)):
             break
-        if time.time() >= deadline:
-            out = "still running:\n" + "\n".join(_line(j) for j in job_ids)
+        if stalled or time.time() >= deadline:
+            out = ("stalled:\n" if stalled else "still running:\n") + "\n".join(_line(j) for j in job_ids)
             if since is not None:
                 delta, cursor = _delta(job_ids, since)
                 out += (
@@ -341,9 +387,16 @@ def wait(
                 ) + f"\ncursor={cursor}"
             return out
         time.sleep(1)
+    if winner:
+        losers = [j for j in job_ids if j != winner and j not in ended]
+        for job_id in losers:
+            jobs.stop(job_id)
+        head = f"first success: {winner}" + (f" · stopped {', '.join(losers)}" if losers else "")
+        return head + "\n\n" + result(winner, _count=False)
     if not results:
         return "\n".join(_line(j) for j in job_ids)
-    return "\n\n".join(result(j, _count=False) if j in ended else _line(j) for j in job_ids)
+    out = "\n\n".join(result(j, _count=False) if j in ended else _line(j) for j in job_ids)
+    return ("no job succeeded\n\n" + out) if mode == "first_success" else out
 
 
 def start_many(tasks: list[dict], progress=None) -> str:
@@ -489,6 +542,75 @@ def stop(job_id: str) -> str:
         if state in jobs.FINAL
         else f"{job_id}: could not prove it stopped ({state})"
     )
+
+
+STEER_ACTIONS = ("hint", "abort", "retry")
+WORKTREE_NOTE = "\n\nYou work in an isolated git worktree on branch "
+
+
+def steer(job_id: str, action: str, instruction: str | None = None) -> str:
+    """Correct a job's course: hint (queued while it runs), abort, or retry from scratch."""
+    if not known(job_id):
+        return f"unknown job: {job_id}"
+    if action not in STEER_ACTIONS:
+        return "action must be " + "|".join(STEER_ACTIONS)
+    if action == "abort":
+        return stop(job_id)
+    instruction = (instruction or "").strip()
+    final = jobs.status(job_id).get("state") in jobs.FINAL
+    if action == "hint":
+        if not instruction:
+            return "hint needs an instruction"
+        if final:
+            return reply(job_id, instruction)
+        with jobs.job_lock(job_id):
+            data = jobs.read_json(jobs.job_dir(job_id) / "status.json")
+            hints = list(data.get("hints") or []) + [instruction]
+            jobs.update_status(job_id, locked=True, hints=hints)
+        events.emit(job_id, "steer", f"hint queued: {instruction[:80]}")
+        return f"{job_id}: hint queued; wait() sends it as a reply when this attempt ends"
+    if not final and not jobs.stop(job_id):
+        return f"{job_id}: could not prove it stopped, not retried"
+    sp = jobs.spec(job_id)
+    task = sp["task"].split(WORKTREE_NOTE)[0]
+    if instruction:
+        task += "\n\nRetry instructions: " + instruction
+    out = start(
+        task, sp["engine"], sp.get("repo"), None if sp.get("branch") else sp.get("cwd"),
+        sp.get("base") or "HEAD", bool(sp.get("readonly")), sp.get("max_usd"), int(sp.get("max_turns") or 60),
+        sp.get("effort") or "medium", model=sp.get("model"), kind=sp.get("kind") or "code",
+        policy=(sp.get("policy") or {}).get("level"), verify=sp.get("verify"),
+        untrusted=bool((sp.get("policy") or {}).get("untrusted")),
+    )  # fmt: skip
+    events.emit(job_id, "steer", f"retried: {out.split(chr(10))[0][:80]}")
+    return f"{job_id} retried as {out}"
+
+
+INSPECT_FILES = ("worker-stderr.log", "worker.log")
+
+
+def inspect(job_id: str, tail: int = 80, grep: str | None = None) -> str:
+    """Raw log lines of the latest attempt, on demand: engine output, stderr, worker log."""
+    if not known(job_id):
+        return f"unknown job: {job_id}"
+    if not isinstance(tail, int) or isinstance(tail, bool) or not 1 <= tail <= 1000:
+        return "tail must be between 1 and 1000"
+    folder = jobs.job_dir(job_id)
+    attempt = int(jobs.status(job_id).get("attempt") or 1)
+    names = [f"output-{attempt}.jsonl", *INSPECT_FILES]
+    lines: list[str] = []
+    for name in names:
+        path = folder / name
+        if path.is_file():
+            text = path.read_text(errors="replace")
+            lines += [f"{name}: {line}" for line in text.splitlines() if line.strip()]
+    if grep:
+        lines = [line for line in lines if grep.lower() in line.lower()]
+    telemetry.count_call([job_id], "inspect")
+    if not lines:
+        return f"{_line(job_id)}\nno log lines" + (f" matching {grep!r}" if grep else "")
+    body = "\n".join(line[:300] for line in lines[-tail:])
+    return f"{_line(job_id)}\n{redact(body)}"
 
 
 def cleanup(job_id: str) -> str:

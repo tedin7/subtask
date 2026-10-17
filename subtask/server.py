@@ -60,9 +60,11 @@ async def wait(
     timeout: int = 300,
     any: bool = False,
     since: str | None = None,
+    mode: str | None = None,
+    stall_timeout: float | None = None,
     ctx: Context | None = None,
 ) -> str:
-    """Wait for jobs (any=True: first); returns summaries. since: cursor for changes."""
+    """Wait for jobs; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     loop = asyncio.get_running_loop()
@@ -83,7 +85,7 @@ async def wait(
             reporter.poll()
             while pending:
                 await pending.pop(0)  # never after the result: progress stops at completion
-        out = core.wait(ids, 0, any, since=since, count=first)
+        out = core.wait(ids, 0, any, since=since, count=first, mode=mode, stall_timeout=stall_timeout)
         first = False
         if not out.startswith("still running") or loop.time() >= deadline:
             return out
@@ -112,6 +114,18 @@ def reply(id: str, message: str) -> str:
 async def stop(id: str) -> str:
     """Stop a job."""
     return await asyncio.to_thread(core.stop, id)
+
+
+@mcp.tool(structured_output=False)
+async def steer(id: str, action: str, instruction: str | None = None) -> str:
+    """action: hint (queued, sent when the attempt ends)|abort|retry (fresh job)."""
+    return await asyncio.to_thread(core.steer, id, action, instruction)
+
+
+@mcp.tool(structured_output=False)
+def inspect(id: str, tail: int = 80, grep: str | None = None) -> str:
+    """Raw log lines of a job, only when the summary is not enough."""
+    return core.inspect(id, tail, grep)
 
 
 @mcp.tool(structured_output=False)

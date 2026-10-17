@@ -82,7 +82,7 @@
   },
   {
    "name": "wait",
-   "description": "Wait for jobs (any=True: first); returns summaries. since: cursor for changes.",
+   "description": "Wait for jobs; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job.",
    "inputSchema": {
     "properties": {
      "ids": {
@@ -101,6 +101,12 @@
      },
      "since": {
       "type": "string"
+     },
+     "mode": {
+      "type": "string"
+     },
+     "stall_timeout": {
+      "type": "number"
      }
     },
     "required": [
@@ -169,6 +175,50 @@
    "inputSchema": {
     "properties": {
      "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "steer",
+   "description": "action: hint (queued, sent when the attempt ends)|abort|retry (fresh job).",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "action": {
+      "type": "string"
+     },
+     "instruction": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "action"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "inspect",
+   "description": "Raw log lines of a job, only when the summary is not enough.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "tail": {
+      "default": 80,
+      "type": "integer"
+     },
+     "grep": {
       "type": "string"
      }
     },
