@@ -906,3 +906,69 @@ def steps(limit: int = 10) -> str:
         return "no steps"
     rows = [json.loads(x) for x in STEPS.read_text(encoding="utf-8").splitlines()[-limit:] if x.strip()]
     return "\n".join(f"{r['ts']} {Path(r['repo']).name}: {r['title']} ({r['path']})" for r in rows)
+
+
+def board_data(limit: int = 10) -> dict:
+    """What a client panel shows: active groups with their queue, recent jobs, verify and budget."""
+    from . import groups
+
+    gdir = config.HOME / "groups"
+    group_rows = []
+    if gdir.is_dir():
+        for path in sorted(gdir.glob("grp-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+            g = groups.read(path.stem)
+            tasks = g.get("tasks", [])
+            group_rows.append({
+                "id": path.stem, "kind": g.get("kind"), "label": g.get("label"),
+                "summary": groups.summary(path.stem),
+                "tasks": [{"alias": t["alias"], "state": t["state"], "job": t.get("job"),
+                           "depends_on": t.get("depends_on", []), "why": t.get("why", "")} for t in tasks],
+            })  # fmt: skip
+    job_rows = []
+    for job_id in jobs.all_jobs()[:limit]:
+        st, sp = jobs.status(job_id), jobs.spec(job_id)
+        tried = [a for a in st.get("attempts") or [] if a.get("verification")]
+        v = st.get("verification") or {}
+        job_rows.append({
+            "id": job_id, "state": st.get("state"), "engine": sp.get("engine"), "group": sp.get("group"),
+            "cost_usd": st.get("cost_usd", 0), "attempt": st.get("attempt", 1),
+            "verify": None if not sp.get("verify") else ("passed" if v.get("exit_code") == 0
+                                                         else "failed" if v else "pending"),
+            "verify_attempts": len(tried), "max_retries": sp.get("max_retries", 0),
+            "retrying": verifier.pending(st), "rolled_back_to": st.get("rolled_back_to"),
+            "stalled": watchdog.check(job_id, st), "started": sp.get("created"),
+            "budget_warning": sp.get("budget_warning"),
+        })  # fmt: skip
+    spent = ledger.committed()
+    return {
+        "groups": group_rows,
+        "jobs": job_rows,
+        "budget": {"cap_usd": config.MONTHLY_CAP_USD, "committed_usd": round(spent, 2),
+                   "left_usd": round(config.MONTHLY_CAP_USD - spent, 2)},
+    }  # fmt: skip
+
+
+def board(limit: int = 10) -> str:
+    data = board_data(limit)
+    lines = []
+    for g in data["groups"]:
+        lines.append(f"{g['id']} {g['kind']} {g['label'] or ''} · {g['summary']}".replace("  ", " "))
+        for t in g["tasks"]:
+            deps = f" ← {', '.join(t['depends_on'])}" if t["depends_on"] else ""
+            lines.append(
+                f"  {t['alias']}: {t['job'] or t['state']}{deps}{' · ' + t['why'] if t['why'] else ''}"
+            )
+    for j in data["jobs"]:
+        bits = [j["state"], j["engine"] or "?"]
+        if j["verify"]:
+            bits.append(f"verify {j['verify']} ({j['verify_attempts']}/{j['max_retries'] + 1})")
+        if j["retrying"]:
+            bits.append("retrying")
+        if j["rolled_back_to"]:
+            bits.append(f"rolled back to {j['rolled_back_to']}")
+        if j["stalled"]:
+            bits.append(f"STALLED {j['stalled']}")
+        lines.append(f"{j['id']} " + " · ".join(bits))
+    b = data["budget"]
+    lines.append(f"budget: {b['left_usd']:.2f}$ left of {b['cap_usd']:.0f}$")
+    return "\n".join(lines)

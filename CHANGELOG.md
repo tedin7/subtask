@@ -8,6 +8,14 @@
 - Stall watchdog: a running job with no event for `SUBTASK_STALL_S` (600 s) or `stall_timeout`, or with the
   same error three times, is shown `STALLED` and ends `wait`. Nothing is killed.
 - `steer(id, hint|abort|retry, instruction)` and `inspect(id, tail, grep)` tools.
+- `isolation="worktree"` with per-job `SUBTASK_PORT`, `SUBTASK_ID`, `TMPDIR`; `files_modified` and `diff_stat`.
+- `max_retries` with rollback to the best attempt; `adversarial=True` (Builder + Breaker).
+- `integrate(ids, diff|apply|discard, auto_resolve)`.
+- `context_refs`, `auto_repomap`; DAG groups with `depends_on`; blackboard notes; `tier` and budget degradation
+  past 75% of the cap; `engine_stats.json`.
+- `map_reduce` tool; repository engrams (cap 50, LRU).
+- `subtask board`; the OpenCode plugin writes it to `opencode-board.txt` (DAG queue, verify retries, rollback,
+  jobs rejoined after a restart, budget).
 
 ## 0.2.11 - 2026-10-14
 

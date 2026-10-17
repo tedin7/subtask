@@ -80,8 +80,10 @@ redaction is a second layer, not a guarantee. See [SECURITY.md](SECURITY.md).
 
 | tool | what it does |
 |---|---|
-| `start(task, kind, repo, cwd, files, readonly, engine, max_usd, effort, base, max_turns, policy, verify)` | start one job |
-| `start_many(tasks)` | start several; partial success is listed per item |
+| `start(task, kind, repo, cwd, files, readonly, engine, max_usd, effort, base, max_turns, policy, verify, isolation, max_retries, adversarial, context_refs, auto_repomap, tier)` | start one job (see below) |
+| `start_many(tasks)` | start several; partial success is listed per item. Items with `id` and `depends_on` form a group (`grp-…`) run as a DAG without extra turns |
+| `integrate(ids, action="apply", auto_resolve=False)` | worktree jobs back: `diff`, `apply` (all or nothing, uncommitted), `discard`; `auto_resolve` starts a reconciliation job on conflict |
+| `map_reduce(glob_pattern, prompt_template, batch_size=5, concurrency=3, verify_cmd, isolation="worktree")` | one job per batch of files (`{{files}}` in the template), at most `concurrency` at a time; returns a group id |
 | `wait(ids, timeout=300, mode="all", since=None, stall_timeout=None)` | block until they end (`any`: the first; `first_success`: the first done and verified, the others are stopped); returns early on a stalled job; progress notifications while waiting; `since` cursor for clients without progress |
 | `steer(id, action, instruction=None)` | `hint` (queued, sent as a reply when the attempt ends), `abort`, `retry` (fresh job with the instruction) |
 | `inspect(id, tail=80, grep=None)` | raw log lines, only when the summary is not enough |
@@ -90,7 +92,24 @@ redaction is a second layer, not a guarantee. See [SECURITY.md](SECURITY.md).
 | `engines()` | capacity per engine with source, freshness and confidence, plus spend |
 | `step(title, path, how, decisions)` | an independent cheap model narrates the step from the repo's real state |
 
-CLI only: `subtask doctor`, `gc [--apply]`, `du`, `roi`, `routing explain|calibrate`,
+Options of `start`:
+
+- `isolation="worktree"`: own worktree and branch (like `repo=`), plus `SUBTASK_PORT` (from 18100),
+  `SUBTASK_ID` and a private `TMPDIR`. The result lists `files_modified` and `diff_stat`.
+- `verify` + `max_retries`: a failed check resumes the job with the output; when every retry fails, a
+  worktree goes back to its best attempt (scored from "N passed / N failed").
+- `adversarial=True`: a Breaker job writes edge-case tests from the spec only; they are copied into the
+  Builder's worktree and run with `verify`.
+- `context_refs`: `file:PATH[:A-B]`, `git:diff[:REF]`, `subtask:ID:summary|diff`, resolved before start.
+  `auto_repomap=True` adds tracked files with their top-level symbols (cached per HEAD).
+- `tier`: `fast` (effort low), `deep` (effort high, kind hard), `free_only`. Past 75% of the monthly cap,
+  `auto` and `balanced` go to free engines and the reply carries `budget_warning`.
+
+Memory: when a check fails and a retry fixes it, subtask stores a short lesson for that repository in
+`$SUBTASK_HOME/engrams/` (at most 50, least recently used dropped). Jobs on the same paths get the top three.
+Groups have a blackboard file for shared notes; new notes show in `wait(since=...)`.
+
+CLI only: `subtask board [--json]` (the view the OpenCode plugin renders), `subtask doctor`, `gc [--apply]`, `du`, `roi`, `routing explain|calibrate`,
 `watch ID...`, `install`, `uninstall`, and `--model`, `--no-sandbox`, `--untrusted` on start.
 
 ## Progress in the chat

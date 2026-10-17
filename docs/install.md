@@ -93,7 +93,7 @@ server is registered once.
 - Automatic: `subtask install --client opencode --yes`
 - Manual: `opencode mcp add subtask --global -- "$(uv tool dir --bin)/subtask-mcp"`;
   skill to `~/.config/opencode/skills/subtask/`.
-- Optional timing log: copy `plugins/opencode/subtask-progress.ts` to
+- Optional timing log and board (`opencode-board.txt`): copy `plugins/opencode/subtask-progress.ts` to
   `~/.config/opencode/plugins/` (logs `mcp subtask_<tool> <seconds>` via the app log).
 - Verify: `subtask doctor --client opencode`. `opencode mcp list` starts OpenCode's managed
   service and fails if its port is taken by another running OpenCode.

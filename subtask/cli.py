@@ -3,6 +3,8 @@
 subtask start "brief" [--engine auto] [--kind code] [--repo PATH] [--readonly] [--max-usd 2]
 subtask wait ID [ID...] [--timeout 50]
 subtask status [ID] | result ID [--full|--evidence] | reply ID "msg" | stop ID | cleanup ID | spend | engines
+subtask steer ID hint|abort|retry ["text"] | inspect ID [--tail N] [--grep W] | board [--json]
+subtask integrate ID... [--action diff|apply|discard] [--auto-resolve] | map-reduce GLOB "tpl {{files}}"
 subtask install|uninstall --client claude|codex|kimi|opencode|all [--yes]
 subtask doctor [--json] [--client X] | gc [--days 30] [--apply] | du | roi | routing explain|calibrate | watch ID...
 
@@ -48,6 +50,7 @@ def main() -> int:
     w.add_argument("--no-results", action="store_true")
     w.add_argument("--any", action="store_true", help="return when the first job ends")
     w.add_argument("--since", help="cursor from a previous wait ('' to start): adds what changed")
+    w.add_argument("--mode", choices=["all", "any", "first_success"])
     st = sub.add_parser("status")
     st.add_argument("id", nargs="?")
     r = sub.add_parser("result")
@@ -81,6 +84,30 @@ def main() -> int:
     ro.add_argument("--kind", default="code", choices=["read", "code", "review", "hard"])
     ro.add_argument("--policy", choices=["worktree", "sandbox", "isolated", "untrusted"])
     ro.add_argument("--readonly", action="store_true")
+    bo = sub.add_parser("board", help="groups, jobs, verify and budget in one view (the OpenCode panel)")
+    bo.add_argument("--json", action="store_true")
+    bo.add_argument("--limit", type=int, default=10)
+    se = sub.add_parser("steer")
+    se.add_argument("id")
+    se.add_argument("action", choices=["hint", "abort", "retry"])
+    se.add_argument("instruction", nargs="?")
+    ins = sub.add_parser("inspect")
+    ins.add_argument("id")
+    ins.add_argument("--tail", type=int, default=80)
+    ins.add_argument("--grep")
+    ig = sub.add_parser("integrate")
+    ig.add_argument("ids", nargs="+")
+    ig.add_argument("--action", default="apply", choices=["diff", "apply", "discard"])
+    ig.add_argument("--auto-resolve", action="store_true")
+    mr = sub.add_parser("map-reduce")
+    mr.add_argument("glob")
+    mr.add_argument("template", help="prompt with {{files}}")
+    mr.add_argument("--batch-size", type=int, default=5)
+    mr.add_argument("--concurrency", type=int, default=3)
+    mr.add_argument("--verify")
+    mr.add_argument("--isolation", default="worktree", choices=["shared", "worktree"])
+    mr.add_argument("--repo")
+    mr.add_argument("--engine", default="auto")
     wa = sub.add_parser("watch", help="terminal view of job progress (diagnostic, not the chat)")
     wa.add_argument("ids", nargs="+")
     wa.add_argument("--interval", type=float, default=2.0)
@@ -114,7 +141,7 @@ def main() -> int:
             untrusted=a.untrusted,
         )
     elif a.cmd == "wait":
-        out = core.wait(a.ids, a.timeout, a.any, not a.no_results, since=a.since)
+        out = core.wait(a.ids, a.timeout, a.any, not a.no_results, since=a.since, mode=a.mode)
     elif a.cmd == "status":
         out = core.status(a.id)
     elif a.cmd == "result":
@@ -152,6 +179,23 @@ def main() -> int:
 
         wanted = policy.demand(a.readonly, a.policy)
         out = router.explain(a.kind, None, wanted) if a.action == "explain" else router.calibrate()
+    elif a.cmd == "board":
+        import json
+
+        out = json.dumps(core.board_data(a.limit)) if a.json else core.board(a.limit)
+    elif a.cmd == "steer":
+        out = core.steer(a.id, a.action, a.instruction)
+    elif a.cmd == "inspect":
+        out = core.inspect(a.id, a.tail, a.grep)
+    elif a.cmd == "integrate":
+        from .integrate import integrate
+
+        out = integrate(a.ids, a.action, a.auto_resolve)
+    elif a.cmd == "map-reduce":
+        from .map_reduce import map_reduce
+
+        out = map_reduce(a.glob, a.template, a.batch_size, a.concurrency, a.verify, a.isolation, a.repo,
+                         None, a.engine)  # fmt: skip
     elif a.cmd == "watch":
         return _watch(a.ids, a.interval)
     else:
