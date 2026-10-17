@@ -12,7 +12,7 @@ import secrets
 import shutil
 import subprocess
 
-from . import config, jobs
+from . import config, jobs, verifier
 
 ACTIONS = ("diff", "apply", "discard")
 MAX_DIFF = 30000
@@ -39,8 +39,9 @@ def _jobs(ids: list[str]) -> tuple[list[tuple[str, dict]], str | None]:
     for job_id in ids:
         if not known(job_id):
             return [], f"unknown job: {job_id}"
-        if jobs.status(job_id).get("state") not in jobs.FINAL:
-            return [], f"{job_id} is still running"
+        st = jobs.status(job_id)
+        if st.get("state") not in jobs.FINAL or verifier.pending(st):
+            return [], f"{job_id} is still running (or waiting for its retry)"
         sp = jobs.spec(job_id)
         if not (sp.get("branch") and sp.get("repo")):
             return [], f"{job_id} has no worktree branch"
@@ -99,7 +100,10 @@ def _apply(found: list[tuple[str, dict]], auto_resolve: bool) -> str:
         shutil.rmtree(scratch, ignore_errors=True)
     if not combined.strip():
         return "nothing to apply"
-    done = _git(repo, "apply", "--3way", "-", stdin=combined)
+    # Check first, then a plain apply: on any clash the caller's tree and index stay as they were.
+    done = _git(repo, "apply", "--check", "-", stdin=combined)
+    if done.returncode == 0:
+        done = _git(repo, "apply", "-", stdin=combined)
     if done.returncode != 0:
         return f"not applied: the working tree changed under the patches ({done.stderr.strip()[:200]})"
     names = _git(repo, "diff", "--name-only").stdout.split()

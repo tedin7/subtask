@@ -149,6 +149,16 @@ def start(
             task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
             files, policy, verify, untrusted, progress, max_retries=max_retries, _breaker=breaker, _group=_group,
         )  # fmt: skip
+        if "already running" in built:  # no slot now: a group starts the Builder when one frees
+            from . import groups
+
+            queued = groups.create([{
+                "task": task, "engine": engine, "repo": repo, "base": base, "max_usd": max_usd,
+                "max_turns": max_turns, "effort": effort, "model": model, "kind": kind, "files": files,
+                "policy": policy, "verify": verify, "untrusted": untrusted, "max_retries": max_retries,
+                "_breaker": breaker,
+            }])  # fmt: skip
+            return f"breaker {broke}\nbuilder queued in {queued.split()[0]}"
         if " started " not in built:
             stop(breaker)
         return f"breaker {broke}\nbuilder {built}"
@@ -438,6 +448,7 @@ def _expand(ids: list[str]) -> tuple[list[str], list[dict]]:
     for i in ids:
         if i.startswith("grp-"):
             groups.advance(i)  # the runner does this too; here it costs nothing and never waits
+            groups.ensure_runner(i)
             m = groups.members(i)
             out += [j for j in m["jobs"] if j not in out]
             waiting += m["waiting"]
@@ -508,6 +519,11 @@ def wait(
     deadline = time.time() + max(0, min(timeout, 600))
     winner = None
     asked, group_ids = job_ids, [i for i in job_ids if i.startswith("grp-")]
+    if mode == "first_success":
+        from . import groups
+
+        for group_id in group_ids:
+            groups.stop_on_success(group_id)
     while True:
         job_ids, waiting = _expand(asked)
         if not job_ids and not waiting:
@@ -536,6 +552,10 @@ def wait(
             return out
         time.sleep(1)
     if winner:
+        from . import groups
+
+        for group_id in group_ids:
+            groups.cancel(group_id, f"cancelled: first_success {winner}")
         losers = [j for j in job_ids if j != winner and j not in ended]
         for job_id in losers:
             jobs.stop(job_id)

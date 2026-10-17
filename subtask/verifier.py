@@ -1,7 +1,7 @@
 """Validation gate around `verify`: snapshots, scores, retries, rollback, and the Breaker's tests.
 
 Each verified attempt records a snapshot of the worktree (HEAD plus a
-`git stash create` object for uncommitted changes) and a score read from the
+a tree of the whole folder, untracked files included) and a score read from the
 check's output. A failed check with retries left resumes the job with the
 failure; with none left, a worktree goes back to its best attempt. Rollback
 never touches a shared folder: only a job's own worktree.
@@ -9,8 +9,10 @@ never touches a shared folder: only a job's own worktree.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
+import tempfile
 import time
 
 from . import events, jobs
@@ -19,18 +21,27 @@ PASSED = re.compile(r"(\d+) passed")
 FAILED = re.compile(r"(\d+) (?:failed|errors?)\b")
 BREAKER_WAIT_S = 1800
 STALE_RETRY_S = 60
+SLOT_WAIT_S = float(os.environ.get("SUBTASK_RETRY_SLOT_WAIT_S", "900"))
+BUSY = "already running"
 
 
-def _git(cwd: str, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+def _git(
+    cwd: str, *args: str, stdin: str | None = None, env: dict | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", cwd, *args], input=stdin, capture_output=True, text=True, timeout=60, check=False
-    )
+        ["git", "-C", cwd, *args], input=stdin, capture_output=True, text=True, timeout=60, check=False,
+        env={**os.environ, **env} if env else None,
+    )  # fmt: skip
 
 
 def snapshot(cwd: str) -> dict:
+    """HEAD plus a tree of the whole working folder, untracked files included (ignored ones not)."""
     head = _git(cwd, "rev-parse", "HEAD").stdout.strip()
-    stash = _git(cwd, "stash", "create").stdout.strip()
-    return {"head": head, "stash": stash or None}
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {"GIT_INDEX_FILE": os.path.join(tmp, "index")}
+        added = _git(cwd, "add", "-A", ".", env=env).returncode == 0
+        tree = _git(cwd, "write-tree", env=env).stdout.strip() if added else ""
+    return {"head": head, "tree": tree or None}
 
 
 def score(verification: dict) -> float:
@@ -48,7 +59,13 @@ def restore(cwd: str, snap: dict) -> bool:
         return False
     if _git(cwd, "reset", "-q", "--hard", snap["head"]).returncode != 0:
         return False
-    return not snap.get("stash") or _git(cwd, "stash", "apply", "-q", snap["stash"]).returncode == 0
+    _git(cwd, "clean", "-qfd")  # later attempts' new files go; ignored files stay
+    tree = snap.get("tree")
+    if not tree:
+        return True
+    if _git(cwd, "read-tree", "-u", "--reset", tree).returncode != 0:
+        return False
+    return _git(cwd, "read-tree", snap["head"]).returncode == 0  # index back to HEAD, files as they were
 
 
 def retry_message(verification: dict, n: int, total: int) -> str:
@@ -70,7 +87,13 @@ def after_failure(job_id: str, spec: dict, attempts: list[dict]) -> str:
     tried = verified_attempts(attempts)
     retries = int(spec.get("max_retries") or 0)
     if len(tried) <= retries:
-        out = core.reply(job_id, retry_message(tried[-1]["verification"], len(tried), retries))
+        message = retry_message(tried[-1]["verification"], len(tried), retries)
+        out = core.reply(job_id, message)
+        deadline = time.time() + SLOT_WAIT_S
+        while BUSY in out and time.time() < deadline:  # a slot taken meanwhile is not a refusal
+            jobs.update_status(job_id, retry_pending=True)  # keeps pending() true while waiting
+            time.sleep(1)
+            out = core.reply(job_id, message)
         if out.endswith("resumed"):
             events.emit(job_id, "verify", f"retry {len(tried)}/{retries}")
             return "retry"
@@ -80,7 +103,8 @@ def after_failure(job_id: str, spec: dict, attempts: list[dict]) -> str:
     jobs.update_status(job_id, retry_pending=False)
     if not spec.get("branch") or len(tried) < 2:
         return "no rollback"
-    best = max(tried, key=lambda a: a["verification"].get("score", -1e9))
+    # Ties go to the latest attempt: rolling back only pays when an earlier one was strictly better.
+    best = max(reversed(tried), key=lambda a: a["verification"].get("score", -1e9))
     if best is tried[-1] or not best["verification"].get("snapshot"):
         return "last is best"
     if restore(spec["cwd"], best["verification"]["snapshot"]):

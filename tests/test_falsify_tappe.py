@@ -1,4 +1,4 @@
-"""Falsification of tappa 1 (fef670e..5425160). Every test here FAILS on the current code."""
+"""Falsification of stages 1-5 (fef670e..5425160): each test failed before its fix."""
 
 from __future__ import annotations
 
@@ -55,7 +55,9 @@ def test_rollback_on_tied_score_keeps_the_last_attempt(home, monkeypatch):
     snap1 = verifier.snapshot(cwd)
     (Path(cwd) / "later.txt").write_text("attempt 2 work\n")
     _git(cwd, "add", "later.txt")
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", cwd, "commit", "-qm", "a2"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", cwd, "commit", "-qm", "a2"], check=True
+    )
     snap2 = verifier.snapshot(cwd)
     head_before = _git(cwd, "rev-parse", "HEAD")
     out = verifier.after_failure(job, {**sp, "max_retries": 1}, [_fail(1, snap1), _fail(2, snap2)])
@@ -170,7 +172,10 @@ def test_integrate_conflict_with_user_edit_leaves_tree_untouched(home, monkeypat
     repo = _repo(home / "repo")
     (repo / "f.txt").write_text("one\ntwo\nthree\n")
     _git(repo, "add", "f.txt")
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "f"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "f"],
+        check=True,
+    )
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", f"sed -i s/two/JOB/ f.txt; {GIT} commit -qam j; {SAY}")
     job = core.start("x", engine="fake", repo=str(repo), isolation="worktree", max_usd=0.5).split()[0]
     wait_final(job)
@@ -223,10 +228,15 @@ def test_repomap_does_not_hang_on_a_tracked_symlink_to_a_fifo(home):
     os.mkfifo(fifo)
     (repo / "evil.py").symlink_to(fifo)
     _git(repo, "add", "evil.py")
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "e"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "e"],
+        check=True,
+    )
     code = "import sys; from subtask import context; context.repomap(sys.argv[1])"
     try:
-        subprocess.run([sys.executable, "-c", code, str(repo)], timeout=8, cwd=ROOT, env=os.environ.copy(), check=False)
+        subprocess.run(
+            [sys.executable, "-c", code, str(repo)], timeout=8, cwd=ROOT, env=os.environ.copy(), check=False
+        )
     except subprocess.TimeoutExpired:
         pytest.fail("repomap blocked forever on a symlink to a FIFO")
 

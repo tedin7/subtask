@@ -97,8 +97,14 @@ def resolve(refs: list[str], root: str) -> str:
     return "<subtask_context>\n" + "\n".join(parts) + "\n</subtask_context>" if parts else ""
 
 
+MAX_FILE = 1_000_000
+
+
 def _symbols(path: Path) -> list[str]:
+    """Top-level names of a regular file; symlinks, FIFOs and devices are never opened."""
     try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_FILE:
+            return []
         text = path.read_text(errors="replace")
     except OSError:
         return []

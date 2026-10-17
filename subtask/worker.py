@@ -251,12 +251,26 @@ def main() -> int:
         )
         admission.release(job_id)
         emit("end", f"{state}: {detail}", state=state)
+        _advance_group(spec)
         _telemetry(job_id, spec, record, previous, text, verification)
         if failed_check:
             verifier.after_failure(job_id, spec, attempts)
         elif verification and verification.get("exit_code") == 0:
             _learn(job_id, spec, attempts)
     return 0
+
+
+def _advance_group(spec: dict) -> None:
+    """A finished job frees a slot: start its group's next tasks, and revive a dead runner."""
+    if not spec.get("group"):
+        return
+    try:
+        from . import groups
+
+        groups.advance(spec["group"])
+        groups.ensure_runner(spec["group"])
+    except Exception as exc:  # the group is advanced again by its runner or by wait()
+        print(f"subtask: group not advanced: {exc}", file=sys.stderr)
 
 
 def _learn(job_id: str, spec: dict, attempts: list[dict]) -> None:

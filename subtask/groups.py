@@ -165,7 +165,11 @@ def advance(group_id: str) -> None:
         limit = group.get("concurrency") or len(rows)
         ids = {a: r["job"] for a, r in rows.items() if r["job"]}
         note = _board_note(group_id)
+        winner = group.get("first_success") and next((a for a, ok in outcome.items() if ok), None)
         for alias, row in rows.items():
+            if winner and row["state"] == "pending":
+                row["state"], row["why"] = "skipped", f"cancelled: first_success {rows[winner]['job']}"
+                continue
             if row["state"] != "pending":
                 continue
             deps = row["depends_on"]
@@ -183,7 +187,12 @@ def advance(group_id: str) -> None:
                 out = f"bad task: {exc}"
             if BUSY in out:
                 break  # no slot: try again next pass
-            if " started " in out:
+            if "\nbuilder queued in " in out:
+                row["job"], row["state"] = out.split()[1], "started"
+                row["why"] = "builder " + out.split("\nbuilder ")[1]
+                ids[alias] = row["job"]
+                active += 1
+            elif " started " in out:
                 last = out.split("\nbuilder ")[-1]  # adversarial: the Builder is the job to follow
                 row["job"], row["state"] = last.split()[0], "started"
                 ids[alias] = row["job"]
@@ -192,6 +201,38 @@ def advance(group_id: str) -> None:
                 row["state"], row["why"] = "skipped", f"not started: {out[:160]}"
         group["tasks"] = list(rows.values())
         jobs.write_json(_path(group_id), group)
+
+
+def ensure_runner(group_id: str) -> None:
+    """Respawn the runner of a group that still has queued tasks and whose runner is provably gone."""
+    group = read(group_id)
+    if not any(r["state"] == "pending" for r in group.get("tasks", [])):
+        return
+    ident = group.get("runner")
+    if ident and procid.alive(ident) != procid.DEAD:
+        return
+    _spawn_runner(group_id)
+
+
+def stop_on_success(group_id: str) -> None:
+    """From now on the first succeeding job cancels the queued rest (wait mode first_success)."""
+    with _locked(group_id):
+        group = read(group_id)
+        group["first_success"] = True
+        jobs.write_json(_path(group_id), group)
+
+
+def cancel(group_id: str, why: str) -> list[str]:
+    """Skip every queued task of the group (first_success found a winner). Returns their aliases."""
+    with _locked(group_id):
+        group = read(group_id)
+        gone = []
+        for row in group.get("tasks", []):
+            if row["state"] == "pending":
+                row["state"], row["why"] = "skipped", why
+                gone.append(row["alias"])
+        jobs.write_json(_path(group_id), group)
+    return gone
 
 
 def _board_note(group_id: str) -> str:

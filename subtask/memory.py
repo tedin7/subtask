@@ -31,9 +31,15 @@ def _file(repo: str) -> Path:
 
 def _load(path: Path) -> list[dict]:
     try:
-        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-    except (OSError, json.JSONDecodeError):
+        lines = path.read_text().splitlines()
+    except OSError:
         return []
+    rows = []
+    for line in lines:  # a torn line costs that line, never the whole file
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
     return [r for r in rows if isinstance(r, dict) and r.get("lesson")]
 
 
