@@ -312,6 +312,12 @@ def _telemetry(
                 "replies": int(previous.get("attempt") or 1) - 1 if record["kind"] == "reply" else 0,
             }
         )
+        telemetry.engine_stats(
+            spec.get("repo") or spec.get("cwd"),
+            str(spec.get("engine")),
+            None if not verification else verification.get("exit_code") == 0,
+            record["cost_charged"],
+        )
     except OSError:
         pass  # telemetry never fails a job
 

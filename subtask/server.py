@@ -43,18 +43,22 @@ def start(
     isolation: str = "shared",
     max_retries: int = 0,
     adversarial: bool = False,
+    context_refs: list[str] | None = None,
+    auto_repomap: bool = False,
+    tier: str = "auto",
 ) -> str:
-    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests."""
+    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
         kind=kind, files=files, policy=policy, verify=verify,
         isolation=isolation, max_retries=max_retries, adversarial=adversarial,
+        context_refs=context_refs, auto_repomap=auto_repomap, tier=tier,
     )  # fmt: skip
 
 
 @mcp.tool(structured_output=False)
 def start_many(tasks: list[dict]) -> str:
-    """Items take start()'s arguments."""
+    """Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG."""
     return core.start_many(tasks)
 
 
@@ -68,7 +72,7 @@ async def wait(
     stall_timeout: float | None = None,
     ctx: Context | None = None,
 ) -> str:
-    """Wait for jobs; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job."""
+    """Wait for jobs or groups; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     loop = asyncio.get_running_loop()

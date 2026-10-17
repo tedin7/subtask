@@ -3,7 +3,7 @@
  "tools": [
   {
    "name": "start",
-   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests.",
+   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -65,6 +65,20 @@
      "adversarial": {
       "default": false,
       "type": "boolean"
+     },
+     "context_refs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "auto_repomap": {
+      "default": false,
+      "type": "boolean"
+     },
+     "tier": {
+      "default": "auto",
+      "type": "string"
      }
     },
     "required": [
@@ -75,7 +89,7 @@
   },
   {
    "name": "start_many",
-   "description": "Items take start()'s arguments.",
+   "description": "Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG.",
    "inputSchema": {
     "properties": {
      "tasks": {
@@ -94,7 +108,7 @@
   },
   {
    "name": "wait",
-   "description": "Wait for jobs; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job.",
+   "description": "Wait for jobs or groups; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job.",
    "inputSchema": {
     "properties": {
      "ids": {

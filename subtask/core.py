@@ -23,6 +23,8 @@ from .redact import redact
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 ISOLATIONS = ("shared", "worktree")
+TIERS = ("auto", "fast", "balanced", "deep", "free_only")
+DEGRADE_SHARE = 0.75
 PORT_BASE = 18100
 KINDS = ("read", "code", "review", "hard")
 
@@ -92,7 +94,11 @@ def start(
     isolation: str = "shared",
     max_retries: int = 0,
     adversarial: bool = False,
+    context_refs: list[str] | None = None,
+    auto_repomap: bool = False,
+    tier: str = "auto",
     _breaker: str | None = None,
+    _group: str | None = None,
 ) -> str:
     budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
     problem = _validate(task, engine, kind, budget, max_turns, base, effort)
@@ -104,10 +110,29 @@ def start(
         return "max_retries must be between 0 and 5"
     if max_retries and not verify:
         return "max_retries needs verify"
+    if tier not in TIERS:
+        return "tier must be " + "|".join(TIERS)
+    tier, budget_warning = _degrade(tier)
+    if tier == "fast" and effort == "medium":
+        effort = "low"
+    if tier == "deep":
+        effort = "high" if effort == "medium" else effort
+        kind = "hard" if kind == "code" else kind
     if isolation == "worktree" and not repo and not readonly:
         repo = _repo_of(str(Path(cwd or os.getcwd()).resolve()))
         if not repo:
             return "isolation worktree needs a git repository"
+    if context_refs or auto_repomap:
+        from . import context
+
+        root = str(Path(repo or cwd or os.getcwd()).resolve())
+        try:
+            block = context.resolve(list(context_refs or []), root)
+        except (ValueError, OSError) as exc:
+            return f"context_refs: {exc}"
+        if auto_repomap:
+            block += "\n<repo_map>\n" + context.repomap(root) + "\n</repo_map>"
+        task += "\n\n" + block.strip()
     if adversarial:
         if not (repo and verify) or readonly:
             return "adversarial needs a repo (worktree) and verify"
@@ -115,14 +140,14 @@ def start(
 
         broke = start(
             BREAKER_TASK + task, engine, repo, None, base, False, max_usd, max_turns, effort, model,
-            sandbox, kind="code", policy=policy, untrusted=untrusted, progress=progress,
+            sandbox, kind="code", policy=policy, untrusted=untrusted, progress=progress, _group=_group,
         )  # fmt: skip
         if " started " not in broke:
             return f"breaker not started: {broke}"
         breaker = broke.split()[0]
         built = start(
             task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
-            files, policy, verify, untrusted, progress, max_retries=max_retries, _breaker=breaker,
+            files, policy, verify, untrusted, progress, max_retries=max_retries, _breaker=breaker, _group=_group,
         )  # fmt: skip
         if " started " not in built:
             stop(breaker)
@@ -135,9 +160,11 @@ def start(
     reason = ""
     _phase(progress, None, "admission", "choosing engine")
     if engine == "auto":
-        engine, reason, _ = router.pick(kind, max_usd, wanted)
+        engine, reason, _ = router.pick(kind, max_usd, wanted, free_only=tier == "free_only")
         if not engine:
             return reason
+    elif tier == "free_only" and not budget_warning and registry.get(engine).capabilities.paid:
+        return f"tier free_only: {engine} is a paid engine"
     adapter = registry.get(engine)
     assert adapter is not None
     effective, why = _effective(adapter, wanted)
@@ -204,6 +231,9 @@ def start(
             "max_retries": max_retries,
             "breaker": _breaker,
             "port": _free_port() if branch else None,
+            "group": _group,
+            "tier": tier,
+            "budget_warning": budget_warning,
             "model": model,
             "max_usd": budget,
             "max_turns": max_turns,
@@ -235,7 +265,20 @@ def start(
     if progress is not None:
         progress.add(job_id)
     note = "" if effective in ("sandbox", "isolated", "readonly") else " · not a host sandbox"
-    return f"{job_id} started · {engine} · {where} · {effective}{note}" + (f"\n({reason})" if reason else "")
+    warn = f"\nbudget_warning: {budget_warning}" if budget_warning else ""
+    return (
+        f"{job_id} started · {engine} · {where} · {effective}{note}"
+        + (f"\n({reason})" if reason else "")
+        + warn
+    )
+
+
+def _degrade(tier: str) -> tuple[str, str | None]:
+    """Past DEGRADE_SHARE of the monthly cap, auto and balanced jobs go to free engines."""
+    share = ledger.committed() / config.MONTHLY_CAP_USD if config.MONTHLY_CAP_USD else 1.0
+    if share > DEGRADE_SHARE and tier in ("auto", "balanced"):
+        return "free_only", f"{share:.0%} of the monthly cap committed: routed to free engines"
+    return tier, None
 
 
 def _free_port() -> int:
@@ -301,6 +344,8 @@ def _line(job_id: str) -> str:
         or ""
     )
     live = " · liveness unknown" if st.get("liveness") == procid.UNKNOWN and not final else ""
+    if sp.get("budget_warning"):
+        live += " · budget_warning"
     stall = watchdog.check(job_id, st)
     if stall:
         live += f" · STALLED ({stall})"
@@ -322,6 +367,13 @@ def status(job_id: str | None = None, limit: int = 8) -> str:
 
 
 def known(job_id: str) -> bool:
+    if isinstance(job_id, str) and job_id.startswith("grp-"):
+        from . import groups
+
+        try:
+            return groups.known(job_id)
+        except ValueError:
+            return False
     try:
         return (jobs.job_dir(job_id) / "spec.json").is_file()
     except ValueError:
@@ -345,18 +397,46 @@ def _decode(cursor: str) -> dict[str, int]:
     return {k: int(v) for k, v in data.items() if isinstance(v, int)} if isinstance(data, dict) else {}
 
 
-def _delta(job_ids: list[str], since: str) -> tuple[str, str]:
-    """Significant events since the cursor (at most 3 per job) and the new cursor."""
+def _delta(job_ids: list[str], since: str, group_ids: list[str] | None = None) -> tuple[str, str]:
+    """Significant events since the cursor (at most 3 per job), new blackboard notes, the new cursor."""
+    from . import groups
+
     offsets = _decode(since)
     lines = []
     for job_id in job_ids:
         new, offsets[job_id] = events.read_since(job_id, offsets.get(job_id, 0))
         for event in new[-3:]:
             lines.append(f"  {job_id} {event.get('phase')}: {event.get('msg', '')}"[:120])
+    boards = set(group_ids or []) | {jobs.spec(j).get("group") for j in job_ids} - {None}
+    for group_id in sorted(boards):
+        notes, offsets["bb:" + group_id] = groups.notes_since(group_id, offsets.get("bb:" + group_id, 0))
+        lines += notes[-5:]
     return "\n".join(lines), _encode(offsets)
 
 
 WAIT_MODES = ("all", "any", "first_success")
+
+
+def _expand(ids: list[str]) -> tuple[list[str], list[dict]]:
+    """Group ids become their started jobs; also returns the group rows still waiting."""
+    from . import groups
+
+    out, waiting = [], []
+    for i in ids:
+        if i.startswith("grp-"):
+            groups.advance(i)  # the runner does this too; here it costs nothing and never waits
+            m = groups.members(i)
+            out += [j for j in m["jobs"] if j not in out]
+            waiting += m["waiting"]
+        elif i not in out:
+            out.append(i)
+    return out, waiting
+
+
+def _group_lines(group_ids: list[str]) -> str:
+    from . import groups
+
+    return "".join("\n" + "\n".join(groups.lines(g)) for g in group_ids)
 
 
 def _succeeded(job_id: str) -> bool:
@@ -414,23 +494,29 @@ def wait(
         telemetry.count_call(job_ids, "wait")
     deadline = time.time() + max(0, min(timeout, 600))
     winner = None
+    asked, group_ids = job_ids, [i for i in job_ids if i.startswith("grp-")]
     while True:
+        job_ids, waiting = _expand(asked)
+        if not job_ids and not waiting:
+            break
         _deliver_hints(job_ids)
         statuses = {j: jobs.status(j) for j in job_ids}
         ended = [
             j for j in job_ids if statuses[j].get("state") in jobs.FINAL and not verifier.pending(statuses[j])
         ]
         stalled = [j for j in job_ids if watchdog.check(j, statuses[j], stall_timeout)]
+        all_ended = len(ended) == len(job_ids) and not waiting
         if mode == "first_success":
             winner = next((j for j in ended if _succeeded(j)), None)
-            if winner or len(ended) == len(job_ids):
+            if winner or all_ended:
                 break
-        elif ended and (mode == "any" or len(ended) == len(job_ids)):
+        elif all_ended or (ended and mode == "any"):
             break
         if stalled or time.time() >= deadline:
             out = ("stalled:\n" if stalled else "still running:\n") + "\n".join(_line(j) for j in job_ids)
+            out += _group_lines(group_ids)
             if since is not None:
-                delta, cursor = _delta(job_ids, since)
+                delta, cursor = _delta(job_ids, since, group_ids)
                 out += (
                     "\nsince last wait:\n" + delta if delta else "\nno new activity"
                 ) + f"\ncursor={cursor}"
@@ -443,8 +529,9 @@ def wait(
         head = f"first success: {winner}" + (f" · stopped {', '.join(losers)}" if losers else "")
         return head + "\n\n" + result(winner, _count=False)
     if not results:
-        return "\n".join(_line(j) for j in job_ids)
+        return "\n".join(_line(j) for j in job_ids) + _group_lines(group_ids)
     out = "\n\n".join(result(j, _count=False) if j in ended else _line(j) for j in job_ids)
+    out += _group_lines(group_ids)
     return ("no job succeeded\n\n" + out) if mode == "first_success" else out
 
 
@@ -456,6 +543,12 @@ def start_many(tasks: list[dict], progress=None) -> str:
     """
     if not isinstance(tasks, list):
         return "tasks must be a list"
+    if any(isinstance(t, dict) and ("id" in t or "depends_on" in t) for t in tasks):
+        if not all(isinstance(t, dict) for t in tasks):
+            return "bad task: every item must be an object"
+        from . import groups
+
+        return groups.create(tasks)
     out = []
     for i, spec in enumerate(tasks, 1):
         if not isinstance(spec, dict):

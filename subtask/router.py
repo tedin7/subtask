@@ -81,7 +81,7 @@ def _installed(adapter) -> bool:
     return adapter.available()
 
 
-def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
+def rank(kind: str, max_usd: float | None, wanted: dict, free_only: bool = False) -> list[Option]:
     cfg = settings()
     candidates = KINDS.get(kind, KINDS["code"])
     snap = capacity.snapshot()
@@ -104,6 +104,9 @@ def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
         if not _installed(adapter):
             option.admissible = False
             option.why.append(f"{adapter.binary or getattr(adapter, 'module', adapter.name)} not installed")
+        if free_only and adapter.capabilities.paid:
+            option.admissible = False
+            option.why.append("tier free_only")
         if adapter.capabilities.paid and left < budget:
             option.admissible = False
             option.why.append(f"monthly cap: {left:.2f}$ left < {budget:.2f}$ budget")
@@ -153,11 +156,11 @@ def rank(kind: str, max_usd: float | None, wanted: dict) -> list[Option]:
 
 
 def pick(
-    kind: str = "code", max_usd: float | None = None, wanted: dict | None = None
+    kind: str = "code", max_usd: float | None = None, wanted: dict | None = None, free_only: bool = False
 ) -> tuple[str, str, list[Option]]:
     """(engine, one-line reason, full ranking). engine '' when nothing is admissible."""
     wanted = wanted or policy.demand()
-    options = rank(kind, max_usd, wanted)
+    options = rank(kind, max_usd, wanted, free_only)
     best = next((o for o in options if o.admissible), None)
     if best is None:
         why = "; ".join(f"{o.engine}: {', '.join(o.why)}" for o in options)

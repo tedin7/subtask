@@ -74,3 +74,33 @@ def prune(days: int = RETENTION_DAYS, dry_run: bool = True) -> list[Path]:
         for path in old:
             path.unlink()
     return old
+
+
+def engine_stats(repo: str | None, engine: str, verified: bool | None, cost: float) -> None:
+    """Per repo and engine: runs, verified passes and spend, in HOME/engine_stats.json (informational).
+
+    Routing itself learns from the telemetry rows above; this file is the
+    per-repository view of the same outcomes.
+    """
+    import fcntl
+
+    path = config.HOME / "engine_stats.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        row = data.setdefault(repo or "-", {}).setdefault(
+            engine, {"runs": 0, "verified": 0, "passed": 0, "usd": 0.0}
+        )
+        row["runs"] += 1
+        row["verified"] += verified is not None
+        row["passed"] += bool(verified)
+        row["usd"] = round(row["usd"] + float(cost or 0), 4)
+        row["pass_rate"] = round(row["passed"] / row["verified"], 3) if row["verified"] else None
+        row["avg_usd"] = round(row["usd"] / row["runs"], 4)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=1))
+        tmp.replace(path)
