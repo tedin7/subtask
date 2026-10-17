@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-10-17
 
 ### Added
 - `wait(mode="all"|"any"|"first_success")`: `first_success` returns the first job that is done and passed
