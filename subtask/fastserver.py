@@ -123,6 +123,11 @@ def _call(name: str, args: dict, call: Call) -> str:
         return core.step(a["title"], a["path"], a["how"], a["decisions"], a["repo"])
     if name == "result":
         return core.result(args["id"], args.get("full", False), args.get("evidence", False))
+    if name == "map_reduce":
+        from . import map_reduce
+
+        with _core_lock:
+            return map_reduce.map_reduce(**args)
     if name == "integrate":
         from . import integrate
 

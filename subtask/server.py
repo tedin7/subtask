@@ -145,6 +145,26 @@ async def integrate(ids: list[str], action: str = "apply", auto_resolve: bool = 
 
 
 @mcp.tool(structured_output=False)
+def map_reduce(
+    glob_pattern: str,
+    prompt_template: str,
+    batch_size: int = 5,
+    concurrency: int = 3,
+    verify_cmd: str | None = None,
+    isolation: str = "worktree",
+    repo: str | None = None,
+    cwd: str | None = None,
+    engine: str = "auto",
+) -> str:
+    """Batch files matching glob into jobs ({{files}} in the template); returns a group id for wait()."""
+    from . import map_reduce as mr
+
+    return mr.map_reduce(
+        glob_pattern, prompt_template, batch_size, concurrency, verify_cmd, isolation, repo, cwd, engine
+    )
+
+
+@mcp.tool(structured_output=False)
 def cleanup(id: str) -> str:
     """Remove a job's worktree, keep branch."""
     return core.cleanup(id)

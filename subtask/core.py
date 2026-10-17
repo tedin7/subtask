@@ -152,6 +152,7 @@ def start(
         if " started " not in built:
             stop(breaker)
         return f"breaker {broke}\nbuilder {built}"
+    task += _lessons(repo or cwd, files, context_refs)
     level = policy or (None if sandbox else "worktree")
     try:
         wanted = _policy_demand(readonly, level, untrusted)
@@ -271,6 +272,18 @@ def start(
         + (f"\n({reason})" if reason else "")
         + warn
     )
+
+
+def _lessons(root: str | None, files: list[str] | None, refs: list[str] | None) -> str:
+    """Engrams of this repository that fit the job's files (memory.py). Never blocks a start."""
+    from . import memory
+
+    paths = list(files or []) + [r[5:].split(":")[0] for r in refs or [] if r.startswith("file:")]
+    try:
+        block = memory.inject(str(Path(root or os.getcwd()).resolve()), paths)
+    except OSError:
+        return ""
+    return "\n\n" + block if block else ""
 
 
 def _degrade(tier: str) -> tuple[str, str | None]:

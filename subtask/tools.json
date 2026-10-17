@@ -281,6 +281,50 @@
    }
   },
   {
+   "name": "map_reduce",
+   "description": "Batch files matching glob into jobs ({{files}} in the template); returns a group id for wait().",
+   "inputSchema": {
+    "properties": {
+     "glob_pattern": {
+      "type": "string"
+     },
+     "prompt_template": {
+      "type": "string"
+     },
+     "batch_size": {
+      "default": 5,
+      "type": "integer"
+     },
+     "concurrency": {
+      "default": 3,
+      "type": "integer"
+     },
+     "verify_cmd": {
+      "type": "string"
+     },
+     "isolation": {
+      "default": "worktree",
+      "type": "string"
+     },
+     "repo": {
+      "type": "string"
+     },
+     "cwd": {
+      "type": "string"
+     },
+     "engine": {
+      "default": "auto",
+      "type": "string"
+     }
+    },
+    "required": [
+     "glob_pattern",
+     "prompt_template"
+    ],
+    "type": "object"
+   }
+  },
+  {
    "name": "cleanup",
    "description": "Remove a job's worktree, keep branch.",
    "inputSchema": {
