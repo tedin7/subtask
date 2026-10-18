@@ -80,9 +80,11 @@ redaction is a second layer, not a guarantee. See [SECURITY.md](SECURITY.md).
 
 | tool | what it does |
 |---|---|
-| `start(task, kind, repo, cwd, files, readonly, engine, max_usd, effort, base, max_turns, policy, verify, isolation, max_retries, adversarial, context_refs, auto_repomap, tier)` | start one job (see below) |
-| `start_many(tasks)` | start several; partial success is listed per item. Items with `id` and `depends_on` form a group (`grp-…`) run as a DAG without extra turns |
+| `start(task, kind, repo, cwd, files, readonly, engine, max_usd, effort, base, max_turns, policy, verify, isolation, max_retries, adversarial, context_refs, auto_repomap, tier, invariants, allowed_paths, symbol_scope, oracle_cmd)` | start one job (see below) |
+| `start_many(tasks)` | start several; partial success is listed per item. Items with `id` and `depends_on` form a group (`grp-…`) run as a DAG without extra turns; `foreach=<parent id>` makes one copy per item of the parent's `.subtask/fanout.json` (at most 8), and dependents wait for every copy; `after="any"` starts when one parent succeeded |
 | `integrate(ids, action="apply", auto_resolve=False)` | worktree jobs back: `diff`, `apply` (all or nothing, uncommitted), `discard`; `auto_resolve` starts a reconciliation job on conflict |
+| `consensus(prompt, engines, verify_cmd, isolation="worktree")` | 2 to 4 engines solve it blind in their own worktrees, then one job compares their diffs as anonymous patches and writes one solution, checked by `verify_cmd` and the invariants; returns a group id |
+| `bisect(good_ref, bad_ref, test_cmd, parallelism=4, auto_fix=False)` | first commit that makes `test_cmd` fail, testing up to `parallelism` (max 8) commits per round in temporary worktrees; returns the commit, author and diff; `auto_fix` starts a verified fix job |
 | `map_reduce(glob_pattern, prompt_template, batch_size=5, concurrency=3, verify_cmd, isolation="worktree")` | one job per batch of files (`{{files}}` in the template), at most `concurrency` at a time; returns a group id |
 | `wait(ids, timeout=300, mode="all", since=None, stall_timeout=None)` | block until they end (`any`: the first; `first_success`: the first done and verified, the others are stopped); returns early on a stalled job; progress notifications while waiting; `since` cursor for clients without progress |
 | `steer(id, action, instruction=None)` | `hint` (queued, sent as a reply when the attempt ends), `abort`, `retry` (fresh job with the instruction) |
@@ -102,6 +104,16 @@ Options of `start`:
   Builder's worktree and run with `verify`.
 - `context_refs`: `file:PATH[:A-B]`, `git:diff[:REF]`, `subtask:ID:summary|diff`, resolved before start.
   `auto_repomap=True` adds tracked files with their top-level symbols (cached per HEAD).
+- `invariants` (default `["no_test_deletion", "no_suppression"]`, `[]` turns them off): before `verify` counts,
+  test functions may not decrease, no new skip/xfail markers, no new `# type: ignore`, `# noqa` or
+  `# pragma: no cover`. A violation is a failed check with the reason, so a retry sees it.
+- `allowed_paths`: files changed outside these paths are put back and the revert is committed.
+- `symbol_scope=["path.py::name", ...]`: only those top-level functions or classes may change in those
+  files. `integrate` then merges several jobs' edits to one Python file symbol by symbol; overlaps,
+  import or constant changes, and symbols changed on the target meanwhile are a conflict, never a guess.
+- `oracle_cmd`: after a passing `verify`, runs the command on the job's base and on its result at the same
+  time and reports whether exit code and stdout match, plus `duration_ms_before`, `duration_ms_after`,
+  `speedup_pct`.
 - `tier`: `fast` (effort low), `deep` (effort high, kind hard), `free_only`. Past 75% of the monthly cap,
   `auto` and `balanced` go to free engines and the reply carries `budget_warning`.
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 - 2026-10-18
+
+### Added
+- `invariants` (`no_test_deletion`, `no_suppression`, on by default), `allowed_paths` and `symbol_scope` on
+  `start`: checked before `verify`; a violation fails the check with its reason.
+- `integrate` merges edits of several `symbol_scope` jobs to one Python file by top-level symbol.
+- `oracle_cmd`: the same command on base and result, compared for output and time.
+- `bisect` tool: K-ary parallel bisect in temporary worktrees, optional `auto_fix` job.
+- `foreach` fan-out (from `.subtask/fanout.json`, max 8) and `after="any"` in groups.
+- `consensus` tool: blind rounds on 2-4 engines, then one synthesis job.
+- `subtask board` and the OpenCode plugin show invariant violations, reverted files, oracle speedup,
+  bisect rounds, foreach copies and consensus groups.
+
 ## 0.3.1 - 2026-10-17
 
 ### Fixed

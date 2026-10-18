@@ -64,3 +64,32 @@ def test_opencode_plugin_renders_the_real_board(home, monkeypatch, tmp_path):
     assert out.returncode == 0, out.stderr
     assert f"dag {group}" in out.stdout and "← a" in out.stdout
     assert "rejoined after restart" in out.stdout and "budget:" in out.stdout
+
+
+def test_board_and_plugin_show_invariants_oracle_bisect_and_fanout(home, monkeypatch, tmp_path):
+    from subtask import bisect_tool, core
+
+    board = {
+        "groups": [{"id": "grp-1", "kind": "dag", "label": "consensus", "summary": "3 tasks",
+                    "tasks": [{"alias": "fix[0]", "state": "started", "job": "st-a", "depends_on": [],
+                               "why": "", "expanded_from": "fix"}]}],
+        "jobs": [{"id": "st-a", "state": "done", "engine": "kimi", "group": None, "attempt": 1, "verify": "failed",
+                  "verify_attempts": 1, "max_retries": 0, "retrying": False, "rolled_back_to": None,
+                  "stalled": None, "budget_warning": None, "invariants": ["no_test_deletion: t.py has 1"],
+                  "reverted": ["x.py"], "oracle": {"output_match": True, "speedup_pct": 42.0,
+                                                   "ms_before": 180, "ms_after": 104}}],
+        "bisects": [{"id": "bis-1", "state": "running", "round": 2, "tested": 8, "candidates": 32}],
+        "budget": {"cap_usd": 50, "left_usd": 40},
+    }  # fmt: skip
+    script = tmp_path / "render.ts"
+    script.write_text(
+        f'import {{ render }} from "{ROOT / "plugins/opencode/subtask-progress.ts"}"\n'
+        f"console.log(render({json.dumps(board)}, new Set()))\n"
+    )
+    out = subprocess.run(["bun", str(script)], capture_output=True, text=True, timeout=60, check=False)
+    assert out.returncode == 0, out.stderr
+    for want in ("consensus grp-1", "fix[0] (from fix)", "INVARIANT no_test_deletion", "reverted 1 file(s)",
+                 "oracle same output +42% (180ms → 104ms)", "bis-1 bisect running · round 2 · 8/32 tested"):
+        assert want in out.stdout, (want, out.stdout)
+    bisect_tool._note("bis-2", id="bis-2", state="done", round=1, tested=4, candidates=5, commit="abcdef1234")
+    assert "bis-2 bisect done · round 1 · 4/5 tested → abcdef123" in core.board()

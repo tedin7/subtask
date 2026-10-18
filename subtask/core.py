@@ -1031,6 +1031,16 @@ def steps(limit: int = 10) -> str:
     return "\n".join(f"{r['ts']} {Path(r['repo']).name}: {r['title']} ({r['path']})" for r in rows)
 
 
+def _oracle_short(report: dict | None) -> dict | None:
+    if not report:
+        return None
+    if report.get("error"):
+        return {"error": report["error"]}
+    return {"output_match": bool(report.get("output_match") and report.get("exit_match")),
+            "speedup_pct": report.get("speedup_pct"), "ms_before": report.get("duration_ms_before"),
+            "ms_after": report.get("duration_ms_after")}  # fmt: skip
+
+
 def board_data(limit: int = 10) -> dict:
     """What a client panel shows: active groups with their queue, recent jobs, verify and budget."""
     from . import groups
@@ -1045,7 +1055,8 @@ def board_data(limit: int = 10) -> dict:
                 "id": path.stem, "kind": g.get("kind"), "label": g.get("label"),
                 "summary": groups.summary(path.stem),
                 "tasks": [{"alias": t["alias"], "state": t["state"], "job": t.get("job"),
-                           "depends_on": t.get("depends_on", []), "why": t.get("why", "")} for t in tasks],
+                           "depends_on": t.get("depends_on", []), "why": t.get("why", ""),
+                           "expanded_from": t.get("expanded_from")} for t in tasks],
             })  # fmt: skip
     job_rows = []
     for job_id in jobs.all_jobs()[:limit]:
@@ -1061,11 +1072,16 @@ def board_data(limit: int = 10) -> dict:
             "retrying": verifier.pending(st), "rolled_back_to": st.get("rolled_back_to"),
             "stalled": watchdog.check(job_id, st), "started": sp.get("created"),
             "budget_warning": sp.get("budget_warning"),
+            "invariants": v.get("invariants") or [], "reverted": v.get("reverted") or [],
+            "oracle": _oracle_short(v.get("oracle")),
         })  # fmt: skip
+    from . import bisect_tool
+
     spent = ledger.committed()
     return {
         "groups": group_rows,
         "jobs": job_rows,
+        "bisects": bisect_tool.recent(),
         "budget": {"cap_usd": config.MONTHLY_CAP_USD, "committed_usd": round(spent, 2),
                    "left_usd": round(config.MONTHLY_CAP_USD - spent, 2)},
     }  # fmt: skip
@@ -1078,8 +1094,9 @@ def board(limit: int = 10) -> str:
         lines.append(f"{g['id']} {g['kind']} {g['label'] or ''} · {g['summary']}".replace("  ", " "))
         for t in g["tasks"]:
             deps = f" ← {', '.join(t['depends_on'])}" if t["depends_on"] else ""
+            fan = f" (from {t['expanded_from']})" if t.get("expanded_from") else ""
             lines.append(
-                f"  {t['alias']}: {t['job'] or t['state']}{deps}{' · ' + t['why'] if t['why'] else ''}"
+                f"  {t['alias']}{fan}: {t['job'] or t['state']}{deps}{' · ' + t['why'] if t['why'] else ''}"
             )
     for j in data["jobs"]:
         bits = [j["state"], j["engine"] or "?"]
@@ -1091,7 +1108,19 @@ def board(limit: int = 10) -> str:
             bits.append(f"rolled back to {j['rolled_back_to']}")
         if j["stalled"]:
             bits.append(f"STALLED {j['stalled']}")
+        if j["invariants"]:
+            bits.append(f"INVARIANT {j['invariants'][0][:60]}")
+        if j["reverted"]:
+            bits.append(f"reverted {len(j['reverted'])} file(s) outside allowed_paths")
+        o = j["oracle"]
+        if o:
+            same = "error" if o.get("error") else "same output" if o["output_match"] else "OUTPUT DIFFERS"
+            pct = o.get("speedup_pct")
+            bits.append(f"oracle {same}" + ("" if pct is None else f" {pct:+.0f}%"))
         lines.append(f"{j['id']} " + " · ".join(bits))
+    for b in data["bisects"]:
+        found = f" → {b['commit'][:9]}" if b.get("commit") else ""
+        lines.append(f"{b['id']} bisect {b['state']} · round {b['round']} · {b['tested']}/{b['candidates']} tested{found}")
     b = data["budget"]
     lines.append(f"budget: {b['left_usd']:.2f}$ left of {b['cap_usd']:.0f}$")
     return "\n".join(lines)
