@@ -75,6 +75,10 @@ def _validate(tasks: list[dict]) -> str | None:
             return f"depends_on names an unknown id: {deps}"
         if deps and not t.get("id"):
             return "a task with depends_on needs an id"
+        if t.get("foreach") is not None and (t["foreach"] not in deps or not t.get("id")):
+            return "foreach names a task that must also be in depends_on"
+        if t.get("after", "all") not in ("all", "any"):
+            return "after must be all|any"
         if t.get("id"):
             graph[t["id"]] = deps
     seen: dict[str, int] = {}
@@ -104,8 +108,9 @@ def create(tasks: list[dict], concurrency: int | None = None, kind: str = "dag",
     _dir().mkdir(parents=True, exist_ok=True)
     rows = []
     for i, t in enumerate(tasks):
-        args = {k: v for k, v in t.items() if k not in ("id", "depends_on")}
+        args = {k: v for k, v in t.items() if k not in ("id", "depends_on", "foreach", "after")}
         rows.append({"alias": t.get("id") or f"t{i + 1}", "args": args, "depends_on": t.get("depends_on") or [],
+                     "foreach": t.get("foreach"), "after": t.get("after", "all"),
                      "job": None, "state": "pending", "why": ""})  # fmt: skip
     group = {"v": 1, "id": group_id, "kind": kind, "label": label, "concurrency": concurrency,
              "tasks": rows, "created": time.time(), "runner": None}  # fmt: skip
@@ -165,6 +170,8 @@ def advance(group_id: str) -> None:
         limit = group.get("concurrency") or len(rows)
         ids = {a: r["job"] for a, r in rows.items() if r["job"]}
         note = _board_note(group_id)
+        rows = _expand(rows, outcome)
+        outcome = {a: (_ok(r["job"]) if r["job"] else None) for a, r in rows.items()}
         winner = group.get("first_success") and next((a for a, ok in outcome.items() if ok), None)
         for alias, row in rows.items():
             if winner and row["state"] == "pending":
@@ -174,10 +181,11 @@ def advance(group_id: str) -> None:
                 continue
             deps = row["depends_on"]
             bad = [d for d in deps if rows[d]["state"] == "skipped" or outcome.get(d) is False]
-            if bad:
+            if bad and (row.get("after") != "any" or len(bad) == len(deps)):
                 row["state"], row["why"] = "skipped", f"skipped_dependency_failed: {', '.join(bad)}"
                 continue
-            if any(outcome.get(d) is not True for d in deps) or active >= limit:
+            ended = all(d in bad or outcome.get(d) is True for d in deps)
+            if not ended or active >= limit:
                 continue
             args = {k: _substitute(v, ids) for k, v in row["args"].items()}
             args["task"] = str(args.get("task", "")) + note
@@ -201,6 +209,56 @@ def advance(group_id: str) -> None:
                 row["state"], row["why"] = "skipped", f"not started: {out[:160]}"
         group["tasks"] = list(rows.values())
         jobs.write_json(_path(group_id), group)
+
+
+MAX_FANOUT = 8
+FANOUT_FILE = ".subtask/fanout.json"
+
+
+def _fanout(job_id: str) -> tuple[list | None, str]:
+    """The items a finished parent wrote to .subtask/fanout.json in its folder."""
+    path = Path(jobs.spec(job_id)["cwd"]) / FANOUT_FILE
+    try:
+        items = json.loads(path.read_text())
+    except FileNotFoundError:
+        return None, f"{job_id} wrote no {FANOUT_FILE}"
+    except (OSError, ValueError) as exc:
+        return None, f"{FANOUT_FILE} of {job_id} is not JSON ({exc})"[:160]
+    if not isinstance(items, list):
+        return None, f"{FANOUT_FILE} of {job_id} is not a list"
+    if len(items) > MAX_FANOUT:
+        return None, f"{FANOUT_FILE} of {job_id} has {len(items)} items, at most {MAX_FANOUT}"
+    return items, ""
+
+
+def _expand(rows: dict[str, dict], outcome: dict) -> dict[str, dict]:
+    """Replace each foreach row whose parent succeeded by one row per item; dependents wait for all."""
+    out: dict[str, dict] = {}
+    renamed: dict[str, list[str]] = {}
+    for alias, row in rows.items():
+        parent = row.get("foreach")
+        if not (parent and row["state"] == "pending" and outcome.get(parent) is True):
+            out[alias] = row
+            continue
+        items, why = _fanout(rows[parent]["job"])
+        if items is None:
+            out[alias] = {**row, "state": "skipped", "why": f"foreach: {why}"}
+            continue
+        names = []
+        for i, item in enumerate(items):
+            text = item if isinstance(item, str) else json.dumps(item)
+            task = str(row["args"].get("task", ""))
+            task = task.replace("{{item}}", text) if "{{item}}" in task else f"{task}\n\nItem: {text}"
+            name = f"{alias}[{i}]"
+            out[name] = {**row, "alias": name, "args": {**row["args"], "task": task}, "foreach": None,
+                         "expanded_from": alias}  # fmt: skip
+            names.append(name)
+        renamed[alias] = names
+    if not renamed:
+        return out
+    for row in out.values():
+        row["depends_on"] = [n for d in row["depends_on"] for n in renamed.get(d, [d])]
+    return out
 
 
 def ensure_runner(group_id: str) -> None:

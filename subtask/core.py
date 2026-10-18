@@ -100,6 +100,7 @@ def start(
     invariants: list[str] | None = None,
     allowed_paths: list[str] | None = None,
     symbol_scope: list[str] | None = None,
+    oracle_cmd: str | None = None,
     _breaker: str | None = None,
     _group: str | None = None,
 ) -> str:
@@ -120,6 +121,10 @@ def start(
     problem = inv.validate(invariants, allowed_paths, symbol_scope)
     if problem:
         return problem
+    if oracle_cmd is not None and not (isinstance(oracle_cmd, str) and oracle_cmd.strip()):
+        return "oracle_cmd must be a non-empty command"
+    if oracle_cmd and not (repo or isolation == "worktree") or oracle_cmd and readonly:
+        return "oracle_cmd needs a worktree (repo or isolation=worktree)"
     if (allowed_paths or symbol_scope) and not (repo or isolation == "worktree"):
         return "allowed_paths and symbol_scope need a worktree (repo or isolation=worktree)"
     tier, budget_warning = _degrade(tier)
@@ -158,7 +163,8 @@ def start(
         built = start(
             task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
             files, policy, verify, untrusted, progress, max_retries=max_retries, invariants=invariants,
-            allowed_paths=allowed_paths, symbol_scope=symbol_scope, _breaker=breaker, _group=_group,
+            allowed_paths=allowed_paths, symbol_scope=symbol_scope, oracle_cmd=oracle_cmd, _breaker=breaker,
+            _group=_group,
         )  # fmt: skip
         if "already running" in built:  # no slot now: a group starts the Builder when one frees
             from . import groups
@@ -168,7 +174,7 @@ def start(
                 "max_turns": max_turns, "effort": effort, "model": model, "kind": kind, "files": files,
                 "policy": policy, "verify": verify, "untrusted": untrusted, "max_retries": max_retries,
                 "invariants": invariants, "allowed_paths": allowed_paths, "symbol_scope": symbol_scope,
-                "_breaker": breaker,
+                "oracle_cmd": oracle_cmd, "_breaker": breaker,
             }])  # fmt: skip
             return f"breaker {broke}\nbuilder queued in {queued.split()[0]}"
         if " started " not in built:
@@ -262,6 +268,7 @@ def start(
             "invariants": inv.DEFAULT if invariants is None else invariants,
             "allowed_paths": allowed_paths,
             "symbol_scope": symbol_scope,
+            "oracle_cmd": oracle_cmd,
             "breaker": _breaker,
             "port": _free_port() if branch else None,
             "group": _group,
@@ -590,6 +597,72 @@ def wait(
     return ("no job succeeded\n\n" + out) if mode == "first_success" else out
 
 
+def bisect(
+    good_ref: str, bad_ref: str, test_cmd: str, parallelism: int = 4, auto_fix: bool = False,
+    repo: str | None = None, engine: str = "auto", max_usd: float | None = None,
+) -> str:
+    """Find the first commit between good_ref and bad_ref that makes test_cmd fail."""
+    from . import bisect_tool
+
+    if not (isinstance(test_cmd, str) and test_cmd.strip()):
+        return "test_cmd must be a non-empty command"
+    if isinstance(parallelism, bool) or not isinstance(parallelism, int) or not 1 <= parallelism <= 8:
+        return "parallelism must be between 1 and 8"
+    root = _repo_of(str(Path(repo or os.getcwd()).resolve()))
+    if not root:
+        return "bisect needs a git repository"
+    found = bisect_tool.find(root, good_ref, bad_ref, test_cmd, parallelism)
+    text = bisect_tool.report(root, found)
+    if found.get("error") or not auto_fix:
+        return text
+    diff = text.split("\n\n", 1)[-1]
+    task = bisect_tool.FIX_TASK.format(sha=found["commit"][:12], cmd=test_cmd, diff=diff)
+    out = start(task, engine, root, base="HEAD", max_usd=max_usd, verify=test_cmd, max_retries=1)
+    return text[:2000] + f"\n\nfix job: {out}"
+
+
+CONSENSUS_TASK = (
+    "Several engines solved the task below independently, each on its own branch. Their results are "
+    "attached as Patch A, Patch B, ... (summary and diff). Compare them, keep the strongest ideas, drop "
+    "the bugs of each, and write ONE solution in your worktree. Do not merge the branches. Commit, run "
+    "the checks, and finish with a ## Summary saying what you took from which patch.\n\nTask:\n"
+)
+
+
+def consensus(
+    prompt: str, engines: list[str], verify_cmd: str | None = None, isolation: str = "worktree",
+    repo: str | None = None, cwd: str | None = None, max_usd: float | None = None,
+    synth_engine: str = "auto",
+) -> str:
+    """Round 1: every engine works blind in its own worktree. Round 2: one job merges the best."""
+    if isolation != "worktree":
+        return "consensus needs isolation=worktree"
+    if not isinstance(engines, list) or not 2 <= len(engines) <= 4 or len(set(engines)) != len(engines):
+        return "engines must list 2 to 4 different engines"
+    unknown = [e for e in engines if registry.get(e) is None]
+    if unknown:
+        return f"unknown engine: {', '.join(unknown)}"
+    if not (isinstance(prompt, str) and prompt.strip()):
+        return "prompt must be a non-empty string"
+    root = _repo_of(str(Path(repo or cwd or os.getcwd()).resolve()))
+    if not root:
+        return "consensus needs a git repository"
+    base = {"repo": root, "max_usd": max_usd, "verify": verify_cmd}
+    rounds = [{"id": f"r{i + 1}", "task": prompt, "engine": e, **base} for i, e in enumerate(engines)]
+    refs = []
+    for i in range(len(engines)):
+        refs += [f"subtask:r{i + 1}:summary", f"subtask:r{i + 1}:diff"]
+    labels = ", ".join(f"Patch {chr(65 + i)} = subtask:r{i + 1}:diff" for i in range(len(engines)))
+    synth = {
+        "id": "synthesis", "depends_on": [r["id"] for r in rounds], "after": "any", "engine": synth_engine,
+        "task": CONSENSUS_TASK + prompt + f"\n\n({labels}; the engine names are hidden on purpose.)",
+        "context_refs": refs, **base,
+    }  # fmt: skip
+    from . import groups
+
+    return groups.create(rounds + [synth], label="consensus")
+
+
 def start_many(tasks: list[dict], progress=None) -> str:
     """Start several jobs in one call; each dict takes start()'s arguments.
 
@@ -654,6 +727,12 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
         except subprocess.CalledProcessError:
             pass
     verification = st.get("verification")
+    if verification and verification.get("oracle"):
+        from . import oracle
+
+        head += "\n" + oracle.line(verification["oracle"])
+    if verification and verification.get("invariants"):
+        head += "\ninvariants violated: " + "; ".join(verification["invariants"][:5])
     if verification:
         code = verification.get("exit_code")
         head += (

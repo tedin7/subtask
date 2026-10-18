@@ -132,6 +132,16 @@ def _call(name: str, args: dict, call: Call) -> str:
         from . import integrate
 
         return integrate.integrate(args["ids"], args.get("action", "apply"), args.get("auto_resolve", False))
+    if name == "consensus":
+        known = {"prompt", "engines", "verify_cmd", "isolation", "repo", "max_usd"}
+        if set(args) - known:
+            raise TypeError(f"unexpected argument(s): {', '.join(sorted(set(args) - known))}")
+        return core.consensus(**args)
+    if name == "bisect":
+        known = {"good_ref", "bad_ref", "test_cmd", "parallelism", "auto_fix", "repo"}
+        if set(args) - known:
+            raise TypeError(f"unexpected argument(s): {', '.join(sorted(set(args) - known))}")
+        return core.bisect(**args)
     if name == "inspect":
         return core.inspect(args["id"], args.get("tail", 80), args.get("grep"))
     if name == "steer":
@@ -155,7 +165,7 @@ def _call(name: str, args: dict, call: Call) -> str:
 START_ARGS = {
     "task", "kind", "repo", "cwd", "files", "readonly", "engine", "max_usd", "effort",
     "base", "max_turns", "policy", "verify", "isolation", "max_retries", "adversarial",
-    "context_refs", "auto_repomap", "tier", "invariants", "allowed_paths", "symbol_scope",
+    "context_refs", "auto_repomap", "tier", "invariants", "allowed_paths", "symbol_scope", "oracle_cmd",
 }  # fmt: skip
 
 

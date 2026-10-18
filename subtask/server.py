@@ -49,20 +49,21 @@ def start(
     invariants: list[str] | None = None,
     allowed_paths: list[str] | None = None,
     symbol_scope: list[str] | None = None,
+    oracle_cmd: str | None = None,
 ) -> str:
-    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol."""
+    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol. oracle_cmd: run on base and result, compare output and time."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
         kind=kind, files=files, policy=policy, verify=verify,
         isolation=isolation, max_retries=max_retries, adversarial=adversarial,
         context_refs=context_refs, auto_repomap=auto_repomap, tier=tier,
-        invariants=invariants, allowed_paths=allowed_paths, symbol_scope=symbol_scope,
+        invariants=invariants, allowed_paths=allowed_paths, symbol_scope=symbol_scope, oracle_cmd=oracle_cmd,
     )  # fmt: skip
 
 
 @mcp.tool(structured_output=False)
 def start_many(tasks: list[dict]) -> str:
-    """Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG."""
+    """Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG. foreach=<parent id>: one copy per item of the parent's .subtask/fanout.json (max 8). after=any: start when one parent succeeded."""
     return core.start_many(tasks)
 
 
@@ -146,6 +147,32 @@ async def integrate(ids: list[str], action: str = "apply", auto_resolve: bool = 
     from . import integrate as ig
 
     return await asyncio.to_thread(ig.integrate, ids, action, auto_resolve)
+
+
+@mcp.tool(structured_output=False)
+async def bisect(
+    good_ref: str,
+    bad_ref: str,
+    test_cmd: str,
+    parallelism: int = 4,
+    auto_fix: bool = False,
+    repo: str | None = None,
+) -> str:
+    """First commit in good_ref..bad_ref that fails test_cmd, testing up to parallelism commits at once. auto_fix: start a fix job."""
+    return await asyncio.to_thread(core.bisect, good_ref, bad_ref, test_cmd, parallelism, auto_fix, repo)
+
+
+@mcp.tool(structured_output=False)
+def consensus(
+    prompt: str,
+    engines: list[str],
+    verify_cmd: str | None = None,
+    isolation: str = "worktree",
+    repo: str | None = None,
+    max_usd: float | None = None,
+) -> str:
+    """2-4 engines solve prompt blind in worktrees, then one job merges the best (verify, invariants). Returns a group id for wait()."""
+    return core.consensus(prompt, engines, verify_cmd, isolation, repo, max_usd=max_usd)
 
 
 @mcp.tool(structured_output=False)

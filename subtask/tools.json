@@ -3,7 +3,7 @@
  "tools": [
   {
    "name": "start",
-   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol.",
+   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol. oracle_cmd: run on base and result, compare output and time.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -97,6 +97,9 @@
        "type": "string"
       },
       "type": "array"
+     },
+     "oracle_cmd": {
+      "type": "string"
      }
     },
     "required": [
@@ -107,7 +110,7 @@
   },
   {
    "name": "start_many",
-   "description": "Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG.",
+   "description": "Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG. foreach=<parent id>: one copy per item of the parent's .subtask/fanout.json (max 8). after=any: start when one parent succeeded.",
    "inputSchema": {
     "properties": {
      "tasks": {
@@ -294,6 +297,75 @@
     },
     "required": [
      "ids"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "bisect",
+   "description": "First commit in good_ref..bad_ref that fails test_cmd, testing up to parallelism commits at once. auto_fix: start a fix job.",
+   "inputSchema": {
+    "properties": {
+     "good_ref": {
+      "type": "string"
+     },
+     "bad_ref": {
+      "type": "string"
+     },
+     "test_cmd": {
+      "type": "string"
+     },
+     "parallelism": {
+      "default": 4,
+      "type": "integer"
+     },
+     "auto_fix": {
+      "default": false,
+      "type": "boolean"
+     },
+     "repo": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "good_ref",
+     "bad_ref",
+     "test_cmd"
+    ],
+    "type": "object"
+   }
+  },
+  {
+   "name": "consensus",
+   "description": "2-4 engines solve prompt blind in worktrees, then one job merges the best (verify, invariants). Returns a group id for wait().",
+   "inputSchema": {
+    "properties": {
+     "prompt": {
+      "type": "string"
+     },
+     "engines": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "verify_cmd": {
+      "type": "string"
+     },
+     "isolation": {
+      "default": "worktree",
+      "type": "string"
+     },
+     "repo": {
+      "type": "string"
+     },
+     "max_usd": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "prompt",
+     "engines"
     ],
     "type": "object"
    }
