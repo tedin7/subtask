@@ -585,7 +585,10 @@ def wait(
 
         for group_id in group_ids:
             groups.cancel(group_id, f"cancelled: first_success {winner}")
-        losers = [j for j in job_ids if j != winner and j not in ended]
+        job_ids, _ = _expand(asked)  # a group job started while we looked is a loser too
+        losers = [
+            j for j in job_ids if j != winner and jobs.status(j).get("state") not in jobs.FINAL
+        ]
         for job_id in losers:
             jobs.stop(job_id)
         head = f"first success: {winner}" + (f" · stopped {', '.join(losers)}" if losers else "")

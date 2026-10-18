@@ -124,10 +124,10 @@ def test_adversarial_start_works_with_a_single_slot(home, monkeypatch):
 def test_first_success_does_not_leave_queued_group_tasks_to_start(home, monkeypatch):
     """core.py:wait first_success stops running losers but the group's detached runner
     keeps starting the queued tasks afterwards (paid work nobody is waiting for)."""
-    from subtask import core, groups
+    from subtask import core, groups, jobs
 
     _one_slot(monkeypatch)
-    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'case "$1" in b*) sleep 4;; esac; ' + SAY)  # b is still working when stopped
     out = core.start_many(
         [{"id": "a", "task": "a", "engine": "fake", "max_usd": 0.5, "cwd": str(home)},
          {"id": "b", "task": "b", "engine": "fake", "max_usd": 0.5, "cwd": str(home)}]
@@ -137,7 +137,10 @@ def test_first_success_does_not_leave_queued_group_tasks_to_start(home, monkeypa
     assert res.startswith("first success"), res
     time.sleep(6)  # > runner tick
     rows = {r["alias"]: r for r in groups.read(gid)["tasks"]}
-    assert rows["b"]["job"] is None, f"queued task started after the winner was found: {rows['b']}"
+    # a can end before wait() marks the group, and its worker may start b at once: then wait()
+    # must have stopped b. Either way b does no work nobody waits for.
+    b = rows["b"]["job"]
+    assert b is None or jobs.status(b)["state"] == "stopped", f"queued task left running: {rows['b']}"
 
 
 def test_group_runner_is_not_respawned_after_it_dies(home, monkeypatch):
