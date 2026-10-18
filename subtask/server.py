@@ -15,13 +15,26 @@ from . import core
 
 mcp = FastMCP(
     "subtask",
-    instructions=(
-        "Delegate long work to cheap engines; do small things yourself (measured: small tasks cost 2-3x). "
-        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids): it blocks and returns "
-        "the summaries. Never poll status(); call wait() again only if it said 'still running'. "
-        "result(id, full/evidence) only when the summary is not enough. "
-        "Call step() before each significant step."
-    ),
+    instructions="\n".join([
+        "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).",
+        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids); it blocks and returns summaries.",
+        "Never poll status(). result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.",
+        "Context: never paste files or diffs into task. Use context_refs=['file:p.py:10-80', 'git:diff',",
+        "  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths to read.",
+        "Writes: isolation='worktree' (or repo=) plus verify='pytest -q ...'. invariants are on by default",
+        "  (no deleted/skipped tests, no new noqa/type: ignore); allowed_paths=[...] reverts the rest.",
+        "  Several jobs on one Python file: give each symbol_scope=['f.py::func'].",
+        "Review: integrate(ids, action='diff') before integrate(ids, action='apply'); apply is all or nothing.",
+        "Pick the tool:",
+        "  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over",
+        "    the parent's .subtask/fanout.json (max 8); after='any' joins on the first success.",
+        "  the same edit over many files -> map_reduce, not many start calls.",
+        "  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).",
+        "  a refactor that must not change behaviour or must be faster -> oracle_cmd on start.",
+        "  a critical bug or design doubt -> consensus(prompt, engines) or wait(mode='first_success').",
+        "  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction).",
+        "Call step() before each significant step and show its reply to the user.",
+    ]),
 )
 
 
@@ -51,7 +64,13 @@ def start(
     symbol_scope: list[str] | None = None,
     oracle_cmd: str | None = None,
 ) -> str:
-    """Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol. oracle_cmd: run on base and result, compare output and time."""
+    """Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).
+    verify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.
+    invariants: default ['no_test_deletion','no_suppression'] fail verify on deleted/skipped tests or new noqa; [] = off.
+    allowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.
+    oracle_cmd: after verify passes, run on base and result; reports output_match and speedup_pct.
+    adversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff
+    instead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
         kind=kind, files=files, policy=policy, verify=verify,
@@ -63,7 +82,10 @@ def start(
 
 @mcp.tool(structured_output=False)
 def start_many(tasks: list[dict]) -> str:
-    """Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG. foreach=<parent id>: one copy per item of the parent's .subtask/fanout.json (max 8). after=any: start when one parent succeeded."""
+    """Start several jobs in one call. Items take start()'s arguments. With id + depends_on they form a group (grp-…)
+    run as a DAG; subtask:<id>:summary in task/context_refs is replaced by the real job id.
+    foreach=<parent id>: one copy per item of the JSON list the parent writes to .subtask/fanout.json ({{item}} in
+    task), max 8; dependents wait for every copy. after='any': start when one parent succeeded."""
     return core.start_many(tasks)
 
 
@@ -77,7 +99,9 @@ async def wait(
     stall_timeout: float | None = None,
     ctx: Context | None = None,
 ) -> str:
-    """Wait for jobs or groups; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job."""
+    """Block until jobs or groups end and return their summaries. mode: all | any (first to end) |
+    first_success (first done and verified; the rest are stopped). Returns early on a stalled job.
+    since: cursor for clients without progress notifications. Call again only if it said 'still running'."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     loop = asyncio.get_running_loop()
@@ -131,19 +155,20 @@ async def stop(id: str) -> str:
 
 @mcp.tool(structured_output=False)
 async def steer(id: str, action: str, instruction: str | None = None) -> str:
-    """action: hint (queued, sent when the attempt ends)|abort|retry (fresh job)."""
+    """Correct a job: hint (instruction sent when the attempt ends) | abort | retry (fresh job with the instruction)."""
     return await asyncio.to_thread(core.steer, id, action, instruction)
 
 
 @mcp.tool(structured_output=False)
 def inspect(id: str, tail: int = 80, grep: str | None = None) -> str:
-    """Raw log lines of a job, only when the summary is not enough."""
+    """Raw log lines of a job (last `tail`, filtered by `grep`). Only when the summary is not enough."""
     return core.inspect(id, tail, grep)
 
 
 @mcp.tool(structured_output=False)
 async def integrate(ids: list[str], action: str = "apply", auto_resolve: bool = False) -> str:
-    """Worktree jobs back: diff|apply (uncommitted, all or nothing)|discard. auto_resolve: reconcile job on conflict."""
+    """Bring worktree jobs back. diff first to review; apply = uncommitted, all or nothing, Python files of
+    symbol_scope jobs merged by symbol; discard removes worktree and branch. auto_resolve: a reconcile job on conflict."""
     from . import integrate as ig
 
     return await asyncio.to_thread(ig.integrate, ids, action, auto_resolve)
@@ -187,7 +212,8 @@ def map_reduce(
     cwd: str | None = None,
     engine: str = "auto",
 ) -> str:
-    """Batch files matching glob into jobs ({{files}} in the template); returns a group id for wait()."""
+    """The same edit over many files: one job per batch of files matching glob ({{files}} in prompt_template),
+    at most `concurrency` at once, each in a worktree with verify_cmd. Returns a group id for wait()."""
     from . import map_reduce as mr
 
     return mr.map_reduce(

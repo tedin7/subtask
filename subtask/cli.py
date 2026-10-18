@@ -117,6 +117,9 @@ def main() -> int:
         from . import stephook
 
         return stephook.main()
+    if a.cmd == "install-skill":
+        print("\n".join(install_commands.install_skill(a.dest, a.client)))
+        return 0
     if a.cmd in ("install", "uninstall") or (a.cmd == "doctor" and a.client):
         return install_commands.run(a)
 

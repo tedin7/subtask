@@ -17,6 +17,9 @@ CHOICES = [*CLIENTS, "all"]
 
 
 def add_parsers(sub: argparse._SubParsersAction) -> None:
+    sk = sub.add_parser("install-skill", help="copy or update only SKILL.md for the agents")
+    sk.add_argument("--dest", help="skills folder to write into (default: every installed client)")
+    sk.add_argument("--client", default="all", choices=["all", *CLIENTS])
     i = sub.add_parser(
         "install", help="register the MCP server and skill in a client (plan only without --yes)"
     )
@@ -157,3 +160,30 @@ def _doctor_text(d: dict[str, Any]) -> str:
     if d["not_detected"]:
         lines.append("not detected: " + ", ".join(d["not_detected"]))
     return "\n".join(lines)
+
+
+def install_skill(dest: str | None = None, client: str = "all") -> list[str]:
+    """Copy or update only SKILL.md: into DEST/subtask/ or into each installed client's skills folder.
+
+    A file there that is not a subtask skill (no `name: subtask`) is left alone.
+    """
+    from .fileops import atomic_write, read_bytes
+    from .installer import skill_source
+
+    body = skill_source()
+    if dest:
+        targets = [Path(dest).expanduser() / "subtask" / "SKILL.md"]
+    else:
+        targets = [c.skill_path("user") for c in _selected(client)[0]]
+    out = []
+    for path in targets:
+        cur = read_bytes(path)
+        if cur == body:
+            out.append(f"unchanged: {path}")
+        elif cur is not None and b"name: subtask" not in cur:
+            out.append(f"skipped (not a subtask skill): {path}")
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(path, body)
+            out.append(f"{'updated' if cur is not None else 'installed'}: {path}")
+    return out or ["no client found; pass --dest DIR"]

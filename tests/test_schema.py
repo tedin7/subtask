@@ -97,4 +97,4 @@ def test_server_instructions_teach_the_cheap_pattern_without_the_skill():
 
     text = fastserver.SPEC["instructions"]
     assert "ONE start_many" in text and "ONE wait" in text and "Never poll" in text
-    assert len(text) < 500  # sent to every client session: stays short
+    assert len(text) < 2000  # sent to every client session: the 0.4 playbook, about 400 tokens

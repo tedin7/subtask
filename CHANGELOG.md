@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.2 - 2026-10-19
+
+### Added
+- MCP `instructions` are a short playbook: context_refs instead of pasted text, worktree plus verify
+  plus invariants for writes, symbol_scope, diff before apply, and which tool fits which job.
+- Tool descriptions explain every 0.4 parameter; the skill has recipes for each 0.4 workflow.
+- `subtask install-skill [--dest DIR] [--client NAME]` copies or updates only SKILL.md.
+
+### Fixed
+- `wait(mode="first_success")` also stops a group job that started while it was looking.
+
 ## 0.4.1 - 2026-10-19
 
 ### Fixed

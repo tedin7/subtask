@@ -1,9 +1,9 @@
 {
- "instructions": "Delegate long work to cheap engines; do small things yourself (measured: small tasks cost 2-3x). Pattern: ONE start_many([...]) with every job, then ONE wait(ids): it blocks and returns the summaries. Never poll status(); call wait() again only if it said 'still running'. result(id, full/evidence) only when the summary is not enough. Call step() before each significant step.",
+ "instructions": "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).\nPattern: ONE start_many([...]) with every job, then ONE wait(ids); it blocks and returns summaries.\nNever poll status(). result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.\nContext: never paste files or diffs into task. Use context_refs=['file:p.py:10-80', 'git:diff',\n  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths to read.\nWrites: isolation='worktree' (or repo=) plus verify='pytest -q ...'. invariants are on by default\n  (no deleted/skipped tests, no new noqa/type: ignore); allowed_paths=[...] reverts the rest.\n  Several jobs on one Python file: give each symbol_scope=['f.py::func'].\nReview: integrate(ids, action='diff') before integrate(ids, action='apply'); apply is all or nothing.\nPick the tool:\n  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over\n    the parent's .subtask/fanout.json (max 8); after='any' joins on the first success.\n  the same edit over many files -> map_reduce, not many start calls.\n  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).\n  a refactor that must not change behaviour or must be faster -> oracle_cmd on start.\n  a critical bug or design doubt -> consensus(prompt, engines) or wait(mode='first_success').\n  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction).\nCall step() before each significant step and show its reply to the user.",
  "tools": [
   {
    "name": "start",
-   "description": "Start a job. kind: read|code|review|hard. repo or isolation=worktree: own worktree. policy: worktree|sandbox|isolated|untrusted. verify: check; max_retries: resume on failure; adversarial: Breaker writes tests. context_refs: file:P[:A-B]|git:diff[:REF]|subtask:ID:summary|diff. tier: auto|fast|balanced|deep|free_only. invariants (default no_test_deletion, no_suppression) gate verify; allowed_paths: others reverted; symbol_scope: path.py::name, lets integrate merge by symbol. oracle_cmd: run on base and result, compare output and time.",
+   "description": "Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).\nverify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.\ninvariants: default ['no_test_deletion','no_suppression'] fail verify on deleted/skipped tests or new noqa; [] = off.\nallowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.\noracle_cmd: after verify passes, run on base and result; reports output_match and speedup_pct.\nadversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff\ninstead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -110,7 +110,7 @@
   },
   {
    "name": "start_many",
-   "description": "Items take start()'s arguments; with id and depends_on they form a group (grp-…) run as a DAG. foreach=<parent id>: one copy per item of the parent's .subtask/fanout.json (max 8). after=any: start when one parent succeeded.",
+   "description": "Start several jobs in one call. Items take start()'s arguments. With id + depends_on they form a group (grp-…)\nrun as a DAG; subtask:<id>:summary in task/context_refs is replaced by the real job id.\nforeach=<parent id>: one copy per item of the JSON list the parent writes to .subtask/fanout.json ({{item}} in\ntask), max 8; dependents wait for every copy. after='any': start when one parent succeeded.",
    "inputSchema": {
     "properties": {
      "tasks": {
@@ -129,7 +129,7 @@
   },
   {
    "name": "wait",
-   "description": "Wait for jobs or groups; returns summaries. mode: all|any|first_success. since: cursor. Returns on a stalled job.",
+   "description": "Block until jobs or groups end and return their summaries. mode: all | any (first to end) |\nfirst_success (first done and verified; the rest are stopped). Returns early on a stalled job.\nsince: cursor for clients without progress notifications. Call again only if it said 'still running'.",
    "inputSchema": {
     "properties": {
      "ids": {
@@ -233,7 +233,7 @@
   },
   {
    "name": "steer",
-   "description": "action: hint (queued, sent when the attempt ends)|abort|retry (fresh job).",
+   "description": "Correct a job: hint (instruction sent when the attempt ends) | abort | retry (fresh job with the instruction).",
    "inputSchema": {
     "properties": {
      "id": {
@@ -255,7 +255,7 @@
   },
   {
    "name": "inspect",
-   "description": "Raw log lines of a job, only when the summary is not enough.",
+   "description": "Raw log lines of a job (last `tail`, filtered by `grep`). Only when the summary is not enough.",
    "inputSchema": {
     "properties": {
      "id": {
@@ -277,7 +277,7 @@
   },
   {
    "name": "integrate",
-   "description": "Worktree jobs back: diff|apply (uncommitted, all or nothing)|discard. auto_resolve: reconcile job on conflict.",
+   "description": "Bring worktree jobs back. diff first to review; apply = uncommitted, all or nothing, Python files of\nsymbol_scope jobs merged by symbol; discard removes worktree and branch. auto_resolve: a reconcile job on conflict.",
    "inputSchema": {
     "properties": {
      "ids": {
@@ -372,7 +372,7 @@
   },
   {
    "name": "map_reduce",
-   "description": "Batch files matching glob into jobs ({{files}} in the template); returns a group id for wait().",
+   "description": "The same edit over many files: one job per batch of files matching glob ({{files}} in prompt_template),\nat most `concurrency` at once, each in a worktree with verify_cmd. Returns a group id for wait().",
    "inputSchema": {
     "properties": {
      "glob_pattern": {

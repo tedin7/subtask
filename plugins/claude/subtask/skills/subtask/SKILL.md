@@ -91,6 +91,50 @@ the returned text to the user verbatim. A separate cheap model reads your
 declaration, the repo state and the observed sub-task activity, and keeps
 intention and facts apart. Small edits and reads are not steps.
 
+## Recipes (0.4)
+
+Writes in parallel, checked, no cheating (invariants are on by default):
+```
+start_many([
+  {"task": "Speed up wait()", "repo": "/src/app", "verify": "pytest -q tests/test_wait.py",
+   "symbol_scope": ["app/server.py::wait"], "allowed_paths": ["app/server.py", "tests"]},
+  {"task": "Add a timeout to steer()", "repo": "/src/app", "verify": "pytest -q tests/test_steer.py",
+   "symbol_scope": ["app/server.py::steer"]}
+])
+wait([...]); integrate([...], action="diff"); integrate([...], action="apply")
+```
+Two jobs on one file merge by symbol when their `symbol_scope` do not overlap; anything
+else is reported as a conflict, nothing is guessed.
+
+Context without pasting: `"context_refs": ["file:app/db.py:40-120", "git:diff", "subtask:st-1a2b:summary"],
+"auto_repomap": true`.
+
+Same behaviour, faster: `start(task, repo=..., verify="pytest -q", oracle_cmd="python bench.py")`; the result
+says `oracle ...: same output · +42% (180ms → 104ms)` or `OUTPUT DIFFERS`.
+
+Discover, then fan out (the parent writes a JSON list to `.subtask/fanout.json`, at most 8):
+```
+start_many([
+  {"id": "find", "task": "List slow queries; write them as a JSON list to .subtask/fanout.json", "repo": "/src/app"},
+  {"id": "fix", "depends_on": ["find"], "foreach": "find", "task": "Fix {{item}}", "repo": "/src/app",
+   "verify": "pytest -q"},
+  {"id": "check", "depends_on": ["fix"], "task": "Run the full suite and report", "readonly": true, "cwd": "/src/app"}
+])
+```
+
+The same edit over many files: `map_reduce("src/**/*.py", "Add type hints to {{files}}", batch_size=5,
+concurrency=3, verify_cmd="pytest -q")`, then `wait([group])`.
+
+A regression in history: `bisect("v1.2.0", "HEAD", "pytest -q tests/test_x.py", parallelism=4)`; add
+`auto_fix=True` to start a verified fix job with the guilty diff.
+
+A hard bug or design choice: `consensus("Fix the race in ledger.reserve", ["kimi", "codex", "opencode-go"],
+verify_cmd="pytest -q", repo="/src/app")` (costs one job per engine plus one), or a race:
+`start_many` of the same task on two engines, then `wait(ids, mode="first_success")`.
+
+A job going wrong: `inspect(id, tail=80, grep="Error")`, then `steer(id, "hint", "use the cache in db.py")`
+or `steer(id, "abort")`.
+
 ## Example
 
 ```
