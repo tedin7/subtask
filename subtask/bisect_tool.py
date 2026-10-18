@@ -94,10 +94,18 @@ def _search(repo: str, commits: list[str], cmd: str, k: int, run: str) -> dict:
     lo, hi = -1, len(commits) - 1  # commits[lo] passes (-1 = good), commits[hi] fails (bad)
     rounds, tested = 0, 0
     with ThreadPoolExecutor(k) as pool:
-        while hi - lo > 1:
+        confirmed = False  # bad_ref itself is tested in the first round
+        while hi - lo > 1 or not confirmed:
             span = hi - lo - 1
             picks = sorted({lo + 1 + (span * (i + 1)) // (k + 1) for i in range(min(k, span))})
+            if not confirmed:
+                picks = sorted(set(picks) | {hi})
             results = dict(zip(picks, pool.map(lambda i: _passes(repo, commits[i], cmd), picks)))
+            if not confirmed:
+                confirmed = True
+                if results[hi]:
+                    _note(run, state="failed", error="test_cmd passes on bad_ref")
+                    return {"error": "test_cmd passes on bad_ref: nothing to find"}
             rounds, tested = rounds + 1, tested + len(picks)
             _note(run, round=rounds, tested=tested, left=max(hi - lo - 1, 0))
             for i in picks:  # the interval ends at the first failing pick

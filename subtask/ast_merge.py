@@ -10,6 +10,7 @@ guessed.
 from __future__ import annotations
 
 import ast
+import re
 
 MODULE = "<module>"
 DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -19,19 +20,46 @@ class Conflict(Exception):
     pass
 
 
-def _parts(text: str) -> tuple[dict[str, tuple[int, int, str]], list[str]]:
-    """{name: (first line, last line, source)} for top-level defs, and the other statements' source."""
-    tree = ast.parse(text)
-    lines = text.splitlines(keepends=True)
-    defs, other = {}, []
+def _lines(text: str) -> list[str]:
+    """Lines as ast counts them: only \\n ends a line (splitlines also splits on form feeds)."""
+    if re.search(r"\r(?!\n)", text):
+        raise SyntaxError("lone carriage return")
+    return re.findall(r"[^\n]*\n|[^\n]+$", text)
+
+
+def _main_guard(tree: ast.Module) -> int | None:
+    """First line of a top-level `if __name__ == "__main__":`, where new symbols must go before."""
     for node in tree.body:
-        start = min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
+        test = getattr(node, "test", None)
+        if isinstance(node, ast.If) and isinstance(test, ast.Compare) and isinstance(test.left, ast.Name):
+            if test.left.id == "__name__":
+                return node.lineno
+    return None
+
+
+def _parts(text: str) -> tuple[dict[str, tuple[int, int, str]], list[str]]:
+    """{name: (first line, last line, source)} for top-level defs, and everything else.
+
+    A second def with the same name is keyed name#2. Everything outside the defs (statements,
+    comments) is kept as non-blank text, so a change there is a module-level change.
+    """
+    tree = ast.parse(text)
+    lines = _lines(text)
+    defs: dict[str, tuple[int, int, str]] = {}
+    taken = [False] * (len(lines) + 1)
+    for node in tree.body:
+        if not isinstance(node, DEFS):
+            continue
+        start = min([node.lineno] + [d.lineno for d in node.decorator_list])
         end = node.end_lineno or node.lineno
-        source = "".join(lines[start - 1 : end])
-        if isinstance(node, DEFS):
-            defs[node.name] = (start, end, source)
-        else:
-            other.append(source)
+        name, n = node.name, 1
+        while name in defs:
+            n += 1
+            name = f"{node.name}#{n}"
+        defs[name] = (start, end, "".join(lines[start - 1 : end]))
+        for i in range(start, end + 1):
+            taken[i] = True
+    other = [line.strip() for i, line in enumerate(lines, 1) if not taken[i] and line.strip()]
     return defs, other
 
 
@@ -73,15 +101,20 @@ def graft(base: str, versions: list[tuple[str, str, str]]) -> str:
             if (base_defs.get(name) or (0, 0, ""))[2] != (old_defs.get(name) or (0, 0, ""))[2]:
                 raise Conflict(f"{name} changed on the target too since {job_id} started")
             edits.append((name, new_defs[name][2] if name in new_defs else None))
-    lines = base.splitlines(keepends=True)
-    replaced = sorted((e for e in edits if e[0] in base_defs), key=lambda e: -base_defs[e[0]][0])
-    for name, source in replaced:
-        start, end, _ = base_defs[name]
-        lines[start - 1 : end] = [source] if source is not None else []
+    lines = _lines(base)
+    added = "".join(
+        source.rstrip("\n") + "\n\n\n" for _, source in sorted(e for e in edits if e[0] not in base_defs) if source
+    )
+    guard = _main_guard(ast.parse(base))
+    # (first line, last line, new text); applied bottom-up so earlier line numbers stay valid
+    ops = [(base_defs[n][0], base_defs[n][1], src or "") for n, src in edits if n in base_defs]
+    if added and guard is not None:  # before the main block, which may call them
+        ops.append((guard, guard - 1, added))
+    for start, end, src in sorted(ops, key=lambda o: (-o[0], -o[1])):
+        lines[start - 1 : end] = [src] if src else []
     text = "".join(lines)
-    for name, source in sorted(e for e in edits if e[0] not in base_defs):
-        if source is not None:
-            text = text.rstrip("\n") + "\n\n\n" + source.rstrip("\n") + "\n"
+    if added and guard is None:
+        text = text.rstrip("\n") + "\n\n\n" + added.rstrip("\n") + "\n"
     try:
         ast.parse(text)
     except SyntaxError as exc:

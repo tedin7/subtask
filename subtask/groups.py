@@ -77,6 +77,10 @@ def _validate(tasks: list[dict]) -> str | None:
             return "a task with depends_on needs an id"
         if t.get("foreach") is not None and (t["foreach"] not in deps or not t.get("id")):
             return "foreach names a task that must also be in depends_on"
+        if t.get("foreach") is not None and any(
+            u.get("id") == t["foreach"] and u.get("foreach") is not None for u in tasks
+        ):
+            return "foreach over a foreach task is not supported"
         if t.get("after", "all") not in ("all", "any"):
             return "after must be all|any"
         if t.get("id"):
@@ -256,6 +260,10 @@ def _expand(rows: dict[str, dict], outcome: dict) -> dict[str, dict]:
         renamed[alias] = names
     if not renamed:
         return out
+    for alias, row in list(out.items()):
+        if row.get("foreach") in renamed:  # a foreach over copies: refused, never run with a literal {{item}}
+            out[alias] = {**row, "foreach": None, "state": "skipped",
+                          "why": "foreach over a foreach task is not supported"}  # fmt: skip
     for row in out.values():
         row["depends_on"] = [n for d in row["depends_on"] for n in renamed.get(d, [d])]
     return out

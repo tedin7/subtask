@@ -134,6 +134,9 @@ def _graft(repo: str, scratch: str, found: list[tuple[str, dict]]) -> tuple[list
         base = _git(scratch, "show", f"HEAD:{path}")
         if base.returncode != 0:
             return [], f"{path} is new in several jobs"
+        gone = [j for j, sp in owners if _git(repo, "cat-file", "-e", f"{sp['branch']}:{path}").returncode != 0]
+        if gone:
+            return [], f"{path} is deleted by {', '.join(gone)} and changed by another job"
         versions = [
             (j, _git(repo, "show", f"{sp['base']}:{path}").stdout, _git(repo, "show", f"{sp['branch']}:{path}").stdout)
             for j, sp in owners

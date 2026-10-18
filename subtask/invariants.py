@@ -21,8 +21,12 @@ from . import ast_merge
 
 NAMES = ("no_test_deletion", "no_suppression")
 DEFAULT = list(NAMES)
-SUPPRESS = re.compile(r"#\s*(?:type:\s*ignore|noqa|pragma:\s*no\s*cover)\b")
-SKIP = re.compile(r"(?:pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.skip\(|unittest\.skip)")
+SUPPRESS = re.compile(
+    r"#\s*(?:type:\s*ignore|noqa|pragma:\s*no\s*cover|pyright:\s*ignore|pylint:\s*disable|mypy:\s*ignore)"
+)
+SKIP = re.compile(
+    r"(?:pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|importorskip|xfail)\(|unittest\.skip)"
+)
 
 
 def _git(cwd: str, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
@@ -54,8 +58,9 @@ def _changed(cwd: str, base: str) -> list[tuple[str, str]]:
     with tempfile.TemporaryDirectory() as tmp:
         env = {"GIT_INDEX_FILE": os.path.join(tmp, "index")}
         _git(cwd, "add", "-A", ".", env=env)
-        out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", base, env=env).stdout
-    return [(line[0], line.split("\t", 1)[1]) for line in out.splitlines() if "\t" in line]
+        out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", "-z", base, env=env).stdout
+    parts = out.split("\0")
+    return [(parts[i][0], parts[i + 1]) for i in range(0, len(parts) - 1, 2) if parts[i]]
 
 
 def _old(cwd: str, base: str, path: str) -> str:
@@ -74,7 +79,8 @@ def _new(cwd: str, path: str) -> str:
 def _is_test(path: str) -> bool:
     name = os.path.basename(path)
     return path.endswith(".py") and (
-        name.startswith("test_") or name.endswith("_test.py") or "tests/" in path or path.startswith("test/")
+        name == "conftest.py"
+        or name.startswith("test_") or name.endswith("_test.py") or "tests/" in path or path.startswith("test/")
     )
 
 
@@ -96,7 +102,7 @@ def _count(pattern: re.Pattern, text: str) -> int:
 
 def _allowed(path: str, allowed: list[str]) -> bool:
     for rule in allowed:
-        rule = rule.rstrip("/")
+        rule = os.path.normpath(rule).rstrip("/")
         if path == rule or path.startswith(rule + "/") or fnmatch.fnmatch(path, rule):
             return True
     return False
