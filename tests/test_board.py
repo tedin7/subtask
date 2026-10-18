@@ -66,8 +66,15 @@ def test_opencode_plugin_renders_the_real_board(home, monkeypatch, tmp_path):
     assert "rejoined after restart" in out.stdout and "budget:" in out.stdout
 
 
-def test_board_and_plugin_show_invariants_oracle_bisect_and_fanout(home, monkeypatch, tmp_path):
+def test_board_shows_bisect_runs(home):
     from subtask import bisect_tool, core
+
+    bisect_tool._note("bis-2", id="bis-2", state="done", round=1, tested=4, candidates=5, commit="abcdef1234")
+    assert "bis-2 bisect done · round 1 · 4/5 tested → abcdef123" in core.board()
+
+
+@pytest.mark.skipif(not shutil.which("bun"), reason="needs bun to run the TypeScript plugin")
+def test_plugin_shows_invariants_oracle_bisect_and_fanout(tmp_path):
 
     board = {
         "groups": [{"id": "grp-1", "kind": "dag", "label": "consensus", "summary": "3 tasks",
@@ -91,5 +98,3 @@ def test_board_and_plugin_show_invariants_oracle_bisect_and_fanout(home, monkeyp
     for want in ("consensus grp-1", "fix[0] (from fix)", "INVARIANT no_test_deletion", "reverted 1 file(s)",
                  "oracle same output +42% (180ms → 104ms)", "bis-1 bisect running · round 2 · 8/32 tested"):
         assert want in out.stdout, (want, out.stdout)
-    bisect_tool._note("bis-2", id="bis-2", state="done", round=1, tested=4, candidates=5, commit="abcdef1234")
-    assert "bis-2 bisect done · round 1 · 4/5 tested → abcdef123" in core.board()

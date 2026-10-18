@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-10-19
+
+### Fixed
+- The OpenCode plugin test is skipped where bun is missing; 0.4.0 never reached PyPI because of it.
+
 ## 0.4.0 - 2026-10-18
 
 ### Added
