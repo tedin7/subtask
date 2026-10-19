@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4 - 2026-10-19
+
+### Changed
+- The release workflow only builds and publishes; tests and lint run before the tag is pushed.
+
 ## 0.4.3 - 2026-10-19
 
 ### Fixed

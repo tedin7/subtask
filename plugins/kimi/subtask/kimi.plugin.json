@@ -1,6 +1,6 @@
 {
   "name": "subtask",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Delegate work to background sub-agents (Claude, Codex, Kimi, OpenCode) with a spend cap.",
   "keywords": ["mcp", "subagents", "delegation"],
   "author": { "name": "tedin7" },
@@ -10,7 +10,7 @@
   "mcpServers": {
     "subtask": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/tedin7/subtask@v0.4.3", "subtask-mcp"],
+      "args": ["--from", "git+https://github.com/tedin7/subtask@v0.4.4", "subtask-mcp"],
       "toolTimeoutMs": 660000
     }
   }

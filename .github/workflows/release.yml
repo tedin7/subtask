@@ -1,6 +1,7 @@
 name: release
 
-# On a tag vX.Y.Z: test, build, publish to PyPI with Trusted Publishing (no token),
+# On a tag vX.Y.Z: build and publish (tests and lint run on the dev server before the tag;
+# the ci workflow still runs them on every push, without blocking a release), publish to PyPI with Trusted Publishing (no token),
 # attach the artifacts to a GitHub release, and publish server.json to the MCP Registry
 # with GitHub OIDC. One-time setup on pypi.org: project subtask-mcp -> Publishing ->
 # add a GitHub publisher: owner tedin7, repository subtask, workflow release.yml,
@@ -26,11 +27,6 @@ jobs:
           v=$(python -c "import re;print(re.search(r'__version__ = \"(.+)\"', open('subtask/__init__.py').read()).group(1))")
           test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME but package $v"; exit 1; }
           grep -q "\"version\": \"$v\"" server.json || { echo "server.json is not $v"; exit 1; }
-      - name: Tests
-        run: |
-          sudo apt-get update && sudo apt-get install -y bubblewrap
-          uv venv && uv pip install -e '.[dev]' -c constraints.txt
-          uv run --no-sync pytest -q -p no:cacheprovider
       - name: Build
         run: uv build
       - uses: actions/upload-artifact@v7
