@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from .. import config
+from ..redact import redact
 from .base import Adapter, Capabilities, Capacity, Outcome, RunContext, describe_command, short_command
 
 READONLY_TOOLS = ["Read", "Grep", "Glob", "WebSearch"]
@@ -79,6 +80,28 @@ def api_env() -> dict[str, str]:
     return env
 
 
+class _StderrCapture:
+    """Bounded diagnostics, saved after SDK completion/failure, never a replay."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.tail = ""
+
+    def __call__(self, text: str) -> None:
+        self.tail = (self.tail + text)[-262144:]
+
+    def persist(self) -> bool:
+        # Redact before truncating the log, including tokens split across callbacks.
+        raw = redact(self.tail).encode("utf-8")[-32768:]
+        raw = raw.decode("utf-8", errors="ignore").encode("utf-8")
+        try:
+            self.path.write_bytes(raw)
+        except OSError:
+            # Diagnostics must not replace the original SDK exception/result.
+            return False
+        return True
+
+
 class ClaudeApi(Adapter):
     family = "api"
     module = "claude_agent_sdk"
@@ -144,6 +167,7 @@ class ClaudeApi(Adapter):
         readonly = spec.get("readonly", False)
         policy = spec.get("policy") or {}
         sandbox = not readonly and policy.get("level", "sandbox") != "worktree"
+        stderr = _StderrCapture(ctx.folder / "worker-stderr.log")
         options = ClaudeAgentOptions(
             cwd=spec["cwd"],
             model=spec.get("model") or self.model,
@@ -157,41 +181,45 @@ class ClaudeApi(Adapter):
             system_prompt={"type": "preset", "preset": "claude_code", "append": SUMMARY_RULE},
             env={**ctx.env, **api_env()},
             resume=ctx.resume,
+            stderr=stderr,
         )
         out = Outcome(ok=False, subtype="no result", result="", session_id=ctx.resume)
         pending: dict[str, str] = {}
         turns = 0
-        async for message in query(prompt=ctx.prompt, options=options):
-            ctx.started.set()
-            if isinstance(message, AssistantMessage):
-                turns += 1
-                for block in message.content:
-                    if isinstance(block, ToolUseBlock):
-                        text = _tool_text(block.name, block.input)
-                        if block.name == "Bash":
-                            pending[block.id] = short_command(block.input.get("command"))
-                        ctx.emit("tool", text, source="adapter")
-            elif isinstance(message, UserMessage) and isinstance(message.content, list):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock) and block.tool_use_id in pending:
-                        out.commands.append(
-                            {
-                                "command": pending.pop(block.tool_use_id),
-                                "exit_code": 1 if block.is_error else 0,
-                            }
-                        )
-            elif isinstance(message, ResultMessage):
-                usage = message.usage or {}
-                out = Outcome(
-                    ok=not message.is_error and message.subtype == "success",
-                    subtype=message.subtype,
-                    result=message.result or "",
-                    session_id=message.session_id,
-                    cost_usd=message.total_cost_usd or 0.0,
-                    turns=message.num_turns,
-                    tokens={k: v for k, v in usage.items() if isinstance(v, int)},
-                    commands=out.commands,
-                )
+        try:
+            async for message in query(prompt=ctx.prompt, options=options):
+                ctx.started.set()
+                if isinstance(message, AssistantMessage):
+                    turns += 1
+                    for block in message.content:
+                        if isinstance(block, ToolUseBlock):
+                            text = _tool_text(block.name, block.input)
+                            if block.name == "Bash":
+                                pending[block.id] = short_command(block.input.get("command"))
+                            ctx.emit("tool", text, source="adapter")
+                elif isinstance(message, UserMessage) and isinstance(message.content, list):
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock) and block.tool_use_id in pending:
+                            out.commands.append(
+                                {
+                                    "command": pending.pop(block.tool_use_id),
+                                    "exit_code": 1 if block.is_error else 0,
+                                }
+                            )
+                elif isinstance(message, ResultMessage):
+                    usage = message.usage or {}
+                    out = Outcome(
+                        ok=not message.is_error and message.subtype == "success",
+                        subtype=message.subtype,
+                        result=message.result or "",
+                        session_id=message.session_id,
+                        cost_usd=message.total_cost_usd or 0.0,
+                        turns=message.num_turns,
+                        tokens={k: v for k, v in usage.items() if isinstance(v, int)},
+                        commands=out.commands,
+                    )
+        finally:
+            stderr.persist()
         out.turns = out.turns or turns
         return out
 
