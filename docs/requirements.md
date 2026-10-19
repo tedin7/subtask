@@ -130,3 +130,62 @@ I test e i comandi sono riproducibili; i log in `/tmp` sono effimeri.
 Stato: candidato locale con sole prove e documentazione; nessun push,
 integrazione o rilascio implicito. Non è una certificazione di enforcement
 dei budget presso i provider.
+
+### Seguito: metadati Git concorrenti nel bisect
+
+Il guasto è stato riprodotto su una copia temporanea senza avviare job modello:
+52 ricerche isolate sulla base, con quattro verifiche parallele, hanno prodotto
+al tentativo 52 l'errore Git 128
+`fatal: Invalid path '.../repo/.git/worktrees/6cff4b9b': No such file or directory`.
+Git osservato: 2.47.3. Il precedente stato di causa sconosciuta resta la
+conclusione storica del primo controllo; questa prova aggiunge l'errore Git
+prima nascosto dal messaggio generico. Log `/tmp/subtask-bisect-stress.log`.
+
+Il candidato usa un lock `flock` nel `git-common-dir` risolto, per le sole
+operazioni di creazione e rimozione dei worktree. I comandi di verifica restano
+fuori dal lock e paralleli. Anche processi con directory di stato diverse e
+invocazioni da worktree collegati condividono il lock. I messaggi di errore
+della creazione conservano ora lo stderr Git, limitato a 1.000 caratteri.
+
+`tests/test_bisect_metadata.py` osserva operazioni Git reali da due processi,
+allarga la finestra di sovrapposizione e impone una barriera ai comandi di
+verifica. Prima del fix il test fallisce: due mutazioni contemporanee.
+Dopo il fix entrambe le varianti passano, con massimo una mutazione e comandi
+capaci di raggiungere insieme la barriera. Anche il controllo del cleanup
+conferma che restano soltanto i worktree iniziali.
+
+Comando mirato:
+`build-a-turno /root/subtask/.venv/bin/python -m pytest -q tests/test_bisect_metadata.py tests/test_oracle_bisect.py`.
+Esito: 8 passati in 2,34 s; log `/tmp/subtask-bisect-targeted-final.log`.
+Il primo test di non sovrapposizione falliva sulla base, log
+`/tmp/subtask-bisect-metadata-before.log`. Le prove qualificano l'invariante
+di sincronizzazione; non dimostrano che ogni futuro errore Git sia eliminato.
+
+Limiti: il lock protegge soltanto i bisect che usano questa procedura. Altri
+comandi Git, altri utenti o host su filesystem con semantica di lock diversa
+non sono qualificati. Non viene modificata la politica di cancellazione
+preesistente dei percorsi scratch. Trattandosi di una modifica concorrente,
+resta necessaria la review completa prima dell'integrazione.
+
+Consultato anche Argon su Gemini nella conversazione già autorizzata:
+`https://gemini.google.com/app/1efb6fd6bf713a65`. La consultazione sulla
+descrizione tecnica non costituisce una review completa del repository.
+Su copie temporanee sono stati controllati accesso da sottocartella/symlink,
+assenza di descrittori del lock nei subprocess, rilascio dopo eccezione e
+conservazione dell'errore Git primario per commit inesistente: tutti positivi.
+L'ipotesi di mascheramento per il solo returncode nonzero di `worktree remove`
+non si verifica: `_git` non solleva su returncode nonzero. Errori o timeout
+durante il cleanup rimangono un limite non risolto da questa modifica.
+
+| Input e comando | Esito | Invalidazione |
+| --- | --- | --- |
+| Candidato con lock e due regressioni; `build-a-turno /root/subtask/.venv/bin/python -m pytest -q -p no:cacheprovider` | Uscita 1: 279 passati, 2 falliti, 4 deselezionati in 263,62 s. Il bisect e le nuove prove sono verdi. Log `/tmp/subtask-bisect-full-final.log`. | Cambiamenti al codice, ai test o all'ambiente. |
+| Ruff 0.17.0: check e format su `subtask tests` | Verdi; log `/tmp/subtask-bisect-lint-final.log`, `/tmp/subtask-bisect-format-final.log`. | Cambiamenti ai file o a Ruff. |
+| Checkout originale `26dfd4d`; `build-a-turno .venv/bin/python -m pytest -q tests/test_fanout_consensus.py::test_foreach_refuses_too_many_or_missing_items tests/test_protocol.py::test_server_keeps_answering_while_a_wait_blocks` | Entrambi passano isolati in 2,22 s. Log `/tmp/subtask-other-failures-base.log`. | Cambiamenti alla base o all'ambiente. |
+
+I due errori dell'ultimo controllo completo sono distinti dal bisect:
+`foreach` conserva vuoto il motivo atteso per un nodo; `wait` osserva
+`worker died before finishing` e stato failed mentre stop riferisce stopped.
+Le cause non sono ancora qualificate, né sono dichiarati risolti o attribuiti
+alla modifica. Il candidato resta locale: gate completo non verde e review
+della concorrenza ancora necessari prima dell'integrazione.
