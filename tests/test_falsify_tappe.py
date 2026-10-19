@@ -127,7 +127,9 @@ def test_first_success_does_not_leave_queued_group_tasks_to_start(home, monkeypa
     from subtask import core, groups, jobs
 
     _one_slot(monkeypatch)
-    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'case "$1" in b*) sleep 4;; esac; ' + SAY)  # b is still working when stopped
+    monkeypatch.setenv(
+        "SUBTASK_FAKE_SCRIPT", 'case "$1" in b*) sleep 4;; esac; ' + SAY
+    )  # b is still working when stopped
     out = core.start_many(
         [{"id": "a", "task": "a", "engine": "fake", "max_usd": 0.5, "cwd": str(home)},
          {"id": "b", "task": "b", "engine": "fake", "max_usd": 0.5, "cwd": str(home)}]

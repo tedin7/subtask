@@ -75,7 +75,6 @@ def test_board_shows_bisect_runs(home):
 
 @pytest.mark.skipif(not shutil.which("bun"), reason="needs bun to run the TypeScript plugin")
 def test_plugin_shows_invariants_oracle_bisect_and_fanout(tmp_path):
-
     board = {
         "groups": [{"id": "grp-1", "kind": "dag", "label": "consensus", "summary": "3 tasks",
                     "tasks": [{"alias": "fix[0]", "state": "started", "job": "st-a", "depends_on": [],
@@ -95,6 +94,12 @@ def test_plugin_shows_invariants_oracle_bisect_and_fanout(tmp_path):
     )
     out = subprocess.run(["bun", str(script)], capture_output=True, text=True, timeout=60, check=False)
     assert out.returncode == 0, out.stderr
-    for want in ("consensus grp-1", "fix[0] (from fix)", "INVARIANT no_test_deletion", "reverted 1 file(s)",
-                 "oracle same output +42% (180ms → 104ms)", "bis-1 bisect running · round 2 · 8/32 tested"):
+    for want in (
+        "consensus grp-1",
+        "fix[0] (from fix)",
+        "INVARIANT no_test_deletion",
+        "reverted 1 file(s)",
+        "oracle same output +42% (180ms → 104ms)",
+        "bis-1 bisect running · round 2 · 8/32 tested",
+    ):
         assert want in out.stdout, (want, out.stdout)

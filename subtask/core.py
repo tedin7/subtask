@@ -241,7 +241,9 @@ def start(
             if allowed_paths:
                 task += "\nChange only these paths; anything else is reverted: " + ", ".join(allowed_paths)
             if symbol_scope:
-                task += "\nIn those Python files change only these top-level symbols: " + ", ".join(symbol_scope)
+                task += "\nIn those Python files change only these top-level symbols: " + ", ".join(
+                    symbol_scope
+                )
         else:
             workdir = str(Path(cwd or repo or os.getcwd()).resolve())
             if not Path(workdir).is_dir():
@@ -586,9 +588,7 @@ def wait(
         for group_id in group_ids:
             groups.cancel(group_id, f"cancelled: first_success {winner}")
         job_ids, _ = _expand(asked)  # a group job started while we looked is a loser too
-        losers = [
-            j for j in job_ids if j != winner and jobs.status(j).get("state") not in jobs.FINAL
-        ]
+        losers = [j for j in job_ids if j != winner and jobs.status(j).get("state") not in jobs.FINAL]
         for job_id in losers:
             jobs.stop(job_id)
         head = f"first success: {winner}" + (f" · stopped {', '.join(losers)}" if losers else "")
@@ -601,8 +601,14 @@ def wait(
 
 
 def bisect(
-    good_ref: str, bad_ref: str, test_cmd: str, parallelism: int = 4, auto_fix: bool = False,
-    repo: str | None = None, engine: str = "auto", max_usd: float | None = None,
+    good_ref: str,
+    bad_ref: str,
+    test_cmd: str,
+    parallelism: int = 4,
+    auto_fix: bool = False,
+    repo: str | None = None,
+    engine: str = "auto",
+    max_usd: float | None = None,
 ) -> str:
     """Find the first commit between good_ref and bad_ref that makes test_cmd fail."""
     from . import bisect_tool
@@ -633,8 +639,13 @@ CONSENSUS_TASK = (
 
 
 def consensus(
-    prompt: str, engines: list[str], verify_cmd: str | None = None, isolation: str = "worktree",
-    repo: str | None = None, cwd: str | None = None, max_usd: float | None = None,
+    prompt: str,
+    engines: list[str],
+    verify_cmd: str | None = None,
+    isolation: str = "worktree",
+    repo: str | None = None,
+    cwd: str | None = None,
+    max_usd: float | None = None,
     synth_engine: str = "auto",
 ) -> str:
     """Round 1: every engine works blind in its own worktree. Round 2: one job merges the best."""
@@ -1123,7 +1134,9 @@ def board(limit: int = 10) -> str:
         lines.append(f"{j['id']} " + " · ".join(bits))
     for b in data["bisects"]:
         found = f" → {b['commit'][:9]}" if b.get("commit") else ""
-        lines.append(f"{b['id']} bisect {b['state']} · round {b['round']} · {b['tested']}/{b['candidates']} tested{found}")
+        lines.append(
+            f"{b['id']} bisect {b['state']} · round {b['round']} · {b['tested']}/{b['candidates']} tested{found}"
+        )
     b = data["budget"]
     lines.append(f"budget: {b['left_usd']:.2f}$ left of {b['cap_usd']:.0f}$")
     return "\n".join(lines)

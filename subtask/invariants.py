@@ -80,7 +80,10 @@ def _is_test(path: str) -> bool:
     name = os.path.basename(path)
     return path.endswith(".py") and (
         name == "conftest.py"
-        or name.startswith("test_") or name.endswith("_test.py") or "tests/" in path or path.startswith("test/")
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or "tests/" in path
+        or path.startswith("test/")
     )
 
 

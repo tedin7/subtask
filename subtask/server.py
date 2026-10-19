@@ -15,26 +15,26 @@ from . import core
 
 mcp = FastMCP(
     "subtask",
-    instructions="\n".join([
-        "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).",
-        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids); it blocks and returns summaries.",
-        "Never poll status(). result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.",
-        "Context: never paste files or diffs into task. Use context_refs=['file:p.py:10-80', 'git:diff',",
-        "  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths to read.",
-        "Writes: isolation='worktree' (or repo=) plus verify='pytest -q ...'. invariants are on by default",
-        "  (no deleted/skipped tests, no new noqa/type: ignore); allowed_paths=[...] reverts the rest.",
-        "  Several jobs on one Python file: give each symbol_scope=['f.py::func'].",
-        "Review: integrate(ids, action='diff') before integrate(ids, action='apply'); apply is all or nothing.",
-        "Pick the tool:",
-        "  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over",
-        "    the parent's .subtask/fanout.json (max 8); after='any' joins on the first success.",
-        "  the same edit over many files -> map_reduce, not many start calls.",
-        "  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).",
-        "  a refactor that must not change behaviour or must be faster -> oracle_cmd on start.",
-        "  a critical bug or design doubt -> consensus(prompt, engines) or wait(mode='first_success').",
-        "  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction).",
-        "Call step() before each significant step and show its reply to the user.",
-    ]),
+    instructions=(
+        "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).\n"
+        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids); it blocks and returns summaries.\n"
+        "Never poll status(). result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.\n"
+        "Context: never paste files or diffs into task. Use context_refs=['file:p.py:10-80', 'git:diff',\n"
+        "  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths to read.\n"
+        "Writes: isolation='worktree' (or repo=) plus verify='pytest -q ...'. invariants are on by default\n"
+        "  (no deleted/skipped tests, no new noqa/type: ignore); allowed_paths=[...] reverts the rest.\n"
+        "  Several jobs on one Python file: give each symbol_scope=['f.py::func'].\n"
+        "Review: integrate(ids, action='diff') before integrate(ids, action='apply'); apply is all or nothing.\n"
+        "Pick the tool:\n"
+        "  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over\n"
+        "    the parent's .subtask/fanout.json (max 8); after='any' joins on the first success.\n"
+        "  the same edit over many files -> map_reduce, not many start calls.\n"
+        "  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).\n"
+        "  a refactor that must not change behaviour or must be faster -> oracle_cmd on start.\n"
+        "  a critical bug or design doubt -> consensus(prompt, engines) or wait(mode='first_success').\n"
+        "  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction).\n"
+        "Call step() before each significant step and show its reply to the user."
+    ),
 )
 
 

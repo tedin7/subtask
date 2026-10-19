@@ -101,7 +101,7 @@ def test_graft_refuses_a_symbol_changed_on_the_target_meanwhile():
 
 
 def test_bad_arguments_are_refused(home):
-    from subtask import core, integrate
+    from subtask import core
 
     repo = _repo(home / "repo")
     assert core.start("x", engine="fake", repo=str(repo), invariants=["nope"]).startswith("invariants must")

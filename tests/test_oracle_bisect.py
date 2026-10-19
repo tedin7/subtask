@@ -24,7 +24,7 @@ def _commit(path, name, text, msg):
     subprocess.run([*GIT, "-C", str(path), "add", name], check=True)
     subprocess.run([*GIT, "-C", str(path), "commit", "-qm", msg], check=True)
     return subprocess.run(
-        ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True
+        ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
 
 
@@ -70,7 +70,7 @@ def test_oracle_needs_a_worktree(home):
 def _history(home, n_good, n_bad):
     repo = _repo(home / "repo", {"v": "ok\n"})
     good = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
     for i in range(n_good):
         _commit(repo, f"f{i}", str(i), f"good {i}")

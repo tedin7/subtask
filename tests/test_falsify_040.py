@@ -61,7 +61,7 @@ def test_new_symbol_lands_after_main_guard():
     a = a.replace("\n\nif __name__", "\n\ndef h():\n    return 5\n\n\nif __name__")
     b = base.replace("\n\nif __name__", "\n\ndef g():\n    return 0\n\n\nif __name__")
     merged = ast_merge.graft(base, [("a", base, a), ("b", base, b)])
-    exec(compile(merged, "m.py", "exec"), {"__name__": "__main__"})  # NameError: h defined after main
+    exec(compile(merged, "m.py", "exec"), {"__name__": "__main__"})  # noqa: S102 - NameError: h defined after main
 
 
 def test_unicode_test_file_deletion_not_detected(tmp_path):

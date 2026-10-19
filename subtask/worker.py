@@ -97,7 +97,9 @@ def _guard(job_id: str, spec: dict) -> tuple[dict | None, list[str]]:
         reverted = invariants.revert_outside(spec["cwd"], spec["base"], spec["allowed_paths"])
         if reverted:
             events.emit(job_id, "verify", f"reverted outside allowed_paths: {', '.join(reverted[:5])}")
-    found = invariants.check(spec["cwd"], spec["base"], spec.get("invariants") or [], spec.get("symbol_scope"))
+    found = invariants.check(
+        spec["cwd"], spec["base"], spec.get("invariants") or [], spec.get("symbol_scope")
+    )
     if not found:
         return None, reverted
     events.emit(job_id, "verify", f"invariant violated: {found[0][:80]}")
@@ -229,7 +231,9 @@ def main() -> int:
                     else runners.direct
                 )
                 verification, reverted = _guard(job_id, spec)
-                verification = verification or _verify(spec, wrap, _isolated_vars(job_id, spec, folder, level))
+                verification = verification or _verify(
+                    spec, wrap, _isolated_vars(job_id, spec, folder, level)
+                )
                 if reverted:
                     verification["reverted"] = reverted
                 verification["score"] = verifier.score(verification)
@@ -239,7 +243,12 @@ def main() -> int:
                     verification["snapshot"] = verifier.snapshot(spec["cwd"])
             except Exception as exc:
                 verification = {"command": spec["verify"], "exit_code": None, "error": str(exc)[:200]}
-        if verification and verification.get("exit_code") == 0 and spec.get("oracle_cmd") and spec.get("branch"):
+        if (
+            verification
+            and verification.get("exit_code") == 0
+            and spec.get("oracle_cmd")
+            and spec.get("branch")
+        ):
             from . import oracle
 
             emit("verify", f"oracle {spec['oracle_cmd'][:60]}")
@@ -247,7 +256,7 @@ def main() -> int:
                 verification["oracle"] = oracle.compare(
                     spec["oracle_cmd"], spec["repo"], spec["base"], spec["cwd"], runners.minimal_env(None)
                 )
-            except Exception as exc:  # noqa: BLE001 - the oracle is a report, never a failure
+            except Exception as exc:  # the oracle is a report, never a failure
                 verification["oracle"] = {"command": spec["oracle_cmd"], "error": str(exc)[:200]}
         failed_check = bool(verification) and verification.get("exit_code") != 0 and not stopped
         if outcome and outcome.quota_exhausted:

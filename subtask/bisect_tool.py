@@ -60,7 +60,10 @@ def recent(limit: int = 3, max_age_s: float = 86400) -> list[dict]:
     folder = config.HOME / "bisect-runs"
     if not folder.is_dir():
         return []
-    rows = [jobs.read_json(p) for p in sorted(folder.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)]
+    rows = [
+        jobs.read_json(p)
+        for p in sorted(folder.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    ]
     return [r for r in rows if time.time() - float(r.get("updated") or 0) < max_age_s][:limit]
 
 

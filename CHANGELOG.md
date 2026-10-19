@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3 - 2026-10-19
+
+### Fixed
+- Lint and format pass again, so the release build runs; 0.4.0 to 0.4.2 never reached PyPI.
+
 ## 0.4.2 - 2026-10-19
 
 ### Added

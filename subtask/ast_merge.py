@@ -31,9 +31,9 @@ def _main_guard(tree: ast.Module) -> int | None:
     """First line of a top-level `if __name__ == "__main__":`, where new symbols must go before."""
     for node in tree.body:
         test = getattr(node, "test", None)
-        if isinstance(node, ast.If) and isinstance(test, ast.Compare) and isinstance(test.left, ast.Name):
-            if test.left.id == "__name__":
-                return node.lineno
+        is_compare = isinstance(node, ast.If) and isinstance(test, ast.Compare)
+        if is_compare and isinstance(test.left, ast.Name) and test.left.id == "__name__":
+            return node.lineno
     return None
 
 
@@ -103,7 +103,9 @@ def graft(base: str, versions: list[tuple[str, str, str]]) -> str:
             edits.append((name, new_defs[name][2] if name in new_defs else None))
     lines = _lines(base)
     added = "".join(
-        source.rstrip("\n") + "\n\n\n" for _, source in sorted(e for e in edits if e[0] not in base_defs) if source
+        source.rstrip("\n") + "\n\n\n"
+        for _, source in sorted(e for e in edits if e[0] not in base_defs)
+        if source
     )
     guard = _main_guard(ast.parse(base))
     # (first line, last line, new text); applied bottom-up so earlier line numbers stay valid
