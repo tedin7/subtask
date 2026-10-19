@@ -78,3 +78,55 @@ the fixes, together with the rest of the suite (155 tests).
 | 13 | medium | v0 migration: bad number wedged the ledger, NaN disabled the cap | tolerant migration, skipped rows logged |
 | 14 | low-medium | corrupt index forgot admitting jobs | per-job admission markers used by the rebuild |
 | 15 | low | bad pid in index or status raised everywhere | invalid identities dropped (index) or reported unknown (status) |
+
+## Verifica MCP di arresto e recupero — 19 ottobre 2026
+
+Contratto: qualificare le capacità esistenti attraverso due implementazioni
+indipendenti del client, senza modificare il codice produttivo. Base
+`26dfd4dbadea182de8f83f73e03ae87d69d8d3a8`, worktree
+`/root/wt/subtask-recupero-mcp-20261019`, ramo
+`verifica/recupero-mcp-20261019`. Nessuna API a pagamento o motore reale:
+lo script chiamato `kimi` nella fixture è un eseguibile shell sintetico.
+Processi server, worker, persistenza e protocolli stdio sono reali e locali.
+Ambiente osservato: Python 3.14.8, pytest 9.1.1, mcp 1.30.0,
+claude-agent-sdk 0.2.165. Impronta della nuova fixture:
+`a5c7d1436b79a66ba4dfc97b7002a94121b2df3d602736a5e95838ce1979dd66`.
+
+`tests/test_mcp_recovery.py` aggiunge sei casi:
+
+- Stop con client SDK ufficiale su fastserver e FastMCP.
+- Stop con client JSON-RPC autonomo su entrambi i backend. Il controllo osserva
+  identità del processo sintetico prima e dopo lo stop, stato persistente,
+  evidenza recuperabile da una nuova connessione e slot liberato.
+- Chiusura forzata del solo processo server su entrambi i backend. Un evento
+  su filesystem trattiene il motore sintetico: la sua identità risulta viva
+  anche dopo il crash del server. Il client SDK si riconnette e recupera
+  completamento e risposta scritta su disco, avviati dal client JSON-RPC.
+
+Non si deduce dal crash del server il recupero di una macchina guasta, del
+filesystem danneggiato o di una chiamata modello interrotta. I test preesistenti
+su worker morti e contabilità restano prove distinte. I limiti monetari DSH
+restano non trasmessi dallo specifico adattatore: queste prove non li correggono.
+Nessuna nuova implementazione di arresto, retry o recupero è stata aggiunta.
+
+| Revisione/input | Comando nel worktree | Ambiente ed esito | Invalidazione |
+| --- | --- | --- | --- |
+| Base sopra con le sei prove aggiunte | `build-a-turno /root/subtask/.venv/bin/python -m pytest -q tests/test_mcp_recovery.py` | Python 3.14.8, pytest 9.1.1; 6 passati in 7,83 s prima della sola formattazione. Log `/tmp/subtask-mcp-recovery-final.log`. | Modifiche a fixture, client, backend, core, jobs, procid, dipendenze o runtime. |
+| Stessi input | `uvx --from ruff==0.17.0 ruff check subtask tests` e `ruff format --check subtask tests` con la stessa versione | Lint e formato verdi; log `/tmp/subtask-mcp-lint.log`, `/tmp/subtask-mcp-format.log`. | Cambiamenti ai file controllati o alla versione Ruff. |
+| Stessi input | `python -m subtask.server --dump-tools` confrontato byte per byte con `subtask/tools.json` | Schema invariato. | Modifiche alla pubblicazione degli strumenti o allo schema. |
+| Stessi input, dopo la sola formattazione | `build-a-turno /root/subtask/.venv/bin/python -m pytest -q -p no:cacheprovider` | Uscita 1: 278 passati, 1 fallito, 4 deselezionati in 264,50 s. Le sei nuove prove passano anche nel controllo completo. Log `/tmp/subtask-mcp-full-suite.log`. | Cambiamenti a qualsiasi input della suite. |
+
+Il fallimento completo è
+`test_bisect_auto_fix_starts_a_worktree_job_with_the_diff`: il bisect restituisce
+un errore prima di creare il job. Lo stato conservato dalla fixture riporta
+`worktree for 0fba0c588 not created`, con zero commit testati. Il codice in
+`subtask/` è invariato. Dodici riproduzioni isolate di `core.bisect` con
+`auto_fix=False` sulla base originale hanno completato la ricerca: nessuna
+chiamata modello avviata. La causa del fallimento in suite resta sconosciuta;
+non è classificato come difetto nuovo né come preesistente dimostrato.
+Il gate completo non è verde e blocca l'integrazione del candidato.
+
+I test e i comandi sono riproducibili; i log in `/tmp` sono effimeri.
+Stato: candidato locale con sole prove e documentazione; nessun push,
+integrazione o rilascio implicito. Non è una certificazione di enforcement
+dei budget presso i provider.
