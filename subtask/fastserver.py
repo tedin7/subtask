@@ -285,6 +285,9 @@ def _handle(msg: dict) -> None:
 
 
 def main() -> None:
+    if sys.argv[1:] == ["--version"]:  # the plugins' launcher compares this with the version they pin
+        print(__version__)
+        return
     for line in sys.stdin:
         if not line.strip():
             continue

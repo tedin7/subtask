@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.5 - 2026-10-19
+
+### Fixed
+- The Claude Code and Codex plugins run an installed `subtask-mcp` only when it is the pinned version
+  (new `subtask-mcp --version`); otherwise they start the pinned one with uvx.
+
 ## 0.4.4 - 2026-10-19
 
 ### Changed
