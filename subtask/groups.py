@@ -188,6 +188,13 @@ def advance(group_id: str) -> None:
             if bad and (row.get("after") != "any" or len(bad) == len(deps)):
                 row["state"], row["why"] = "skipped", f"skipped_dependency_failed: {', '.join(bad)}"
                 continue
+            if row.get("foreach"):
+                # A parent may finish between the two outcome snapshots.
+                # Only _expand may turn this placeholder into runnable rows.
+                parent = row["foreach"]
+                if outcome.get(parent) is False or rows[parent]["state"] == "skipped":
+                    row["state"], row["why"] = "skipped", f"skipped_dependency_failed: {parent}"
+                continue
             ended = all(d in bad or outcome.get(d) is True for d in deps)
             if not ended or active >= limit:
                 continue

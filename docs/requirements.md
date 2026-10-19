@@ -189,3 +189,42 @@ I due errori dell'ultimo controllo completo sono distinti dal bisect:
 Le cause non sono ancora qualificate, né sono dichiarati risolti o attribuiti
 alla modifica. Il candidato resta locale: gate completo non verde e review
 della concorrenza ancora necessari prima dell'integrazione.
+
+### Seguito: stop/wait e completamento del padre foreach
+
+Le due intermittenze sono ora riprodotte con sei regressioni deterministiche
+in `tests/test_stop_fanout_races.py`. Prima delle correzioni tutte e sei
+falliscono, log `/tmp/subtask-stop-fanout-before.log`.
+
+- **Stop/wait:** la richiesta viene pubblicata sotto job lock prima dei
+  segnali. La lettura del worker morto non deve produrre un terminale failed
+  intermedio. Finché il gruppo può essere vivo restano stato attivo e riserva;
+  quando il gruppo è terminato, il recupero registra stopped. I due casi
+  controllano spesa possibile e nessuna spesa, mantenendo l'addebito prudenziale
+  e la chiusura singola della riserva. Un gruppo sopravvissuto non permette
+  a una seconda richiesta stop di dichiarare successo.
+- **Foreach:** il padre può completarsi fra lo snapshot usato da `_expand` e
+  quello usato dall'avvio dei nodi. In quel caso il segnaposto non deve partire
+  come job ordinario. Il passaggio successivo espande gli elementi prima
+  dell'avvio; file mancante, elenco vuoto e due elementi hanno esiti distinti.
+
+Feedback mirato prima dell'ultima asserzione sullo stop ripetuto:
+`build-a-turno /root/subtask/.venv/bin/python -m pytest -q tests/test_stop_fanout_races.py tests/test_concurrency.py tests/test_falsify.py tests/test_fanout_consensus.py tests/test_mcp_recovery.py`.
+53 passati in 117,65 s; log `/tmp/subtask-stop-fanout-after.log`.
+Questa prova intermedia non sostituisce il controllo completo sugli input
+finali. Il test sulla riserva non dichiara qualificata ogni politica di
+ammissione dei discendenti: quella logica rimane nel modulo admission.
+
+Stato: correzioni locali del protocollo concorrente, da sottoporre a review
+completa prima dell'integrazione. Nessun cambiamento al provider, ai budget
+autorizzati o ai servizi installati; nessuna API a pagamento nei test.
+
+| Input e comando | Ambiente, esito e log | Invalidazione |
+| --- | --- | --- |
+| `d5f28c6` più le correzioni sopra e sei regressioni; `build-a-turno /root/subtask/.venv/bin/python -m pytest -q -p no:cacheprovider` | Python 3.14.8, pytest 9.1.1: 287 passati, 4 live deselezionati in 262,72 s. Uscita 0; `/tmp/subtask-races-full.log`. | Modifiche rilevanti a codice, test, configurazione, dipendenze o runtime. |
+| Dopo il controllo completo, sola riscrittura equivalente di due if annidati come condizione con and, richiesta da Ruff, e commento precisato; `build-a-turno .venv/bin/python -m pytest -q tests/test_stop_fanout_races.py` usando l'interprete sopra | Sei regressioni verdi sulla forma finale; `/tmp/subtask-races-style-targeted.log`. La suite completa non è ripetuta per sole variazioni equivalenti di stile. | Cambiamento della logica o delle condizioni. |
+| Ruff 0.17.0 check e format su `subtask tests`; schema strumenti confrontato byte per byte | Tutti verdi; `/tmp/subtask-races-lint-final.log`, `/tmp/subtask-races-format-final.log`. Schema invariato. | Modifiche ai file o agli strumenti. |
+
+Il gate completo è ora verde. Il candidato rimane nel ramo locale:
+review indipendente della concorrenza, integrazione e disponibilità nel
+componente installato restano distinte e non dichiarate completate.
