@@ -54,3 +54,53 @@ Formato: 89 file già formattati. Schema MCP generato identico a subtask/tools.j
 | Progetto | ruff format --check subtask tests; dump-tools e diff | Ambiente locale | Passati | File/schema/ambiente rilevante cambiati |
 
 La base installata resta 26dfd4d: nessun worker o MCP è stato ricaricato. Il nuovo commit è un candidato supplementare sopra aa24f9c, non la revisione accettata dal coordinatore indipendente. La review necessaria resta aperta e l'avvio Sonnet reale resta da diagnosticare. Non usare questi test simulati come prova del consumo, dell'autenticazione per inferenza o dell'avvenuta revisione K01.
+
+
+## Seguito: SDK e CLI reali in namespace senza rete
+
+La nuova sonda manuale probes/real-sdk-stderr.py esegue _run dell'adattatore
+reale con claude-agent-sdk 0.2.165 e la CLI inclusa nel pacchetto. Intercetta
+query soltanto per aggiungere un flag volutamente sconosciuto; poi invoca
+la query originale. Non sostituisce classi o trasporto del modulo SDK.
+Impostazioni e credenziale sono fittizie, CLAUDE_CONFIG_DIR è temporaneo e
+ANTHROPIC_BASE_URL punta a 127.0.0.1:1. La CLI è avviata in un namespace di rete
+nuovo con unshare --net, senza route e senza configurare interfacce. Non può
+raggiungere il provider durante questa prova; nessuna inferenza o delega eseguita.
+
+La sonda richiede identità del namespace esterno, adapter e output nuovo:
+
+```
+unshare --net /root/subtask/.venv/bin/python docs/progress-evidence/probes/real-sdk-stderr.py --outer-netns <readlink /proc/self/ns/net prima di unshare> --adapter <file-adattatore> --output <directory-nuova>
+```
+
+I comandi effettivi sono stati lanciati con subprocess e argv separati dal
+worktree /root/wt/subtask-recupero-mcp-20261019. Python 3.14.8, SDK 0.2.165.
+Confronto dello stesso errore di avvio provocato sui due file:
+
+| Revisione | SHA-256 adapter | Esito della sonda |
+| --- | --- | --- |
+| Base aa24f9c | 1a4d712fd9f36e1837d025955c2a03f47eaea14e2685f9ac0cd2e210e7aa71f8 | Exit 1: ProcessError nativo, file diagnostico assente |
+| Candidato b784d9a | ae9480218649b0440f0f9dc9adfc90e9e9da53d52223b68c4f9600d436487a07 | Exit 0: stesso ProcessError exit 1 conservato, stderr specifico salvato |
+
+Il candidato salva 63 byte contenenti unknown option e il nome del flag
+fixture-offline-stderr-unknown-option. SHA-256 del log:
+aadb2f038ad10e78f7bfe6572f40b854fd9566e0910fb0855c8212868f3b7a53.
+Nessun messaggio SDK o turno osservato prima dell'errore. Il messaggio generico
+Fatal error in message reader compare ancora: la correzione conserva il dettaglio
+in aggiunta, senza sostituire l'errore. I due JSON versionati nella directory
+probes conservano risultato, hash e namespace, senza credenziali.
+
+Il primo avvio della sonda si fermava prima della CLI perché assumeva una riga
+header in /proc/net/route. Qui un namespace vuoto restituisce invece file vuoto:
+corretta l'asserzione per ammettere zero route, mantenendo il rifiuto di qualsiasi
+route presente. Il log iniziale è conservato privatamente, non contato come
+risultato del prodotto. Ruff import inizialmente corretto prima della prova finale.
+
+Questa prova aggiunge il percorso subprocess reale ai cinque test precedenti con
+SDK sostituito. Non dimostra la causa del job st-abae5430b8: il flag sconosciuto è
+introdotto soltanto qui. Non prova autenticazione o crediti, normale inferenza,
+isolamento del worker operativo o uso del nuovo file nel servizio installato.
+La review indipendente resta necessaria prima di integrazione/installazione.
+I limiti della suite completa e del DTZ007 preesistente restano quelli sopra;
+nessuna ripetizione della suite invariata. Sono nuovi soltanto sonda e documenti.
+Modifiche ad adapter, CLI, SDK, sonda o isolamento invalidano la prova pertinente.

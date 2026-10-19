@@ -1,0 +1,15 @@
+{
+  "sdk_version": "0.2.165",
+  "adapter_sha256": "ae9480218649b0440f0f9dc9adfc90e9e9da53d52223b68c4f9600d436487a07",
+  "outer_netns": "net:[4026531840]",
+  "inner_netns": "net:[4026535085]",
+  "failure": {
+    "type": "ProcessError",
+    "exit_code": 1
+  },
+  "stderr_bytes": 63,
+  "stderr_sha256": "aadb2f038ad10e78f7bfe6572f40b854fd9566e0910fb0855c8212868f3b7a53",
+  "native_unknown_option_captured": true,
+  "provider_calls": 0,
+  "historical_failure_cause_proven": false
+}

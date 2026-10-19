@@ -1,0 +1,8 @@
+{
+  "revision": "aa24f9c",
+  "adapter_sha256": "1a4d712fd9f36e1837d025955c2a03f47eaea14e2685f9ac0cd2e210e7aa71f8",
+  "probe_exit_code": 1,
+  "native_process_error_observed": true,
+  "diagnostic_file_missing": true,
+  "provider_calls": 0
+}
