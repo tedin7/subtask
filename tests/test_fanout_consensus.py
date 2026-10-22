@@ -99,12 +99,15 @@ def test_foreach_child_never_starts_before_fanout_validation(home, monkeypatch):
         return real_ok(job_id)
 
     monkeypatch.setattr(groups, "_ok", flaky_ok)
-    groups.advance(gid)  # parent ends mid-pass: the child must not start unexpanded
-    row = {r["alias"]: r for r in groups.read(gid)["tasks"]}["c"]
-    assert row["state"] == "pending" and row["job"] is None, row
-    groups.advance(gid)  # next pass expands and the fan-out limit refuses the 9 items
-    row = {r["alias"]: r for r in groups.read(gid)["tasks"]}["c"]
-    assert row["state"] == "skipped" and "9 items, at most 8" in row["why"], row
+    try:
+        groups.advance(gid)  # parent ends mid-pass: the child must not start unexpanded
+        row = {r["alias"]: r for r in groups.read(gid)["tasks"]}["c"]
+        assert row["state"] == "pending" and row["job"] is None, row
+        groups.advance(gid)  # next pass expands and the fan-out limit refuses the 9 items
+        row = {r["alias"]: r for r in groups.read(gid)["tasks"]}["c"]
+        assert row["state"] == "skipped" and "9 items, at most 8" in row["why"], row
+    finally:
+        core.stop(parent_job)
 
 
 def test_foreach_validation(home):

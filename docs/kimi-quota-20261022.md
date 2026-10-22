@@ -50,9 +50,33 @@ build-a-turno /root/subtask/.venv/bin/python -m pytest -q -p no:cacheprovider
 
 Suite completa sul candidato quota: 293 passati, un fallimento in
 `test_foreach_refuses_too_many_or_missing_items`, 4 prove live escluse.
-Il difetto è una corsa tra i due snapshot del padre e l’espansione foreach;
-la correzione isolata è affidata al job Kimi `st-a56d167a12`.
-Il gate combinato resta obbligatorio prima dell’integrazione su main.
+Il difetto è una corsa tra i due snapshot del padre e l’espansione foreach.
+Kimi ha consegnato `6d916d755e172f8181015a907ba5ab51b346083d`
+(job `st-a56d167a12`), verificato automaticamente sul commit. Il coordinatore
+ha controllato l’intero diff e lo ha integrato come `b352861`.
+Il nuovo test fallisce anche nella riproduzione indipendente del coordinatore
+contro `groups.py` originale (figlio avviato invece che in coda).
+L’esecutore ha verificato 274 test completi e i 7 test fanout sulla propria base.
+
+Il coordinatore ha aggiunto `finally: core.stop(parent_job)` al nuovo test,
+per non lasciare il processo simulato in esecuzione. Una seconda revisione
+Kimi indipendente (`st-851b9c1c80`) ha verificato alias, after=any, first_success,
+limite fanout e pulizia del processo: nessun difetto grave.
+
+La prima suite combinata ha superato 293 test e fallito due test che leggevano
+le statistiche prima del salvataggio asincrono successivo allo stato finale.
+Il coordinatore ha corretto solo la sincronizzazione dei test: attesa limitata
+a cinque secondi sul file/statistiche attesi, con tutte le asserzioni conservate.
+Entrambi i test mirati passano. Nessun cambiamento al worker o alla telemetria.
+Gate combinato finale completato sulla stessa revisione dei file runtime e test:
+295 test passati, 4 prove live escluse, 265,24 secondi; uscita 0.
+Lint e formattazione Ruff 0.17.0 completi superati.
+
+Nota di coordinamento: per il confronto con la base l’esecutore ha usato stash
+nel proprio worktree, diversamente dalle istruzioni operative della sessione.
+Il coordinatore ha verificato ripristino, commit esatto e worktree pulito.
+Gli artefatti benchmark generati dai test sono stati esclusi dal guardrail;
+nel commit dell’esecutore compaiono solo i due file dichiarati.
 
 Le prove private della sessione sono sotto
 `/tmp/arvos-errori-20261022-audit-01`; nessun token è incluso nel commit.

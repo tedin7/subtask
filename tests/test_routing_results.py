@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from .conftest import fake_cli, wait_final
+from .conftest import fake_cli, wait_final, wait_until
 
 
 def test_unknown_capacity_stays_unknown(home):
@@ -142,7 +142,12 @@ def test_telemetry_and_roi_count_failures_and_label_estimates(home, monkeypatch)
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", "exit 2")
     bad = core.start("x", engine="fake", cwd=str(home), max_usd=1).split()[0]
     wait_final(bad)
-    rows = telemetry.rows()
+
+    def recorded_attempts():
+        rows = telemetry.rows()
+        return rows if {ok, bad} <= {row["job"] for row in rows} else None
+
+    rows = wait_until(recorded_attempts)
     assert {r["job"] for r in rows} == {ok, bad}
     assert all(r["v"] == 1 and "run_s" in r for r in rows)
     data = roi.compute()["fake/code"]

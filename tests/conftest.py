@@ -53,3 +53,15 @@ def wait_final(job_id: str, timeout: float = 30) -> dict:
             return data
         time.sleep(0.1)
     raise AssertionError(f"{job_id} did not finish: {jobs.status(job_id)}")
+
+
+def wait_until(check, timeout: float = 5):
+    """Wait for an asynchronous side effect without weakening its assertions."""
+    deadline = time.monotonic() + timeout
+    while True:
+        result = check()
+        if result:
+            return result
+        if time.monotonic() >= deadline:
+            raise AssertionError("asynchronous test condition did not become true")
+        time.sleep(0.01)

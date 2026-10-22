@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 
-from .conftest import wait_final
+from .conftest import wait_final, wait_until
 
 SAY = 'echo \'{"say":"## Summary\\n- did: \'"$(echo "$1" | head -1)"\'"}\''
 
@@ -134,6 +134,8 @@ def test_engine_stats_are_kept_per_repo(home, monkeypatch):
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
     job = core.start("x", engine="fake", cwd=str(home), max_usd=0.5, verify="true").split()[0]
     wait_final(job)
-    stats = json.loads((config.HOME / "engine_stats.json").read_text())
+    stats_path = config.HOME / "engine_stats.json"
+    wait_until(stats_path.is_file)
+    stats = json.loads(stats_path.read_text())
     row = stats[str(home)]["fake"]
     assert row["runs"] == 1 and row["passed"] == 1 and row["pass_rate"] == 1.0
