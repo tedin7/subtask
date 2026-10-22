@@ -175,7 +175,6 @@ def advance(group_id: str) -> None:
         ids = {a: r["job"] for a, r in rows.items() if r["job"]}
         note = _board_note(group_id)
         rows = _expand(rows, outcome)
-        outcome = {a: (_ok(r["job"]) if r["job"] else None) for a, r in rows.items()}
         winner = group.get("first_success") and next((a for a, ok in outcome.items() if ok), None)
         for alias, row in rows.items():
             if winner and row["state"] == "pending":

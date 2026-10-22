@@ -69,6 +69,44 @@ def test_foreach_refuses_too_many_or_missing_items(home, monkeypatch):
     assert rows["after_d"]["why"] == "skipped_dependency_failed: d"
 
 
+def test_foreach_child_never_starts_before_fanout_validation(home, monkeypatch):
+    """Parent ends between the outcome snapshot and the dependency check: the
+    foreach child must wait for the next pass instead of starting unexpanded."""
+    from subtask import core, groups
+
+    nine = json.dumps(list(range(9)))
+    # The parent never ends on its own, so no worker or runner can advance the
+    # group behind our back: every pass below is driven by hand.
+    _fake(monkeypatch, "sleep 30")
+    monkeypatch.setattr(groups, "_spawn_runner", lambda _gid: None)
+    base = {"engine": "fake", "cwd": str(home), "max_usd": 0.5}
+    out = core.start_many([
+        {**base, "id": "p", "task": "many"},
+        {**base, "id": "c", "task": "fix {{item}}", "depends_on": ["p"], "foreach": "p"},
+    ])  # fmt: skip
+    gid = out.split()[0]
+    parent_job = {r["alias"]: r for r in groups.read(gid)["tasks"]}["p"]["job"]
+    (home / ".subtask").mkdir()
+    (home / ".subtask" / "fanout.json").write_text(nine)
+
+    real_ok = groups._ok
+    calls = {"n": 0}
+
+    def flaky_ok(job_id):
+        if job_id == parent_job:
+            calls["n"] += 1
+            return None if calls["n"] == 1 else True  # None at the snapshot, True right after
+        return real_ok(job_id)
+
+    monkeypatch.setattr(groups, "_ok", flaky_ok)
+    groups.advance(gid)  # parent ends mid-pass: the child must not start unexpanded
+    row = {r["alias"]: r for r in groups.read(gid)["tasks"]}["c"]
+    assert row["state"] == "pending" and row["job"] is None, row
+    groups.advance(gid)  # next pass expands and the fan-out limit refuses the 9 items
+    row = {r["alias"]: r for r in groups.read(gid)["tasks"]}["c"]
+    assert row["state"] == "skipped" and "9 items, at most 8" in row["why"], row
+
+
 def test_foreach_validation(home):
     from subtask import core
 
