@@ -19,6 +19,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("SUBTASK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("SUBTASK_ENV_FILE", str(tmp_path / "env"))
     monkeypatch.setenv("SUBTASK_ROUTING", str(tmp_path / "routing.json"))
+    monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi-code"))
     monkeypatch.setenv("SUBTASK_MAX_RUNNING", "2")
     monkeypatch.setenv("SUBTASK_PROGRESS_MIN_S", "0")
     monkeypatch.setenv("SUBTASK_ENGINE_PLUGINS", "tests.fake_engine:adapter")
