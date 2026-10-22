@@ -179,9 +179,22 @@ class Kimi(CliAdapter):
         return Capacity(None, "pct_free", "Kimi managed /usages", time.time(), "none", note)
 
     def run(self, ctx: RunContext):
+        from .. import jobs
+
+        marker = ctx.folder / "kimi-thinking.json"
+        effort = None
         if not ctx.resume:
-            # Invocation-only override: global settings and existing sessions stay untouched.
-            ctx.env = {**ctx.env, "KIMI_MODEL_THINKING_EFFORT": ctx.spec.get("effort") or "low"}
+            effort = ctx.spec.get("effort") or "low"
+            jobs.write_json(marker, {"v": 1, "effort": effort})
+        elif marker.exists():
+            recorded = jobs.read_json(marker)
+            effort = recorded.get("effort")
+            if recorded.get("v") != 1 or effort not in ("low", "medium", "high", "xhigh", "max"):
+                raise ValueError("Invalid recorded Kimi thinking effort; refusing to change session")
+        # Kimi rereads its global default on resume. Restore only the effort
+        # pinned by this adapter at session start; leave legacy sessions alone.
+        if effort is not None:
+            ctx.env = {**ctx.env, "KIMI_MODEL_THINKING_EFFORT": effort}
         return super().run(ctx)
 
     def argv(self, ctx: RunContext) -> list[str]:

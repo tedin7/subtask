@@ -15,7 +15,10 @@ Non aggiorna credenziali e non aggira errori di autenticazione.
 I nuovi job senza modello esplicito usano `kimi-code/k3-256k`.
 L’effort richiesto dal job viene passato con `KIMI_MODEL_THINKING_EFFORT`
 solo al nuovo processo. Per questo incarico il valore autorizzato è `low`.
-Il comando di ripresa non aggiunge un nuovo modello o un override di effort.
+Il comando di ripresa non aggiunge un nuovo modello predefinito.
+Per i job avviati con il marcatore di sessione, il processo ripristina
+lo stesso effort applicato all’avvio; i job precedenti senza marcatore
+restano invariati.
 La configurazione globale e le sessioni già avviate restano invariate.
 
 Il token è ammesso solo verso gli endpoint gestiti HTTPS di Kimi.
@@ -83,3 +86,22 @@ Le prove private della sessione sono sotto
 Una nuova release del CLI, un cambio di schema della quota, di provider,
 di autenticazione o del contratto delle variabili di ambiente richiede
 di ripetere i controlli pertinenti. Non sono stati ampliati budget API.
+
+## Correzione della ripresa — verifica nel worker reale
+
+Il 22/10 una ripresa di un job K3 low è tornata al default globale max:
+il CLI rilegge la configurazione a ogni nuovo processo. I job interessati
+sono stati fermati, con analisi, file e commit conservati.
+
+L’adapter registra atomicamente solo l’effort iniziale in
+`kimi-thinking.json` nella cartella privata del job. La ripresa recupera
+quel valore, senza prendere un nuovo default o un effort diverso dal task.
+Le vecchie sessioni senza marcatore non ricevono override; metadati
+incompleti o non validi fermano il lancio invece di cambiare livello.
+La configurazione globale e le credenziali restano invariate.
+
+Prove: due regressioni low/high falliscono su ae8595f; 37 test mirati
+passano con la correzione. Gate completo: 300 passati, 4 live esclusi,
+268,84 secondi. Ruff 0.17.0 e revisione della revisione finale richiesti
+prima dell’integrazione. La prova effettiva avvio/ripresa viene registrata
+nel resoconto operativo dopo la verifica dei log llm.request.

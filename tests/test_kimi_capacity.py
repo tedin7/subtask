@@ -147,11 +147,11 @@ def test_auth_failure_stays_unknown_and_does_not_log_provider_body(tmp_path, mon
     assert "private-test-token" not in reading.note
 
 
-def test_fresh_k3_job_gets_requested_low_without_global_mutation(monkeypatch):
+def test_fresh_k3_job_gets_requested_low_without_global_mutation(tmp_path, monkeypatch):
     from subtask.engines.base import CliAdapter
 
     env = {"KIMI_MODEL_THINKING_EFFORT": "max"}
-    ctx = SimpleNamespace(spec={"effort": "low"}, env=env, resume=None, prompt="test")
+    ctx = SimpleNamespace(spec={"effort": "low"}, env=env, resume=None, folder=tmp_path, prompt="test")
     monkeypatch.setattr(CliAdapter, "run", lambda self, context: context.env)
     assert kimi.Kimi().run(ctx)["KIMI_MODEL_THINKING_EFFORT"] == "low"
     assert env["KIMI_MODEL_THINKING_EFFORT"] == "max"
@@ -159,10 +159,43 @@ def test_fresh_k3_job_gets_requested_low_without_global_mutation(monkeypatch):
     assert "kimi-code/k3-256k" in kimi.Kimi().argv(ctx)
 
 
-def test_resume_preserves_existing_model_and_effort(monkeypatch):
+def test_resume_preserves_existing_model_and_effort(tmp_path, monkeypatch):
     from subtask.engines.base import CliAdapter
 
-    ctx = SimpleNamespace(spec={"effort": "low"}, env={"test": "kept"}, resume="old-session", prompt="test")
+    ctx = SimpleNamespace(
+        spec={"effort": "low"}, env={"test": "kept"}, resume="old-session", folder=tmp_path, prompt="test"
+    )
     monkeypatch.setattr(CliAdapter, "run", lambda self, context: context.env)
     assert kimi.Kimi().run(ctx) == {"test": "kept"}
     assert "-m" not in kimi.Kimi().argv(ctx)
+    assert not (tmp_path / "kimi-thinking.json").exists()
+
+
+@pytest.mark.parametrize("original", ["low", "high"])
+def test_resume_keeps_the_effort_actually_pinned_at_session_start(tmp_path, monkeypatch, original):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda self, context: context.env)
+    adapter = kimi.Kimi()
+    first = SimpleNamespace(spec={"effort": original}, env={}, resume=None, folder=tmp_path, prompt="first")
+    assert adapter.run(first)["KIMI_MODEL_THINKING_EFFORT"] == original
+    inherited = {"KIMI_MODEL_THINKING_EFFORT": "max", "keep": "yes"}
+    resumed = SimpleNamespace(
+        spec={"effort": "medium"}, env=inherited, resume="same-session", folder=tmp_path, prompt="next"
+    )
+    assert adapter.run(resumed) == {"KIMI_MODEL_THINKING_EFFORT": original, "keep": "yes"}
+    assert inherited["KIMI_MODEL_THINKING_EFFORT"] == "max"
+    assert "-m" not in adapter.argv(resumed)
+
+
+@pytest.mark.parametrize("contents", ["not json", "{}", '{"v":1,"effort":"invalid"}'])
+def test_resume_refuses_invalid_session_effort_before_starting_cli(tmp_path, monkeypatch, contents):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda *args: pytest.fail("CLI must not start"))
+    (tmp_path / "kimi-thinking.json").write_text(contents)
+    ctx = SimpleNamespace(
+        spec={"effort": "low"}, env={}, resume="same-session", folder=tmp_path, prompt="next"
+    )
+    with pytest.raises(ValueError, match="Invalid recorded Kimi thinking effort"):
+        kimi.Kimi().run(ctx)
