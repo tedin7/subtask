@@ -100,16 +100,22 @@ Le vecchie sessioni senza marcatore non ricevono override; metadati
 incompleti o non validi fermano il lancio invece di cambiare livello.
 La configurazione globale e le credenziali restano invariate.
 
-Prove: due regressioni low/high falliscono su ae8595f; 37 test mirati
-passano con la correzione. Gate completo: 300 passati, 4 live esclusi,
-268,84 secondi. Ruff 0.17.0 e revisione della revisione finale richiesti
-prima dell’integrazione. La prova effettiva avvio/ripresa viene registrata
-nel resoconto operativo dopo la verifica dei log llm.request.
+Prove: due regressioni low/high falliscono su ae8595f. Sulla revisione
+d162e85 passano 41 test mirati e il gate completo: 304 passati, 4 live
+esclusi, 262,69 secondi. Ruff 0.17.0 passa su 86 file. La revisione
+indipendente st-424a806f21 approva il diff finale, senza rilievi gravi.
+
+Il job reale st-677ae2691e ha completato avvio e ripresa: entrambe le
+richieste llm.request registrano kimi-code/k3-256k, thinkingEffort low e
+thinkingKeep all. Il chiamante non imposta l’effort; una guardia locale
+impedisce il lancio del CLI se l’adapter non applica low. Entrambi i
+lanci superano la guardia; il marcatore resta v1/low. Nessuna modifica
+alla configurazione globale, ai budget o alle sessioni preesistenti.
 
 La revisione indipendente ha chiesto validazione anche prima del primo lancio
 e rifiuto di metadati che non concordano con la specifica originale del job.
 Quattro regressioni aggiuntive falliscono su 306746a e passano dopo la correzione.
-41 test mirati passano; il gate completo e la review della revisione finale
-sono registrati prima dell’integrazione. I metadati locali hanno lo stesso
+Il gate completo e la review sopra si riferiscono alla revisione finale
+del codice e dei test. I metadati locali hanno lo stesso
 confine di fiducia della specifica del job: non sono una firma di sicurezza
 contro chi può modificare entrambi con gli stessi privilegi.
