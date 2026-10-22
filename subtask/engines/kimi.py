@@ -185,11 +185,17 @@ class Kimi(CliAdapter):
         effort = None
         if not ctx.resume:
             effort = ctx.spec.get("effort") or "low"
+            if effort not in ("low", "medium", "high", "xhigh", "max"):
+                raise ValueError("Invalid Kimi thinking effort; refusing to start session")
             jobs.write_json(marker, {"v": 1, "effort": effort})
         elif marker.exists():
             recorded = jobs.read_json(marker)
             effort = recorded.get("effort")
-            if recorded.get("v") != 1 or effort not in ("low", "medium", "high", "xhigh", "max"):
+            if (
+                recorded.get("v") != 1
+                or effort not in ("low", "medium", "high", "xhigh", "max")
+                or effort != (ctx.spec.get("effort") or "low")
+            ):
                 raise ValueError("Invalid recorded Kimi thinking effort; refusing to change session")
         # Kimi rereads its global default on resume. Restore only the effort
         # pinned by this adapter at session start; leave legacy sessions alone.

@@ -181,7 +181,7 @@ def test_resume_keeps_the_effort_actually_pinned_at_session_start(tmp_path, monk
     assert adapter.run(first)["KIMI_MODEL_THINKING_EFFORT"] == original
     inherited = {"KIMI_MODEL_THINKING_EFFORT": "max", "keep": "yes"}
     resumed = SimpleNamespace(
-        spec={"effort": "medium"}, env=inherited, resume="same-session", folder=tmp_path, prompt="next"
+        spec={"effort": original}, env=inherited, resume="same-session", folder=tmp_path, prompt="next"
     )
     assert adapter.run(resumed) == {"KIMI_MODEL_THINKING_EFFORT": original, "keep": "yes"}
     assert inherited["KIMI_MODEL_THINKING_EFFORT"] == "max"
@@ -194,6 +194,29 @@ def test_resume_refuses_invalid_session_effort_before_starting_cli(tmp_path, mon
 
     monkeypatch.setattr(CliAdapter, "run", lambda *args: pytest.fail("CLI must not start"))
     (tmp_path / "kimi-thinking.json").write_text(contents)
+    ctx = SimpleNamespace(
+        spec={"effort": "low"}, env={}, resume="same-session", folder=tmp_path, prompt="next"
+    )
+    with pytest.raises(ValueError, match="Invalid recorded Kimi thinking effort"):
+        kimi.Kimi().run(ctx)
+
+
+@pytest.mark.parametrize("effort", ["invalid", 3, ["low"]])
+def test_fresh_invalid_effort_never_starts_cli_or_records_state(tmp_path, monkeypatch, effort):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda *args: pytest.fail("CLI must not start"))
+    ctx = SimpleNamespace(spec={"effort": effort}, env={}, resume=None, folder=tmp_path, prompt="first")
+    with pytest.raises(ValueError, match="Invalid Kimi thinking effort"):
+        kimi.Kimi().run(ctx)
+    assert not (tmp_path / "kimi-thinking.json").exists()
+
+
+def test_resume_refuses_recorded_effort_that_disagrees_with_original_job(tmp_path, monkeypatch):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda *args: pytest.fail("CLI must not start"))
+    (tmp_path / "kimi-thinking.json").write_text('{"v":1,"effort":"max"}')
     ctx = SimpleNamespace(
         spec={"effort": "low"}, env={}, resume="same-session", folder=tmp_path, prompt="next"
     )

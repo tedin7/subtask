@@ -105,3 +105,11 @@ passano con la correzione. Gate completo: 300 passati, 4 live esclusi,
 268,84 secondi. Ruff 0.17.0 e revisione della revisione finale richiesti
 prima dell’integrazione. La prova effettiva avvio/ripresa viene registrata
 nel resoconto operativo dopo la verifica dei log llm.request.
+
+La revisione indipendente ha chiesto validazione anche prima del primo lancio
+e rifiuto di metadati che non concordano con la specifica originale del job.
+Quattro regressioni aggiuntive falliscono su 306746a e passano dopo la correzione.
+41 test mirati passano; il gate completo e la review della revisione finale
+sono registrati prima dell’integrazione. I metadati locali hanno lo stesso
+confine di fiducia della specifica del job: non sono una firma di sicurezza
+contro chi può modificare entrambi con gli stessi privilegi.
