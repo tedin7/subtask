@@ -32,8 +32,7 @@ mcp = FastMCP(
         "  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).\n"
         "  a refactor that must not change behaviour or must be faster -> oracle_cmd on start.\n"
         "  a critical bug or design doubt -> consensus(prompt, engines) or wait(mode='first_success').\n"
-        "  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction).\n"
-        "Call step() before each significant step and show its reply to the user."
+        "  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction)."
     ),
 )
 
@@ -231,14 +230,6 @@ def cleanup(id: str) -> str:
 def engines() -> str:
     """Free quota and API spend."""
     return core.engines() + "\n" + core.spend()
-
-
-@mcp.tool(structured_output=False)
-async def step(
-    title: str, path: str, how: str, decisions: list[str] | None = None, repo: str | None = None
-) -> str:
-    """Before each significant step. Paste the reply verbatim; on STOP ask the user."""
-    return await asyncio.to_thread(core.step, title, path, how, decisions, repo)
 
 
 ANNOTATIONS = ("title",)

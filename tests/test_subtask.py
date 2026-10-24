@@ -240,69 +240,6 @@ def test_bad_cap_env_falls_back(monkeypatch):
     assert importlib.reload(subtask.config).MONTHLY_CAP_USD == 180
 
 
-def test_step_falls_back_to_the_declared_step_without_a_key(st, tmp_path):
-    (tmp_path / "env").write_text("")
-    out = st.core.step("Add cache", "edit core.py", "TDD", ["no new dependency"], repo=str(tmp_path))
-    assert out.splitlines()[:4] == [
-        "STEP: Add cache",
-        "- path: edit core.py",
-        "- how: TDD",
-        "- decision: no new dependency",
-    ]
-    assert "(unavailable: RuntimeError: no API key)" in out
-    assert "Add cache" in st.core.steps()
-    assert st.core.step("", "p", "h") == "title, path and how are required"
-    assert st.jobs.month_spent() == 0
-
-
-def test_step_only_explains_with_haiku_and_books_it(st, tmp_path, monkeypatch):
-    from subtask import narrate
-
-    class Resp:
-        def __init__(self, text):
-            self.text = text
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-    seen = []
-
-    def fake_open(req, timeout):
-        body = json.loads(req.data)
-        seen.append(body)
-        return Resp("- Sta per aggiungere una cache.")
-
-    monkeypatch.setattr(narrate.urllib.request, "urlopen", fake_open)
-    monkeypatch.setattr(
-        narrate.json,
-        "load",
-        lambda r: {
-            "content": [{"type": "text", "text": r.text}],
-            "usage": {"input_tokens": 1000, "output_tokens": 200},
-        },
-    )
-    out = st.core.step("Add cache", "edit core.py", "TDD", repo=str(tmp_path))
-    assert "Sta per aggiungere" in out and "CHECK" not in out
-    assert [b["model"] for b in seen] == ["claude-haiku-5-5"]
-    assert st.jobs.month_spent() == pytest.approx(0.002)
-
-
-def test_step_reads_the_repo_from_path_when_repo_is_missing(st, tmp_path, monkeypatch):
-    from subtask import narrate
-
-    sub = tmp_path / "other"
-    (sub / "pkg").mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(sub)], check=True)
-    seen = []
-    monkeypatch.setattr(narrate, "review", lambda text, repo, lang: seen.append(repo) or "- ok")
-    st.core.step("t", str(sub / "pkg" / "new_file.py"), "h")
-    st.core.step("t", "edit core.py", "h")
-    assert seen == [str(sub), os.getcwd()]
-
-
 def test_dsh_cost_counts_uncached_cached_and_output_tokens(st):
     from subtask import worker
 
@@ -358,7 +295,7 @@ def test_fast_server_speaks_json_rpc(st, tmp_path):
     )
     out = {r.get("id"): r for r in map(json.loads, proc.stdout.splitlines())}
     assert out[1]["result"]["protocolVersion"] == "2025-06-18"
-    assert len(out[2]["result"]["tools"]) == 16
+    assert len(out[2]["result"]["tools"]) == 15
     assert out[4]["result"]["isError"] is True
     assert out[5]["error"]["code"] == -32601
     assert out[None]["error"]["code"] == -32700

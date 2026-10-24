@@ -92,7 +92,6 @@ redaction is a second layer, not a guarantee. See [SECURITY.md](SECURITY.md).
 | `status(id)` / `result(id, full, evidence)` | one line / summary or full text or JSON envelope |
 | `reply(id, message)` / `stop(id)` / `cleanup(id)` | continue / stop the work / remove a clean worktree (branch kept) |
 | `engines()` | capacity per engine with source, freshness and confidence, plus spend |
-| `step(title, path, how, decisions)` | an independent cheap model narrates the step from the repo's real state |
 
 Options of `start`:
 

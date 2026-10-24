@@ -4,7 +4,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "v=0.4.5; [ \"$(subtask-mcp --version </dev/null 2>/dev/null)\" = \"$v\" ] && exec subtask-mcp; exec uvx --from \"subtask-mcp==$v\" subtask-mcp"
+        "v=0.5.0; [ \"$(subtask-mcp --version </dev/null 2>/dev/null)\" = \"$v\" ] && exec subtask-mcp; exec uvx --from \"subtask-mcp==$v\" subtask-mcp"
       ],
       "type": "stdio"
     }

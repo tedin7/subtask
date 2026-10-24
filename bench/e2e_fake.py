@@ -169,8 +169,6 @@ def drive(client: Client, task: dict, repo: Path, outcome: str, abl: dict, max_r
         "readonly": readonly,
         "max_usd": task["budget"]["max_usd"],
     }
-    if abl["narrator"] == "on":
-        client.call("step", title=f"delegate {task['id']}", path=str(repo), how="one fake job")
     if abl["batching"] == "on":
         started = client.call("start_many", tasks=[item])
     else:

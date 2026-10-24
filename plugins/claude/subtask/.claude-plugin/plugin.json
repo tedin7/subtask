@@ -1,6 +1,6 @@
 {
   "name": "subtask",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Delegate work to background sub-agents (Claude, Codex, Kimi, OpenCode) with a spend cap. Bundles the subtask MCP server, its skill, and a PostToolUse hook that reports MCP tool duration.",
   "author": { "name": "tedin7" },
   "homepage": "https://github.com/tedin7/subtask",

@@ -46,7 +46,7 @@ async def _session(module: str, home) -> tuple[list[str], list[tuple[float, str]
 def test_progress_reaches_an_independent_client(home, server):
     fake_cli(home, "kimi", "sleep 4; echo done")
     tools, seen, t_end, text = asyncio.run(_session(SERVERS[server], home))
-    assert {"start", "wait", "step", "result"} <= set(tools)
+    assert {"start", "wait", "result"} <= set(tools)
     assert seen, f"{server}: no progress received"
     assert all(t <= t_end for t, _ in seen)
     assert any("Subtask ·" in m for _, m in seen)

@@ -8,10 +8,10 @@ missing (None); they are never estimated here.
 from __future__ import annotations
 
 import json
-import sys
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 NATIVE_TOOLS = ("Task", "Agent")
@@ -23,10 +23,6 @@ SUBTASK_RULES = {
     "summary": {
         "summary": "Read results with result(id) (the short summary).",
         "full": "Read results with result(id, full=true).",
-    },
-    "narrator": {
-        "on": "Call step() before each significant step.",
-        "off": "Do not call step().",
     },
 }
 
@@ -64,7 +60,7 @@ def brief(task: dict, arm: str, ablations: dict, repo: Path) -> str:
             f"repo={str(repo)!r}"
             + (", readonly=true" if task["kind"] in ("read", "review") else "")
             + ". "
-            + " ".join(SUBTASK_RULES[k][ablations[k]] for k in ("batching", "summary", "narrator"))
+            + " ".join(SUBTASK_RULES[k][ablations[k]] for k in ("batching", "summary"))
             + " Verify the result before answering; you may reply() to the job once if it is wrong."
         )
     return text

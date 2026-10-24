@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 - 2026-10-24
+
+### Removed
+- The `step` MCP tool and its independent narrator: `narrate.py`, `stephook.py`, the `subtask step`/`steps`
+  CLI commands and the automatic `narrate-hook` announcements are gone. The published tool list and the
+  server instructions no longer mention `step`. This is a breaking change for clients that called it.
+
 ## 0.4.5 - 2026-10-19
 
 ### Fixed

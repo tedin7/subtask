@@ -9,7 +9,7 @@ subtask install|uninstall --client claude|codex|kimi|opencode|all [--yes]
 subtask doctor [--json] [--client X] | gc [--days 30] [--apply] | du | roi | routing explain|calibrate | watch ID...
 
 Differences from the MCP tools: the CLI also has --model, --no-sandbox (same as
---policy worktree), --untrusted, spend, steps, install, doctor, gc, du, roi,
+--policy worktree), --untrusted, spend, install, doctor, gc, du, roi,
 routing and watch. MCP `engines` returns capacity plus spend in one call.
 """
 
@@ -62,15 +62,6 @@ def main() -> int:
     rp.add_argument("message")
     for name in ("stop", "cleanup"):
         sub.add_parser(name).add_argument("id")
-    sp = sub.add_parser("step")
-    sp.add_argument("title")
-    sp.add_argument("--path", required=True)
-    sp.add_argument("--how", required=True)
-    sp.add_argument("--decision", action="append", dest="decisions")
-    sub.add_parser("steps")
-    sub.add_parser(
-        "narrate-hook", help="Claude Code PreToolUse hook: automatic step announcement (reads JSON on stdin)"
-    )
     sub.add_parser("spend")
     sub.add_parser("engines")
     install_commands.add_parsers(sub)
@@ -113,10 +104,6 @@ def main() -> int:
     wa.add_argument("--interval", type=float, default=2.0)
     a = p.parse_args()
 
-    if a.cmd == "narrate-hook":
-        from . import stephook
-
-        return stephook.main()
     if a.cmd == "install-skill":
         print("\n".join(install_commands.install_skill(a.dest, a.client)))
         return 0
@@ -151,10 +138,6 @@ def main() -> int:
         out = core.result(a.id, a.full, a.evidence)
     elif a.cmd == "reply":
         out = core.reply(a.id, a.message)
-    elif a.cmd == "step":
-        out = core.step(a.title, a.path, a.how, a.decisions)
-    elif a.cmd == "steps":
-        out = core.steps()
     elif a.cmd == "stop":
         out = core.stop(a.id)
     elif a.cmd == "cleanup":

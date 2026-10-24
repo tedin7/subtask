@@ -1,6 +1,6 @@
 """Benchmark: MCP startup, tool latency, fixed token weight, engine pick time.
 
-Spends nothing: no job is started and step() is never called. Tokens are a
+Spends nothing: no job is started and no step tool is called. Tokens are a
 rough estimate (bytes / 4), stated as such in the output.
 
     python bench/run.py [--reps 20] [--cmd subtask-mcp]

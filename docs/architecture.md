@@ -14,7 +14,7 @@ data shows a need (report: "Solo quando richiesto dai dati").
 
 ```
 MCP client / CLI                      fastserver.py (dual-era JSON-RPC), server.py (FastMCP reference), cli.py
-  -> application service              core.py: start, start_many, wait, result, reply, stop, cleanup, step
+  -> application service              core.py: start, start_many, wait, result, reply, stop, cleanup
      -> policy and routing            policy.py (SecurityPolicy), router.py (filter, then utility), capacity.py
      -> admission, slots, budget      admission.py (global slot lock + active index), ledger.py (reservations)
      -> workspace and runner          workspace.py (git worktree), runners.py (direct | bwrap isolated)
@@ -22,7 +22,7 @@ MCP client / CLI                      fastserver.py (dual-era JSON-RPC), server.
      -> evidence and result           evidence.py (ResultEnvelope), redact.py
 Cross-cutting: jobs.py (state, recovery, process identity), events.py (ProgressEvent log),
                progress.py (MCP progress reporter), telemetry.py + roi.py, doctor.py, gc.py,
-               install/ (client integrations), narrate.py (step narrator)
+               install/ (client integrations)
 ```
 
 Rules: `core` never builds provider argv; adapters never know about MCP or

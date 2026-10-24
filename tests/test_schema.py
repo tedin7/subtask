@@ -21,17 +21,11 @@ def test_published_tools_have_no_semantic_defects():
     assert schemacheck.tool_problems(_tools()) == []
 
 
-def test_step_declares_its_title_parameter():
-    step = next(t for t in _tools() if t["name"] == "step")
-    assert step["inputSchema"]["properties"]["title"] == {"type": "string"}
-    assert "title" in step["inputSchema"]["required"]
-
-
 def test_slim_keeps_a_property_named_title_but_drops_annotations():
     from subtask.server import _slim
 
     schema = {
-        "title": "stepArguments",
+        "title": "toolArguments",
         "type": "object",
         "properties": {
             "title": {"title": "Title", "type": "string"},

@@ -966,9 +966,6 @@ def engines() -> str:
     return capacity.report()
 
 
-STEPS = config.HOME / "steps.jsonl"
-
-
 def _repo_of(path: str) -> str | None:
     """The git work tree containing `path` (a file or a directory), if any."""
     p = Path(path).expanduser()
@@ -989,60 +986,6 @@ def _repo_of(path: str) -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     return done.stdout.strip() or None if done.returncode == 0 else None
-
-
-def step(
-    title: str,
-    path: str,
-    how: str,
-    decisions: list[str] | None = None,
-    repo: str | None = None,
-    lang: str | None = None,
-) -> str:
-    """Record a significant step: a separate cheap model explains it.
-
-    The agent declares the step (intention); the narrator reads it with the
-    repository's real state and the recent observed job activity, and keeps
-    the two apart. Without a narrator the declared step is returned as is.
-    """
-    from . import narrate
-
-    if not title.strip() or not path.strip() or not how.strip():
-        return "title, path and how are required"
-    where = repo or _repo_of(path.strip()) or os.getcwd()
-    entry = {
-        "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "repo": where,
-        "title": title.strip(),
-        "path": path.strip(),
-        "how": how.strip(),
-        "decisions": [d.strip() for d in decisions or [] if d.strip()],
-    }
-    lines = [f"STEP: {entry['title']}", f"- path: {entry['path']}", f"- how: {entry['how']}"]
-    lines += [f"- decision: {d}" for d in entry["decisions"]]
-    declared = "\n".join(lines)
-    t0 = time.monotonic()
-    explained = narrate.review(declared, where, lang or os.environ.get("SUBTASK_STEP_LANG", "Italian"))
-    entry["narrator_ms"] = round((time.monotonic() - t0) * 1000)
-    if explained.startswith("(unavailable"):
-        out = f"{declared}\n{explained}"
-        entry["narrator"] = "fallback"
-    else:
-        out = f"STEP: {entry['title']}\n{explained}"
-        entry["narrator"] = "model"
-    entry["announcement"] = out
-    entry["epoch"] = time.time()
-    config.HOME.mkdir(parents=True, exist_ok=True)
-    with STEPS.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    return out
-
-
-def steps(limit: int = 10) -> str:
-    if not STEPS.is_file():
-        return "no steps"
-    rows = [json.loads(x) for x in STEPS.read_text(encoding="utf-8").splitlines()[-limit:] if x.strip()]
-    return "\n".join(f"{r['ts']} {Path(r['repo']).name}: {r['title']} ({r['path']})" for r in rows)
 
 
 def _oracle_short(report: dict | None) -> dict | None:

@@ -77,20 +77,6 @@ Do NOT delegate when:
 - If something failed, decide: `reply()` once with a precise fix, or take it
   over. Do not loop.
 
-## Announce every significant step
-
-With the Claude Code plugin installed, a hook announces steps automatically
-before file changes and commits (at most every 20 minutes per repository),
-shown only to the user: you spend no turn on it. Call `step` yourself only for
-a decision that is not a file change (a choice of approach, a release).
-
-
-Before each significant step (new phase, choice of approach, a change with
-risk, a merge or release) call `step(title, path, how, decisions)` and show
-the returned text to the user verbatim. A separate cheap model reads your
-declaration, the repo state and the observed sub-task activity, and keeps
-intention and facts apart. Small edits and reads are not steps.
-
 ## Recipes (0.4)
 
 Writes in parallel, checked, no cheating (invariants are on by default):

@@ -218,13 +218,3 @@ def test_active_index_makes_counting_independent_of_history(home):
         jobs.write_json(folder / "status.json", {"state": "done"})
     full = per_call()
     assert full < empty * 3 + 0.005, (empty, full)  # O(history) would be ~300x
-
-
-def test_narrator_context_includes_observed_activity_not_only_intentions(home):
-    from subtask import core, narrate
-
-    fake_cli(home, "kimi", "sleep 3; echo hi")
-    job = core.start("x", engine="kimi", cwd=str(home)).split()[0]
-    context = narrate.repo_context(str(home))
-    assert "observed sub-task activity" in context and job in context
-    core.stop(job)

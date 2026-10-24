@@ -118,9 +118,6 @@ def _call(name: str, args: dict, call: Call) -> str:
             call.reporter.add(args["id"])
             call.reporter.phase(f"stopping {args['id']}", force=True)
         return core.stop(args["id"])
-    if name == "step":
-        a = {"decisions": None, "repo": None, **args}
-        return core.step(a["title"], a["path"], a["how"], a["decisions"], a["repo"])
     if name == "result":
         return core.result(args["id"], args.get("full", False), args.get("evidence", False))
     if name == "map_reduce":

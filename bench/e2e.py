@@ -4,7 +4,7 @@ Arms:   parent                 the parent client does the task alone (no native 
         native                 parent with its native sub-agents allowed (Claude Code Task/Agent)
         subtask-fixed:<engine> parent delegates through subtask to one engine
         subtask-auto           parent delegates through subtask with engine="auto"
-Ablations (subtask arms): --batching on|off, --summary summary|full, --progress on|off, --narrator on|off
+Ablations (subtask arms): --batching on|off, --summary summary|full, --progress on|off
 
 Modes:  --dry-run   print the plan and the cost upper bound; runs nothing
         --fake      offline smoke: subtask arms run on the test-only fake engine with scripted outcomes;
@@ -38,8 +38,7 @@ import e2e_fake
 import e2e_live
 
 RESULTS = cl.BENCH / "results" / "e2e"
-ABLATIONS = {"batching": ("on", "off"), "summary": ("summary", "full"), "progress": ("on", "off"),
-             "narrator": ("on", "off")}  # fmt: skip
+ABLATIONS = {"batching": ("on", "off"), "summary": ("summary", "full"), "progress": ("on", "off")}  # fmt: skip
 RATIOS = (3.0, 4.0, 5.0)
 
 
