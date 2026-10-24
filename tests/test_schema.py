@@ -21,6 +21,10 @@ def test_published_tools_have_no_semantic_defects():
     assert schemacheck.tool_problems(_tools()) == []
 
 
+def test_tool_descriptions_are_the_same_on_every_python():
+    assert all("\n    " not in (t.get("description") or "") for t in _tools())
+
+
 def test_slim_keeps_a_property_named_title_but_drops_annotations():
     from subtask.server import _slim
 

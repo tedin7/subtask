@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from inspect import cleandoc
 
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -266,6 +267,9 @@ def _slim(schema: object, names: bool = False) -> object:
 
 for _tool in mcp._tool_manager.list_tools():
     _tool.parameters = _slim(_tool.parameters)
+    # Python 3.13+ dedents __doc__ at compile time; older versions keep the
+    # indentation. Normalize here so tools.json is identical on every Python.
+    _tool.description = cleandoc(_tool.description or "")
 
 
 def dump_tools() -> dict:
