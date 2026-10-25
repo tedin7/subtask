@@ -35,7 +35,7 @@ def _manifest(root: Path) -> dict:
 @pytest.fixture
 def campaign_root(tmp_path):
     # Real worktrees for validation stay under /root/wt and are removed here.
-    parent = ROOT_WT if ROOT_WT.is_dir() and os.access(ROOT_WT, os.W_OK) else tmp_path
+    parent = ROOT_WT if os.geteuid() == 0 and ROOT_WT.is_dir() else tmp_path
     path = Path(tempfile.mkdtemp(prefix="jev-adv-", dir=str(parent)))
     try:
         yield path
