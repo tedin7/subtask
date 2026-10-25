@@ -18,24 +18,25 @@ mcp = FastMCP(
     "subtask",
     instructions=(
         "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).\n"
-        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids) (blocking); it returns as soon as\n"
-        "  the batch ends (or the first job, with mode='any'), not on a timer.\n"
-        "Never poll status(). Background delivery: Codex 0.164.0 cannot wake an idle turn from MCP\n"
-        "  notifications. Keep a wait open with wait(ids, mode='any', timeout=60, since=''), drop ended\n"
-        "  ids, pass back cursor=, repeat. Never sleep 600 and check later; no notification wakes Codex.\n"
+        "Pattern: ONE start_many([...]) for every job, ONE wait(ids) (blocking; ends with batch or first\n"
+        "  job, mode='any'). Never poll status(). Codex 0.164.0 cannot wake an idle turn from MCP\n"
+        "  notifications: keep wait(ids, mode='any', timeout=60, since='') open, drop ended ids and pass\n"
+        "  back cursor=. Never sleep 600 and check later.\n"
         "result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.\n"
-        "Context: never paste files or diffs into task. Use context_refs=['file:p.py:10-80', 'git:diff',\n"
-        "  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths to read.\n"
-        "Writes: isolation='worktree' (or repo=) plus verify='pytest -q ...'. invariants are on by default\n"
-        "  (no deleted/skipped tests, no new noqa/type: ignore); allowed_paths=[...] reverts the rest.\n"
-        "  Several jobs on one Python file: give each symbol_scope=['f.py::func'].\n"
-        "Review: integrate(ids, action='diff') before integrate(ids, action='apply'); apply is all or nothing.\n"
-        "Jev: jev() shows policy; jev(action='auto') checks deliveries when authorized.\n"
-        "wait() includes Jev advice; Jev never accepts or integrates work.\n"
-        "review(id, criteria) prepares offline; submit=True spends the authorized budget.\n"
+        "Context: never paste files/diffs into task; use context_refs=['file:p.py:10-80','git:diff',\n"
+        "  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths.\n"
+        "Writes: isolation='worktree' (or repo=) plus verify='pytest -q ...'; invariants on\n"
+        "  (no deleted/skipped tests, no new noqa/type: ignore), allowed_paths=[...] reverts the rest.\n"
+        "  Several jobs on one Python file: symbol_scope=['f.py::func'].\n"
+        "Review: integrate(ids, action='diff') before action='apply'; apply is all or nothing.\n"
+        "Jev: jev() reads policy; only the operator changes auto/manual/off. Read the automatic outcome in\n"
+        "  wait() before any manual review; do not submit it again. supported is advice, not acceptance;\n"
+        "  scope unproven is not a pass. Local checks stay mandatory. review(id, criteria,\n"
+        "  original_request=...) judges full scope; submit=True spends the budget. Keys only via\n"
+        "  `subtask jev setup`; key/budget errors and unknown sends are never retried.\n"
         "Pick the tool:\n"
         "  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over\n"
-        "    the parent's .subtask/fanout.json (max 8); after='any' joins on the first success.\n"
+        "    .subtask/fanout.json (max 8); after='any' joins on the first success.\n"
         "  the same edit over many files -> map_reduce, not many start calls.\n"
         "  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).\n"
         "  check behavior or speed -> oracle_cmd on start.\n"
@@ -110,7 +111,8 @@ async def wait(
     first_success (first done and verified; the rest are stopped). Returns early on a stalled job.
     since: cursor for clients without progress; with it, timeout is capped at 60 s. For Codex:
     wait(ids, mode='any', timeout=60, since=''), drop ended ids and pass back cursor=. An idle Codex
-    0.164.0 is not woken by ordinary local MCP progress or log notifications."""
+    0.164.0 is not woken by ordinary local MCP progress or log notifications. Includes the automatic
+    Jev advice for a final delivery: read it before a manual review and do not resubmit the same work."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     from .progress import wait_budget
@@ -172,10 +174,12 @@ async def steer(id: str, action: str, instruction: str | None = None) -> str:
 
 @mcp.tool(structured_output=False)
 def jev(action: str = "status") -> str:
-    """Show or change the shared Jev policy: status | auto | manual | off.
-    Auto checks every new final delivery within the existing budget. All advice is consultative.
-    Credentials are never accepted here: add or replace a key in a terminal with subtask jev setup.
-    Changes apply to new submissions in every configured CLI; no server reload is needed."""
+    """Show or change the shared Jev policy: status | auto | manual | off. Only the operator changes
+    the policy: do not switch it to obtain or avoid a check. Auto checks every new final delivery once
+    within the existing budget; read that outcome in wait()/result before any manual review. All advice
+    is consultative. Credentials are never accepted here: add or replace a key in a terminal with
+    `subtask jev setup` (hidden input), never in chat, argv or a tool argument. Changes apply to new
+    submissions in every configured CLI; no server reload is needed."""
     from . import jev_config
 
     if action == "status":
@@ -191,11 +195,15 @@ def jev(action: str = "status") -> str:
 async def review(
     id: str, criteria: list[str], submit: bool = False, original_request: str | None = None
 ) -> str:
-    """Advisory Jev review of a terminal delivery against the parent's criteria (1-12).
-    Default prepares a local evidence packet without network. submit=True sends one request using
-    the configured TypeSafe key. Returns candidate-bound advice, citations and unknown costs;
-    never accepts, merges, deploys or retries the worker. Supply original_request from the coordinator
-    to judge full scope: worker-visible job metadata cannot authenticate the original request."""
+    """Advisory Jev review of a terminal delivery against the parent's criteria (1-12). Read the
+    automatic outcome in wait()/result first; do not resubmit the same delivery. Default prepares a
+    local evidence packet without network; submit=True sends one request (unknown sends are never
+    retried). Supply original_request from the coordinator to judge full scope; without it
+    scope_assessment is unproven, which is neither a pass nor a contradiction. supported is advice,
+    not acceptance. provider_choice is the raw answer; assessment includes local vetoes (missing,
+    failed or mismatched evidence), which are not findings by the model. Jev never accepts, merges,
+    deploys or retries the worker; local checks remain necessary. Key/budget errors are final for the
+    call: keys only from `subtask jev setup`, never a tool argument."""
     from .delivery_review import review as review_delivery
 
     report = await asyncio.to_thread(review_delivery, id, criteria, submit, original_request)

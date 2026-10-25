@@ -25,12 +25,19 @@ coordinatore non chiama `review`. Uno stop e una continuazione già programmata
 non sono consegne da controllare. `off` blocca nuovi invii; una richiesta già
 inviata conserva la propria ricevuta e il proprio accantonamento.
 
+I limiti mensili e di concorrenza sono configurazione locale, non default del
+pacchetto: la configurazione personale attuale dell'operatore usa 360 USD e 12
+job, mentre una nuova installazione parte da 180 USD mensili, 2 USD per job,
+20 USD massimo per job e 4 job concorrenti. Non copiare i valori personali in
+istruzioni o esempi come se fossero universali.
+
 La modalità è condivisa dai client configurati e viene riletta a ogni consegna.
 Il file è `~/.config/subtask/jev/settings.json`, con chiave dedicata nella stessa
 cartella privata; `SUBTASK_JEV_CONFIG` permette di scegliere un altro percorso.
 Il tool MCP `jev()` mostra lo stato; `jev(action="auto"|"manual"|"off")` cambia la
 modalità. Non riceve chiavi. Dopo l'installazione del codice, cambiare modalità
-o chiave non richiede un riavvio del server.
+o chiave non richiede un riavvio del server. Il modello non cambia policy o
+chiave di sua iniziativa: sono decisioni dell'operatore.
 
 Il setup usa un terminale e `getpass`: riconosce una chiave esistente e permette
 di mantenerla o sostituirla. Il valore non viene mostrato. La chiave nuova resta
@@ -91,6 +98,32 @@ del proprietario). Non entra nel pacchetto. `SUBTASK_JEV_MODEL` conserva il mode
 richiesto; il responso registra anche quello risolto dal provider.
 
 ## Risultato e limiti
+
+### Per il modello chiamante
+
+- Con policy `auto` l'esito è già in `wait` e `result`: leggilo prima di
+  qualunque revisione manuale e non inviare di nuovo la stessa consegna. La
+  revisione manuale serve per criteri propri o per lo scope completo.
+- `supported` è un consiglio su un criterio, non l'accettazione della consegna.
+  `contradicted` chiede di guardare le prove; `unproven` dice che il materiale
+  non basta, non che il lavoro sia corretto.
+- `provider_choice` è la risposta grezza del provider; `assessment` è il valore
+  dopo i controlli locali deterministici. Un esito del provider può diventare
+  `unproven` per una verifica mancante, fallita o legata a un altro commit: è un
+  veto del wrapper, non una scoperta del modello. Non attribuire al modello un
+  difetto trovato dal wrapper, e non leggere un esito declassato come un via
+  libera.
+- `scope_assessment=unproven` non è un pass e non è una contraddizione: senza
+  `original_request` lo scope non è stato esaminato. La revisione automatica non
+  riceve mai `original_request`: solo quella manuale può riceverlo dal
+  coordinatore. I metadati visibili al worker non bastano.
+- Jev non esegue test, non apre l'app e non sostituisce `verify`, il diff del
+  branch o la revisione locale: i controlli locali restano necessari.
+- Chiave assente, budget esaurito, errore del provider o invio `unknown` sono
+  esiti da riportare, non da ritentare: un invio unknown può essere già
+  addebitato. La chiave si inserisce solo nel terminale con `subtask jev setup`
+  (input nascosto), mai in chat, argv o argomenti MCP. Il cambio di policy
+  `auto`/`manual`/`off` spetta all'operatore.
 
 `supported`, `contradicted` e `unproven` sono consigli per criterio, non stati di
 accettazione. Un report del worker da solo non dimostra né il risultato né il suo contrario. Una verifica

@@ -111,27 +111,40 @@ The plugin route (`codex plugin marketplace add ...` then `codex plugin add
 subtask@subtask`) brings the same skill. Verify with `codex mcp list` and
 `subtask doctor --client codex`.
 
-## After the job
+## Reading Jev advice
 
-- Jev policy is shared by the configured clients: `jev()` shows it; `jev(action="auto")`
-  enables an automatic advisory check on every final delivery. Change a paid policy only when
-  authorized by the operator. `wait` includes the automatic outcome and progress shows the Jev
-  phase. Read that outcome before submitting a second manual check. `jev(action="manual")`
-  restores explicit submission; `jev(action="off")` blocks new provider submissions.
-  Add or replace credentials only in the terminal with `subtask jev setup` (hidden input),
-  never in a tool argument. A policy or credential change applies without restarting the server.
-  All checks share the existing monthly cap and prudent per-review allowance; unknown invoices
-  remain unknown. A missing key, exhausted budget or failed check never changes the worker result.
-- Manual Jev advice: `review(id, criteria=[...], original_request="...")` prepares a local packet from
-  the coordinator's original request, report, committed diff and recorded checks. Supply
-  `original_request` yourself: worker-visible job metadata cannot establish full scope.
-  Records are mutable by the same OS user, so this is advice, not attestation. `submit=True` sends one
-  provider request only within the task's authorized budget. The result checks
-  the whole request as well as the checklist; missing evidence stays unproven.
-  Advice never accepts or integrates a delivery. Read `docs/delivery-review.md`.
-  Automatic checks use recorded job metadata and a fixed checklist, so full original scope stays
-  unproven. Supply the original request yourself for that stronger manual check. Use `verify`
-  when launching work: a worker's account of its own tests cannot replace the runner's evidence.
+Jev is advisory: it never accepts, merges or retries work, and it does not run
+the tests. Launch work with `verify` and judge the runner's evidence, never the
+worker's own claim, before reading any Jev advice.
+
+- Automatic: with policy `auto`, every final delivery gets one check, already
+  included in `wait` and `result`. Read it before asking for anything else.
+  Do not call a manual review just to repeat the same check.
+- Manual: `review(id, criteria=[...], original_request="...")` prepares a local
+  packet from the request, report, committed diff and recorded checks;
+  `submit=True` sends one paid request. Use it for criteria the automatic check
+  did not cover, or for full scope. Pass the coordinator's original request to
+  the manual call: the automatic check never receives it, and worker-visible
+  metadata cannot authenticate it. Without it, `scope_assessment` stays
+  `unproven`: not a pass, not a contradiction, just scope not checked.
+- `supported` is advice on one criterion, never acceptance of the delivery.
+  `contradicted` means the material points the other way; `unproven` means the
+  material cannot establish it. A worker's own report does not prove either.
+- `provider_choice` is the provider's raw answer; `assessment` is the value
+  after the local deterministic wrapper. Any provider answer can become
+  `unproven` when the verification is missing, failed or tied to another commit:
+  that veto is a local limit, not a finding by the model. Do not present it as
+  the model detecting a bug, and do not read a downgraded answer as a pass.
+- A missing key, exhausted budget, provider error or `unknown` submission stops
+  the check and leaves the worker delivery unchanged. Report the message and do
+  not retry: an unknown send may already be charged, and the invoice stays
+  unknown. Keys are entered only in a terminal with `subtask jev setup` (hidden
+  input), never in chat, argv or a tool argument. Changing the policy
+  (`auto`/`manual`/`off`) is the operator's decision, not a way to force a check.
+- Records are mutable by the same OS user: this is advice, not attestation.
+  Read `docs/delivery-review.md` for the limits.
+
+## After the job
 
 - A summary is what the worker reports. Trust a `verified` status or the
   evidence envelope over a sentence like "all tests pass".
