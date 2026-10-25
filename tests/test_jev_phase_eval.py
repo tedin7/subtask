@@ -180,6 +180,85 @@ def test_prepare_separates_private_truth_and_engine_neutral_requests(tmp_path):
     assert "core.start(" not in source
 
 
+def test_prepare_da_directory_cases_e_run_per_case(tmp_path):
+    source = tmp_path / "src-cases"
+    source.mkdir()
+    questions = _questions()
+    case = {
+        "id": "p1-c01",
+        "phase": "1",
+        "slot": 1,
+        "packet": {
+            "state": {"policy": "phase-eval", "case": "p1-c01"},
+            "questions": questions,
+            "model": "jev-latest",
+        },
+        "truth": {"C1": "supported", "C2": "unproven"},
+        "guard": {"C1": "unproven"},
+        "provenance": {"source_sha256": "b" * 64},
+    }
+    (source / "p1-c01.json").write_text(json.dumps(case))
+    reservations = _reservations(tmp_path / "reservations.json")
+    root = tmp_path / "campaign"
+    summary = bench.prepare(root, source, reservations=reservations)
+    assert summary["cases_dir"] == str(root / "cases")
+    private_case = json.loads((root / "cases" / "p1-c01.json").read_text())
+    assert private_case["packet"]["state"]["case"] == "p1-c01"
+    assert private_case["truth"] == {"C1": "supported", "C2": "unproven"}
+    request_text = (root / "requests" / "slot-01.json").read_text()
+    assert "truth" not in request_text and "provenance" not in request_text
+
+    result, closes = _run(root, reservations, slot=None, case="p1-c01")
+    assert result["status"] == "reviewed" and result["case"] == "p1-c01"
+    assert result["case_file"] == "cases/p1-c01.json"
+    assert len(closes) == 1
+    normal, normal_closes = _run(
+        root,
+        reservations,
+        slot=None,
+        engine="normal",
+        case="p1-c01",
+        normal_run=lambda prompt, model, session_dir, timeout: _normal_outcome(
+            json.loads((root / "requests" / "slot-01.json").read_text()),
+            {"C1": "supported"},
+        ),
+    )
+    assert normal["status"] == "reviewed" and normal_closes == []
+    assert normal["request_sha256"] == result["request_sha256"]
+    bench.prepare(root, reservations=reservations)
+    manifest = json.loads((root / "manifest.json").read_text())
+    assert manifest["slots"]["1"]["engines"]["jev"]["status"] == "reviewed"
+
+
+def test_case_e_slot_non_coincidenti_o_assenti_rifiutano(tmp_path):
+    root, reservations = _prepare(
+        tmp_path,
+        [
+            _case("c1", 1, truth={"C1": "supported", "C2": "unproven"}),
+            _case("c2", 2, truth={"C1": "unproven", "C2": "supported"}),
+        ],
+    )
+    with pytest.raises(bench.PhaseError):
+        _run(root, reservations, slot=2, case="c1")
+    with pytest.raises(bench.PhaseError):
+        _run(root, reservations, slot=None, case="missing")
+    with pytest.raises(bench.PhaseError):
+        bench.run_one(root, None, "jev", case=None, execute=False, reservations=reservations)
+    plan = bench.run_one(root, "c1", "jev", 1, execute=False, reservations=reservations)
+    assert plan["slot"] == 1 and plan["case"] == "c1"
+    plan = bench.run_one(root, 1, "jev", "c1", execute=False, reservations=reservations)
+    assert plan["slot"] == 1 and plan["case"] == "c1"
+
+
+def test_config_opencode2_usa_permissions_plurale_e_file_privato():
+    config = bench._normal_config()
+    assert config["permissions"] == [{"action": "*", "resource": "*", "effect": "deny"}]
+    assert "permission" not in config
+    source = inspect.getsource(bench._normal_run)
+    assert "OPENCODE_CONFIG_CONTENT" not in source
+    assert ".config/opencode" not in source
+
+
 def test_prepare_incrementale_preserva_risultati_e_assegna_slot_liberi(tmp_path):
     first = _case("c1", 1, truth={"C1": "supported", "C2": "unproven"})
     root, reservations = _prepare(tmp_path, [first])
@@ -228,6 +307,7 @@ def test_run_one_senza_execute_non_scrive_intent_ne_contatta_provider(tmp_path):
 
 def test_jev_persiste_intent_prima_della_chiamata_e_chiude_solo_lo_slot_usato(tmp_path):
     root, reservations = _prepare(tmp_path, [_case(truth={"C1": "supported", "C2": "unproven"})])
+    before = reservations.read_bytes()
     seen = {}
 
     def request(packet, key):
@@ -265,6 +345,7 @@ def test_jev_persiste_intent_prima_della_chiamata_e_chiude_solo_lo_slot_usato(tm
     assert "[REDACTED]" in raw_path.read_text()
     # Gli slot non usati non vengono toccati: una sola chiusura.
     assert len(calls) == 1
+    assert reservations.read_bytes() == before
 
 
 def test_esito_ignoto_nessun_retry_e_chiusura_dopo_il_tentativo(tmp_path):
@@ -339,6 +420,31 @@ def test_risposta_provider_non_valida_salva_raw_privato_e_errore_sicuro(tmp_path
     assert raw.is_file() and stat.S_IMODE(raw.stat().st_mode) == 0o600
     assert SECRET not in raw.read_text()
     assert "[REDACTED]" in raw.read_text()
+
+
+def test_choice_non_argmax_salva_raw_privato_senza_segreti(tmp_path):
+    root, reservations = _prepare(tmp_path, [_case(truth={"C1": "supported", "C2": "unproven"})])
+
+    def request(packet, key):
+        body = _body(packet)
+        body["answers"]["C1"] = {
+            "type": "choice",
+            "choice": "unproven",
+            "probabilities": {"supported": 1.0, "contradicted": 0.0, "unproven": 0.0},
+        }
+        body["provider_note"] = SECRET
+        return body
+
+    result, closes = _run(root, reservations, jev_request=request)
+    assert result["status"] == "invalid"
+    assert result["error"] == {"type": "InvalidAnswer", "code": "choice_not_argmax"}
+    assert SECRET not in json.dumps(result)
+    assert len(closes) == 1
+    raw = root / result["raw"]
+    assert raw.is_file() and stat.S_IMODE(raw.stat().st_mode) == 0o600
+    text = raw.read_text()
+    assert SECRET not in text and "[REDACTED]" in text
+    assert '"choice": "unproven"' in text
 
 
 def test_errore_di_trasporto_non_espone_il_testo_dell_eccezione(tmp_path):
@@ -515,8 +621,15 @@ def test_cli_prepare_e_run_one_senza_execute_restano_offline(tmp_path, capsys):
     assert bench.main(["prepare", "--root", str(root), "--cases", str(cases),
                        "--reservations", str(reservations)]) == 0  # fmt: skip
     assert json.loads(capsys.readouterr().out)["api_calls"] == 0
-    assert bench.main(["run-one", "--root", str(root), "--slot", "1", "--engine", "jev",
+    assert bench.main(["run-one", "--root", str(root), "--case", "c1", "--engine", "jev",
                        "--reservations", str(reservations)]) == 0  # fmt: skip
     plan = json.loads(capsys.readouterr().out)
     assert plan["execute"] is False
+    assert plan["slot"] == 1 and plan["case"] == "c1"
+    assert plan["case_file"] == "cases/c1.json"
     assert not (root / "slots" / "slot-01.jev.intent.json").exists()
+    assert bench.main(["run-one", str(root), "c1", "normal", "1",
+                       "--reservations", str(reservations)]) == 0  # fmt: skip
+    positional = json.loads(capsys.readouterr().out)
+    assert positional["slot"] == 1 and positional["case"] == "c1"
+    assert positional["engine"] == "normal" and positional["execute"] is False

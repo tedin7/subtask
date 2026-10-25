@@ -19,32 +19,35 @@ Regole di sicurezza:
 * la risposta grezza del provider viene salvata solo sotto ``private/raw`` e
   ripulita dai segreti noti; nei risultati restano solo codici errore di una
   whitelist, mai il testo dell'eccezione o il corpo del provider;
-* il motore normale e' la CLI OpenCode standalone con modello approvato,
-  sessione nuova, un solo pacchetto e configurazione di progetto che nega tutti
-  gli strumenti/MCP.  Non passa da ``subtask.core.start``: e' un'inferenza di
-  confronto, non una consegna.
+* il motore normale e' la CLI OpenCode 2.x standalone con modello approvato,
+  sessione nuova, un solo pacchetto e un file di configurazione privato nel cwd
+  della sessione.  La configurazione usa ``permissions`` plurale (lista di
+  regole, non ``permission`` v1) e nega tutti gli strumenti/MCP; non modifica
+  la configurazione globale ne' il servizio esistente e non presume che
+  ``OPENCODE_CONFIG_CONTENT`` funzioni in 2.x.  Non passa da
+  ``subtask.core.start``: e' un'inferenza di confronto, non una consegna.
 
-Schema dei casi (JSON, preparato dal coordinatore)::
+Interfaccia preferita: una directory privata ``cases/{id}.json``, un caso per
+file, con packet e verita' in sezioni separate::
 
-    {"cases": [{
-      "id": "p1-c01",                  # univoco, sicuro come nome file
-      "phase": "1",                    # libero: il report raggruppa per questo
-      "slot": 1,                       # opzionale; altrimenti il primo libero
-      "state": {...}, "questions": {...},   # oppure "request": {"state": ...}
-      "model": "jev-latest",           # opzionale dentro request/model
-      "truth": {"C1": "supported"},    # privato, mai nel packet
-      "guard": {"C1": "unproven"},      # privato, confronto separato
-      "provenance": {"source_sha256": "..."},  # privato
-      "notes": "..."
-    }]}
+    {"id": "p1-c01", "phase": "1", "slot": 1,
+     "packet": {"state": {...}, "questions": {...}, "model": "jev-latest"},
+     "truth": {"C1": "supported"},          # privato, mai nel packet
+     "guard": {"C1": "unproven"},           # privato, confronto separato
+     "provenance": {"source_sha256": "..."}, # privato
+     "notes": "..."}
+
+``prepare`` accetta anche un singolo file ``{"cases": [...]}`` o una lista; il
+formato legacy con ``state``/``questions`` o ``request`` resta supportato.
+``run-one`` accetta ``--case`` e/o ``--slot`` e verifica che coincidano.
 
 Comandi::
 
     PY=/root/subtask/.venv/bin/python
     PYTHONPATH=/root/wt/st-d11835bf9e $PY -m bench.jev_phase_eval prepare \\
-        --root /root/wt/jev-phases-20261025 --cases casi.json
+        --root /root/wt/jev-phases-20261025   # casi in ROOT/cases/{id}.json
     PYTHONPATH=/root/wt/st-d11835bf9e $PY -m bench.jev_phase_eval run-one \\
-        --root /root/wt/jev-phases-20261025 --slot 1 --engine jev --execute
+        --root /root/wt/jev-phases-20261025 --case p1-c01 --slot 1 --engine jev --execute
     PYTHONPATH=/root/wt/st-d11835bf9e $PY -m bench.jev_phase_eval report \\
         --root /root/wt/jev-phases-20261025 --private
 """
@@ -250,8 +253,10 @@ def _lock(root: Path):
 
 def _dirs(root: Path) -> None:
     os.chmod(root, 0o700)
-    for name in ("private", "private/raw", "private/normal", "requests", "slots"):
+    for name in ("cases", "private", "private/raw", "private/normal", "requests", "slots"):
         folder = root / name
+        if folder.is_symlink():
+            raise PhaseError(f"directory privata symlink non ammessa: {name}")
         folder.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(folder, 0o700)
 
@@ -397,12 +402,16 @@ def _normalize_case(raw: object, fallback_id: str) -> dict:
     phase = str(phase)
     if not phase.strip() or len(phase) > 120:
         raise PhaseError(f"{case_id}: phase non valida")
-    nested = raw.get("request")
+    if "packet" in raw and "request" in raw:
+        raise PhaseError(f"{case_id}: usa packet oppure request, non entrambi")
+    nested = raw.get("packet", raw.get("request"))
     if nested is not None:
         if not isinstance(nested, dict):
-            raise PhaseError(f"{case_id}: request non valido")
+            raise PhaseError(f"{case_id}: packet non valido")
         if any(key in nested for key in ("truth", "provenance", "source", "guard")):
-            raise PhaseError(f"{case_id}: dati privati dentro request")
+            raise PhaseError(f"{case_id}: dati privati dentro il packet")
+        if "state" in raw or "questions" in raw:
+            raise PhaseError(f"{case_id}: state/questions ambigui fuori dal packet")
         request = {"state": nested.get("state"), "questions": nested.get("questions")}
         model = nested.get("model", raw.get("model", JEV_MODEL))
     else:
@@ -463,6 +472,46 @@ def _read_private_cases(path: Path) -> list[dict]:
     return cases
 
 
+def _load_case_inputs(cases) -> list[tuple[object, str | None]]:
+    """Accetta lista, singolo oggetto, file JSON o directory di casi ``{id}.json``."""
+    if isinstance(cases, (str, Path)):
+        path = Path(cases).expanduser()
+        if path.is_dir():
+            files = sorted(path.glob("*.json"))
+            if not files:
+                raise PhaseError("directory dei casi senza file JSON")
+            loaded: list[tuple[object, str | None]] = []
+            for file in files:
+                if file.is_symlink():
+                    raise PhaseError(f"caso symlink non ammesso: {file.name}")
+                value = _read_any(file)
+                if isinstance(value, dict) and "cases" in value:
+                    items = value["cases"]
+                    fallback = None
+                else:
+                    items = [value]
+                    fallback = file.stem
+                    if isinstance(value, dict) and value.get("id") not in (None, file.stem):
+                        raise PhaseError(f"nome file diverso dall'id: {file.name}")
+                if not isinstance(items, list):
+                    raise PhaseError(f"casi non validi in {file.name}")
+                for raw in items:
+                    loaded.append((raw, fallback if len(items) == 1 else None))
+            return loaded
+        value = _read_any(path)
+        if isinstance(value, dict) and "cases" not in value and value.get("id") is None:
+            return [(value, path.stem)]
+    else:
+        value = cases
+    if isinstance(value, dict) and "cases" in value:
+        value = value["cases"]
+    if isinstance(value, dict):
+        return [(value, None)]
+    if isinstance(value, list):
+        return [(raw, None) for raw in value]
+    raise PhaseError("casi JSON non validi")
+
+
 def _merge_cases(existing: list[dict], incoming: list[dict]) -> list[dict]:
     by_id = {case["id"]: case for case in existing}
     by_slot = {case["slot"]: case["id"] for case in existing if case.get("slot")}
@@ -504,19 +553,28 @@ def _merge_cases(existing: list[dict], incoming: list[dict]) -> list[dict]:
 
 def prepare(
     root: str | Path,
-    cases,
+    cases=None,
     *,
     reservations: str | Path = DEFAULT_RESERVATIONS,
 ) -> dict:
-    """Prepara richieste pubbliche e dati privati, senza alcuna chiamata API."""
+    """Prepara richieste pubbliche e dati privati, senza alcuna chiamata API.
+
+    ``cases`` puo' essere una lista, ``{"cases": [...]}``, un file JSON oppure
+    una directory privata ``cases/{id}.json``; ogni caso puo' contenere il
+    ``packet`` e la ``truth`` in sezioni separate.
+    """
     root = _root(root)
-    if isinstance(cases, dict):
-        cases = cases.get("cases")
-    if not isinstance(cases, list) or not cases:
+    if cases is None:
+        cases = root / "cases"
+    loaded = _load_case_inputs(cases)
+    if not loaded:
         raise PhaseError("servono almeno un caso JSON")
-    if len(cases) > MAX_SLOTS:
+    if len(loaded) > MAX_SLOTS:
         raise PhaseError("massimo 12 casi (una chiamata Jev per slot)")
-    normalized = [_normalize_case(raw, f"case-{index:02d}") for index, raw in enumerate(cases, 1)]
+    normalized = [
+        _normalize_case(raw, fallback or f"case-{index:02d}")
+        for index, (raw, fallback) in enumerate(loaded, 1)
+    ]
     slots = _load_reservations(reservations)
     with _lock(root):
         _dirs(root)
@@ -578,6 +636,21 @@ def prepare(
                 path,
                 json.dumps(case["request"], ensure_ascii=False, indent=1, sort_keys=True) + "\n",
             )
+            _write_json(
+                root / "cases" / f"{case['id']}.json",
+                {
+                    "version": VERSION,
+                    "id": case["id"],
+                    "phase": case["phase"],
+                    "slot": case["slot"],
+                    "model": case["model"],
+                    "packet": case["request"],
+                    "truth": case["truth"],
+                    "guard": case["guard"],
+                    "provenance": case["provenance"],
+                    "notes": case["notes"],
+                },
+            )
         _write_json(
             cases_path,
             {"version": VERSION, "cases": merged, "prenotazioni": str(Path(reservations).expanduser())},
@@ -597,6 +670,7 @@ def prepare(
                 "reservations_sha256": reservations_sha,
                 "reservations": {str(slot): slots[slot] for slot in sorted(slots)},
                 "cases": new_cases_map,
+                "cases_dir": "cases",
                 "slots": new_slots,
                 "cases_sha256": _digest(merged),
                 "request_set_sha256": _digest(
@@ -617,6 +691,7 @@ def prepare(
         "slots": sorted(case["slot"] for case in merged),
         "request_set_sha256": manifest["request_set_sha256"],
         "manifest": str(root / "manifest.json"),
+        "cases_dir": str(root / "cases"),
         "truth": str(root / "private" / "truth.json"),
         "provenance": str(root / "private" / "provenance.json"),
         "reservations": manifest["reservations_path"],
@@ -857,9 +932,11 @@ def _engine_defaults(engine: str, slot: int, case: dict, rid: str, allowance: fl
 
 def run_one(
     root: str | Path,
-    slot: int,
-    engine: str,
+    slot: int | None = None,
+    engine: str | None = None,
+    case_pos: str | int | None = None,
     *,
+    case: str | None = None,
     execute: bool = False,
     reservations: str | Path = DEFAULT_RESERVATIONS,
     timeout: float = 600,
@@ -874,8 +951,28 @@ def run_one(
     root = _root(root)
     if engine not in ("jev", "normal"):
         raise PhaseError("engine deve essere jev oppure normal")
-    if type(slot) is not int or not 1 <= slot <= MAX_SLOTS:
+    # Accetta sia run_one(root, slot, engine, case) sia
+    # run_one(root, case, engine, slot), oltre ai flag nominali.
+    if isinstance(slot, str):
+        if case is not None:
+            raise PhaseError("caso indicato due volte")
+        case = slot
+        slot = case_pos
+    elif case_pos is not None:
+        if isinstance(case_pos, str):
+            if case is not None:
+                raise PhaseError("caso indicato due volte")
+            case = case_pos
+        elif type(case_pos) is int and slot is None:
+            slot = case_pos
+        else:
+            raise PhaseError("quarto argomento posizionale ambiguo")
+    if case is not None and (not isinstance(case, str) or not CASE_ID.fullmatch(case)):
+        raise PhaseError("id caso non valido")
+    if slot is not None and (type(slot) is not int or not 1 <= slot <= MAX_SLOTS):
         raise PhaseError("slot fuori scala")
+    if slot is None and case is None:
+        raise PhaseError("serve --slot oppure --case")
     if not _finite(timeout, minimum=1):
         raise PhaseError("timeout non valido")
     manifest_path = root / "manifest.json"
@@ -883,10 +980,32 @@ def run_one(
         raise PhaseError("radice non preparata; eseguire prepare")
     with _lock(root):
         manifest = _read_json(manifest_path)
-        entry = (manifest.get("slots") or {}).get(str(slot))
+        slots_map = manifest.get("slots") or {}
+        if case is not None:
+            matches = []
+            for key, value in slots_map.items():
+                if not isinstance(value, dict) or value.get("case") != case:
+                    continue
+                try:
+                    matches.append(int(key))
+                except (TypeError, ValueError):
+                    continue
+            if not matches:
+                raise PhaseError(f"caso {case} non preparato")
+            if len(matches) > 1:
+                raise PhaseError(f"caso {case} associato a piu' slot")
+            if slot is None:
+                slot = matches[0]
+            elif slot != matches[0]:
+                raise PhaseError(f"caso {case} associato allo slot {matches[0]}, non {slot}")
+        if slot is None:
+            raise PhaseError("slot non risolto")
+        entry = slots_map.get(str(slot))
         if not isinstance(entry, dict):
             raise PhaseError(f"slot {slot} senza caso preparato")
         case_id = entry.get("case")
+        if case is not None and case_id != case:
+            raise PhaseError(f"slot {slot}: caso {case_id}, atteso {case}")
         slot_cases = manifest.get("cases") or {}
         case_meta = slot_cases.get(case_id)
         if not isinstance(case_meta, dict):
@@ -900,6 +1019,21 @@ def run_one(
         request = _read_json(request_path)
         if _digest(request) != entry.get("request_sha256"):
             raise PhaseError(f"slot {slot}: richiesta alterata rispetto al manifest")
+        try:
+            case_path = (root / "cases" / f"{case_id}.json").resolve()
+        except (OSError, TypeError):
+            raise PhaseError(f"slot {slot}: percorso del caso non valido") from None
+        if not case_path.is_relative_to(root) or not case_path.is_file():
+            raise PhaseError(f"slot {slot}: caso privato assente; rieseguire prepare")
+        case_data = _read_json(case_path)
+        if case_data.get("id") != case_id:
+            raise PhaseError(f"slot {slot}: caso privato con id diverso")
+        packet = case_data.get("packet")
+        if not isinstance(packet, dict):
+            raise PhaseError(f"slot {slot}: packet privato mancante")
+        case_request = {"state": packet.get("state"), "questions": packet.get("questions")}
+        if _digest(case_request) != entry.get("request_sha256"):
+            raise PhaseError(f"slot {slot}: packet privato diverso dalla richiesta")
         reservations_data = _load_reservations(reservations)
         if _digest([reservations_data[key] for key in sorted(reservations_data)]) != manifest.get(
             "reservations_sha256"
@@ -909,7 +1043,7 @@ def run_one(
         rid = reservation["rid"]
         allowance = reservation["usd"]
         model = entry["model"]
-        case = {
+        case_obj = {
             "id": case_id,
             "phase": entry["phase"],
             "model": model,
@@ -923,8 +1057,9 @@ def run_one(
         if intent_path.exists():
             raise PhaseError(f"slot {slot}/{engine}: intent presente; nessun retry")
         plan = {
-            **_engine_defaults(engine, slot, case, rid, allowance),
+            **_engine_defaults(engine, slot, case_obj, rid, allowance),
             "request_file": _rel(root, request_path),
+            "case_file": _rel(root, case_path),
             "intent": _rel(root, intent_path),
             "session_dir": _rel(root, root / "private" / "normal" / f"slot-{slot:02d}"),
         }
@@ -1010,14 +1145,34 @@ def run_one(
                 _write_text(raw_path, _bounded_raw(raw_lines) + "\n")
                 stderr_path = root / "private" / "raw" / f"slot-{slot:02d}.normal.stderr.txt"
                 _write_text(stderr_path, _clean((outcome.get("stderr") or "")[:MAX_STDERR_CHARS]))
+                usage = outcome.get("usage")
+                if isinstance(usage, dict):
+                    usage = {
+                        name: value
+                        for name, value in usage.items()
+                        if isinstance(name, str)
+                        and type(value) is int
+                        and 0 <= value <= 1_000_000_000
+                    } or None
+                else:
+                    usage = None
+                cost = outcome.get("cost_reported_usd")
+                session = outcome.get("session")
+                tools = [
+                    name
+                    for name in (outcome.get("tools") or [])
+                    if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", name)
+                ]
                 result.update(
                     {
                         "raw": _rel(root, raw_path),
-                        "usage": outcome.get("usage"),
-                        "cost_reported_usd": outcome.get("cost_reported_usd"),
-                        "session": outcome.get("session"),
+                        "usage": usage,
+                        "cost_reported_usd": float(cost) if _finite(cost, minimum=0) else None,
+                        "session": session
+                        if isinstance(session, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,200}", session)
+                        else None,
                         "tool_use": bool(outcome.get("tool_use")),
-                        "tools": outcome.get("tools") or [],
+                        "tools": tools,
                     }
                 )
                 if outcome.get("timed_out"):
@@ -1357,7 +1512,9 @@ def report(root: str | Path, *, private: bool = False, baseline: str | Path | No
     lines.append("- Fattura: UNKNOWN; nessun costo sconosciuto viene convertito in zero.")
     if private:
         lines.extend(["", "## Dettaglio privato"])
-        lines.append("- provenienza: private/provenance.json · richieste: requests/")
+        lines.append(
+            "- casi privati: cases/{id}.json · provenienza: private/provenance.json · richieste: requests/"
+        )
         for key, entry, engine, result in results:
             labels = truth.get(entry.get("case"), {})
             guard = (cases.get(entry.get("case")) or {}).get("guard") or {}
@@ -1405,19 +1562,37 @@ def report(root: str | Path, *, private: bool = False, baseline: str | Path | No
 # --- CLI -----------------------------------------------------------------------
 
 
+def _choose(flag, positional, name: str):
+    if flag is not None and positional is not None and flag != positional:
+        raise PhaseError(f"{name}: valore da flag e posizione diverso")
+    value = flag if flag is not None else positional
+    if value is None:
+        raise PhaseError(f"{name} mancante")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jev-phase-eval", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     prepare_parser = sub.add_parser("prepare", help="separa richieste e dati privati, zero API")
     prepare_parser.add_argument("--root", required=True)
-    prepare_parser.add_argument("--cases", required=True)
+    prepare_parser.add_argument(
+        "--cases",
+        help="file JSON o directory cases/{id}.json (default: ROOT/cases)",
+    )
     prepare_parser.add_argument("--reservations", default=str(DEFAULT_RESERVATIONS))
 
-    run_parser = sub.add_parser("run-one", help="un solo slot e un solo motore")
-    run_parser.add_argument("--root", required=True)
-    run_parser.add_argument("--slot", type=int, required=True)
-    run_parser.add_argument("--engine", choices=("jev", "normal"), required=True)
+    run_parser = sub.add_parser("run-one", help="un solo caso/slot e un solo motore")
+    # Forma preferita: run-one ROOT CASE ENGINE SLOT; restano disponibili i flag.
+    run_parser.add_argument("root_pos", nargs="?")
+    run_parser.add_argument("case_pos", nargs="?")
+    run_parser.add_argument("engine_pos", nargs="?")
+    run_parser.add_argument("slot_pos", nargs="?")
+    run_parser.add_argument("--root")
+    run_parser.add_argument("--case")
+    run_parser.add_argument("--slot", type=int)
+    run_parser.add_argument("--engine", choices=("jev", "normal"))
     run_parser.add_argument("--execute", action="store_true")
     run_parser.add_argument("--reservations", default=str(DEFAULT_RESERVATIONS))
     run_parser.add_argument("--timeout", type=float, default=600)
@@ -1430,14 +1605,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
-            cases = _read_any(Path(args.cases))
-            result = prepare(args.root, cases, reservations=args.reservations)
+            result = prepare(args.root, args.cases, reservations=args.reservations)
             print(json.dumps(result, ensure_ascii=False, indent=1))
         elif args.command == "run-one":
+            root = _choose(args.root, args.root_pos, "root")
+            engine = _choose(args.engine, args.engine_pos, "engine")
+            case = _choose(args.case, args.case_pos, "case") if (
+                args.case is not None or args.case_pos is not None
+            ) else None
+            slot = args.slot
+            if args.slot_pos is not None:
+                try:
+                    positional_slot = int(args.slot_pos)
+                except ValueError:
+                    raise PhaseError("slot posizionale non intero") from None
+                if slot is not None and slot != positional_slot:
+                    raise PhaseError("slot: valore da flag e posizione diverso")
+                slot = positional_slot
             result = run_one(
-                args.root,
-                args.slot,
-                args.engine,
+                root,
+                slot,
+                engine,
+                case=case,
                 execute=args.execute,
                 reservations=args.reservations,
                 timeout=args.timeout,
