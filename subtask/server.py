@@ -160,14 +160,15 @@ async def steer(id: str, action: str, instruction: str | None = None) -> str:
 
 
 @mcp.tool(structured_output=False)
-def review(id: str, criteria: list[str], submit: bool = False) -> str:
+async def review(id: str, criteria: list[str], submit: bool = False) -> str:
     """Advisory Jev review of a terminal delivery against the parent's criteria (1-12).
     Default prepares a local evidence packet without network. submit=True sends one request using
     the configured TypeSafe key. Returns candidate-bound advice, citations and unknown costs;
     never accepts, merges, deploys or retries the worker. Missing evidence remains unproven."""
     from .delivery_review import review as review_delivery
 
-    return json.dumps(review_delivery(id, criteria, submit), ensure_ascii=False)
+    report = await asyncio.to_thread(review_delivery, id, criteria, submit)
+    return json.dumps(report, ensure_ascii=False)
 
 
 @mcp.tool(structured_output=False)

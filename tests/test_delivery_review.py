@@ -256,6 +256,29 @@ def test_cli_can_prepare_review_without_provider(delivery):
     assert json.loads(result.stdout)["status"] == "prepared"
 
 
+def test_fastmcp_review_leaves_the_event_loop_available(delivery, monkeypatch):
+    import asyncio
+    import time
+
+    from subtask import delivery_review, server
+
+    def slow_review(*_):
+        time.sleep(0.2)
+        return {"status": "prepared"}
+
+    monkeypatch.setattr(delivery_review, "review", slow_review)
+
+    async def check():
+        started = time.monotonic()
+        task = asyncio.create_task(server.mcp.call_tool("review", {"id": "st-delivery", "criteria": ["UI"]}))
+        await asyncio.sleep(0.02)
+        delay = time.monotonic() - started
+        await task
+        assert delay < 0.15, "Jev blocked concurrent waits/stop calls"
+
+    asyncio.run(check())
+
+
 def test_monthly_budget_blocks_provider_call(delivery, monkeypatch):
     from subtask import config
     from subtask import delivery_review as review
