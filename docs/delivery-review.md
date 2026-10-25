@@ -1,11 +1,12 @@
 # Controllo consultivo delle consegne con Jev
 
 Stato del 25 ottobre 2026: **installato e verificato localmente** da
-`3a469ba82e41fab6e9d53307962193c28d6ba9ed`, con 411 test passati.
+`eec72e1103e980c486452db901c4a04f50b8ccf2`, con 412 test passati.
 Jev resta consultivo e su richiesta. Codex riceve le conclusioni tramite attesa
 aperta: il normale MCP non risveglia un turno già chiuso.
-Il limite Codex/Subtask è impostato a 10 nelle nuove connessioni; serve riaprire
-Codex per aggiornare connessioni e schema già caricati. Dettagli finali in fondo.
+Il limite Subtask è impostato a 10 nei client configurati. Codex e OpenCode sono
+stati ricaricati; questa sessione Codex espone ora 16 strumenti, incluso `review`.
+Le sessioni Claude già aperte richiedono la riconnessione da `/mcp`. Dettagli in fondo.
 
 ## Contratto
 
@@ -276,12 +277,55 @@ abbonamenti non sono ripartiti; nessun risparmio economico è dimostrato.
 Alle 12:47:14 UTC il registro mensile impegnava 230,7577 su 360 USD, con
 129,2423 USD residui. Questa è una fotografia del registro, non una fattura.
 
-Il rilascio è locale: main integrato, wheel installata tramite uv e skill Codex
-aggiornata. La versione resta 0.5.0; nessun push o rilascio PyPI è stato eseguito.
-I processi MCP già aperti conservano codice e configurazione caricati: riaprire
-Codex per usare il nuovo tool e i dieci slot. La CLI installata è già disponibile.
+La prima installazione era locale: main integrato, wheel installata tramite uv
+e skill Codex aggiornata. Il successivo rollout CLI descritto sotto completa il
+push e il reload supportato. La versione resta 0.5.0, senza un nuovo rilascio PyPI.
 
 Ripristino pronto in `/root/.local/state/subtask-jev-20261025/rollback_install.py`:
 backup di 63 file verificato prima dell'installazione, inventario dei file aggiunti
 e copia della skill precedente. Il ritorno del pacchetto non cambia il limite 10
 richiesto dall'operatore, i job o il registro delle spese.
+
+
+### Rollout dei client CLI e correzioni CI
+
+Il push iniziale `e4a2b7d` ha raggiunto GitHub; la CI ha trovato sei errori nelle
+fixture: autore Git non configurato nei sottomoduli e tentativi di scrivere
+oggetti Git di sola lettura. Il coordinatore li ha riprodotti su Linux togliendo
+`DAC_OVERRIDE`/`DAC_READ_SEARCH`, senza identità globale e con `user.useConfigOnly`.
+La nuova prova della pulizia processi riproduce inoltre il `PermissionError` di
+`killpg` che mascherava la `ValueError` originale. Il fallback `Popen.kill()`
+segnala soltanto il figlio posseduto e attende la sua uscita.
+
+Codice corretto: `eec72e1103e980c486452db901c4a04f50b8ccf2`.
+Revisore `st-b47f4c2273`: `severe_open=false`; sentinella estranea preservata,
+figlio terminato, nessuna asserzione indebolita. Alla base i sei casi falliscono;
+dopo il fix i sette casi direttamente modificati passano. Il comando mirato del
+coordinatore include anche un controllo preesistente e conta otto passati.
+I quattro file Jev interessati passano 58 test nell'ambiente con permessi limitati.
+
+| Prova finale | Ambiente e comando | Esito |
+| --- | --- | --- |
+| Suite completa | Venv editable del worktree, Python 3.14.8; `build-a-turno .venv/bin/python -m pytest -q -p no:cacheprovider` | 412 passati, 4 live esclusi in 289,59 s; `fix-full.log` |
+| Ruff e schema | Ruff 0.17.0 check/format, confronto `--dump-tools` | Verdi |
+| Wheel e installazione | 56 file confrontati, client MCP ufficiale sui due backend | 16 strumenti, attese e prepare offline funzionanti |
+| Reload Codex | API `config/mcpServer/reload`, configurazione Subtask con `SUBTASK_MCP_BUILD=eec72e1` | Nuovi processi con limite 10; catalogo effettivo di questa sessione da 15 a 16 strumenti |
+| Tool reale nella sessione | `subtask.review` su `st-b47f4c2273`, `submit=false` | `prepared`, 0 USD registrati, nessuna chiamata al provider |
+| OpenCode | Sostituzione del solo Subtask tramite API runtime in `/root` e `/root/arvos` | Connesso; PID del servizio gestito rimasto 2327792 |
+| Claude e Claude2 | Marketplace aggiornato, skill del plugin e copie utente allineate; `claude mcp get plugin:subtask:subtask` su entrambi | Nuove connessioni connesse; cache delle chat già aperte da riconnettere con `/mcp` |
+| Kimi | Skill e configurazione persistente, handshake MCP | Connesso, 16 strumenti; limite 10 |
+
+Wheel corretta: SHA-256
+`ab90a711e40afac83fa4a0fec8b8b2d35cb3886ca0c052d7bb44b5998592d58b`.
+La correzione tocca la pulizia in errore e le fixture; la prova Jev reale precedente
+resta quella registrata sul percorso di successo, senza nuove chiamate a pagamento.
+La CI GitHub associata al push è il controllo degli altri interpreti Linux;
+il suo esito è registrato nelle ricevute del rollout. Il job macOS
+è sperimentale: i quattro errori di `test_invariants_ast.py` erano già presenti
+nel run della base `1ceeeda`, prima di questa modifica.
+
+I log e le ricevute di questo passaggio sono in
+`/root/.local/state/subtask-jev-20261025/cli-rollout-20261025/`.
+La wheel precedente verificata (SHA-256 `5bae513caa95c7ac29afd8344cc16be76fb6b45aa0c14461d456abc58881b40a`)
+resta disponibile in `accepted-dist` per il ritorno. Modelli e tetti economici dei
+client sono stati preservati; il limite di concorrenza richiesto è 10.
