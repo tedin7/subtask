@@ -130,6 +130,8 @@ def _submodule_repo(home: Path) -> tuple[Path, str]:
     )
     _commit(repo, "base")
     base = _git(repo, "rev-parse", "HEAD")
+    _run_git(repo / "sm", "config", "user.name", "Test")
+    _run_git(repo / "sm", "config", "user.email", "test@example.test")
     (repo / "sm" / "f").write_text("two\n")
     _commit(repo / "sm", "two")
     _run_git(repo, "add", "sm")

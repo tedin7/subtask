@@ -129,6 +129,7 @@ def _redirect_commit_graph(repo: Path, commit: str, tree: str) -> None:
     start = data + index * entry_size
     raw[start : start + width] = bytes.fromhex(tree)
     raw[-width:] = hashlib.sha1(bytes(raw[:-width])).digest()
+    graph.chmod(0o644)
     graph.write_bytes(raw)
     assert _run(repo, "commit-graph", "verify", check=False).returncode != 0
 

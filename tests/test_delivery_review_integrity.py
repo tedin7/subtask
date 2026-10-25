@@ -18,6 +18,43 @@ from subtask import jobs
 DELIVERY = "st-integrity"
 
 
+def test_git_limit_error_survives_group_signal_permission_race(monkeypatch):
+    import os
+    import sys
+
+    from subtask import delivery_review as review
+
+    real_popen = subprocess.Popen
+    children = []
+
+    def controlled_child(*_args, **_kwargs):
+        child = real_popen(
+            [sys.executable, "-c", "import sys,time;sys.stdout.write('overflow');sys.stdout.flush();time.sleep(30)"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        children.append(child)
+        return child
+
+    def denied_group_signal(pid, _signal):
+        assert pid == children[0].pid
+        raise PermissionError("process group unavailable")
+
+    monkeypatch.setattr(review.subprocess, "Popen", controlled_child)
+    monkeypatch.setattr(os, "killpg", denied_group_signal)
+    try:
+        with pytest.raises(ValueError, match="material too large"):
+            review._git_bytes("unused", "rev-parse", "HEAD", limit=1)
+        assert children[0].poll() is not None
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=3)
+
+
 def test_real_git_directory_order_is_accepted(home, monkeypatch):
     from subtask import delivery_review as review
 

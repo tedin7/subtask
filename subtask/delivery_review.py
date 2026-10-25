@@ -160,6 +160,10 @@ def _git_bytes(repo: str, *args: str, stdin: bytes | None = None, limit: int = M
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+            except PermissionError:
+                # Some platforms refuse a group signal as the child exits.
+                # Popen targets only our child and rechecks its exit state.
+                process.kill()
             process.wait()
         process.stdout.close()
     return bytes(output)

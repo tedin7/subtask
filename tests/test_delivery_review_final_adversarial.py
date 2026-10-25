@@ -138,6 +138,8 @@ def _submodule_repo(home: Path) -> tuple[Path, str, str]:
     )
     _commit(repo, "base")
     base = _git(repo, "rev-parse", "HEAD")
+    _run_git(repo / "sm", "config", "user.name", "Test")
+    _run_git(repo / "sm", "config", "user.email", "test@example.test")
     (repo / "sm" / "f").write_text("two\n")
     _commit(repo / "sm", "two")
     _run_git(repo, "add", "sm")
@@ -466,6 +468,7 @@ def test_substituted_loose_object_cannot_rewrite_the_committed_patch(home, monke
     object_path = repo / ".git" / "objects" / blob[:2] / blob[2:]
     assert object_path.is_file(), "the fresh commit must use a loose blob"
     replacement = b"value = 3\n"
+    object_path.chmod(0o644)
     object_path.write_bytes(zlib.compress(b"blob %d\x00" % len(replacement) + replacement))
     corrupt = _run_git(repo, "fsck", "--no-dangling", check=False)
     assert "hash-path mismatch" in corrupt.stderr or "hash-path mismatch" in corrupt.stdout
