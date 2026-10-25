@@ -14,6 +14,8 @@ from subtask import jobs
 def delivery(home, monkeypatch):
     from subtask import delivery_review
 
+    monkeypatch.setenv("SUBTASK_JEV_KEY_FILE", str(home / "missing-jev-key"))
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     monkeypatch.setattr(delivery_review, "_key", lambda: "test-key-not-real")
     folder = jobs.job_dir("st-delivery")
     folder.mkdir(parents=True)
