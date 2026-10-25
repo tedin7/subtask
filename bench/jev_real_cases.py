@@ -16,13 +16,16 @@ the uv reference venv has no pytest, the dev venv at
 
     PY=/root/wt/subtask-jev-eval-20261025/.venv/bin/python
     $PY bench/jev_real_cases.py prepare --root /root/wt/jev-real-20261025
-    $PY bench/jev_real_cases.py dry-run --root /root/wt/jev-real-dry-20261025 --case c01
+    $PY bench/jev_real_cases.py dry-run --root /root/wt/jev-real-dry-20261025 --case c01 --keep
     $PY bench/jev_real_cases.py run --root /root/wt/jev-real-20261025 \
         --execute --candidate c01-v1 --limit 1 --batch 1
     $PY bench/jev_real_cases.py run --root /root/wt/jev-real-20261025 --execute --batch 4
     $PY bench/jev_real_cases.py oracle --root /root/wt/jev-real-20261025
     $PY bench/jev_real_cases.py report --root /root/wt/jev-real-20261025 --private
-    $PY bench/jev_real_cases.py cleanup --root /root/wt/jev-real-20261025 --purge
+
+Keep unpublished job branches and worktrees for inspection. Only remove them
+after their commits have been published or integrated; ``cleanup --purge`` is
+an explicit destructive operation, not a required campaign step.
 
 ``run`` never calls Jev itself: the real worker triggers the automatic review
 once per candidate.  Unknown receipts are never retried and an existing job is

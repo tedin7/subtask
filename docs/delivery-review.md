@@ -562,3 +562,16 @@ integra, rilancia né completa automaticamente il lavoro del sottoagente.
 - Errori CLI generici se `jev` appare solo come valore: limite non bloccante accettato dal revisore, per evitare eco di credenziali.
 - Revisione manuale con timeout per operazione preesistente; automatica con watchdog45s e supervisione50s. Intenti ignoti mai ritentati.
 - Wrapper globale dei controlli senza coda FIFO: attesa lunga osservata, nessuna modifica dei limiti o del wrapper.
+
+### Aggiornamento operatore: campagna del 25 ottobre 2026
+
+L'operatore ha successivamente allineato il tetto condiviso a 360 USD e il
+massimo contemporaneo a 12 in Codex, Claude, Claude2, Kimi, OpenCode e CLI.
+L'osservazione precedente del default180 in OpenCode descrive il canary
+precedente, non questa configurazione. I default per nuove installazioni
+restano180/4. La policy Jev resta automatica, con il ledger canonico condiviso.
+
+Protocollo, prove indipendenti e risultati delle venti modifiche sono in
+[Jev: venti modifiche reali](jev-real-cases-20261025.md). La campagna distingue
+supporto alle affermazioni, pertinenza, astensioni e filtri del wrapper; non
+usa uno scope non provato come permesso di integrare.
