@@ -293,8 +293,8 @@ def _load_reservations(path: str | Path) -> dict[int, dict]:
             "source": str(source.resolve()),
             "sha256": _digest(data),
         }
-    if sorted(slots) != list(range(1, MAX_SLOTS + 1)):
-        raise PhaseError("servono esattamente gli slot 1-12 gia' prenotati")
+    if not slots or sorted(slots) != list(range(1, len(slots) + 1)):
+        raise PhaseError("servono slot consecutivi gia' prenotati, da 1 fino al massimo 12")
     return slots
 
 

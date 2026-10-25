@@ -239,6 +239,7 @@ def line(status: dict) -> str:
 
 def details(status: dict) -> str:
     from . import redact
+    from .jev_filter import delivery_route
 
     entry = _entry(status)
     if not entry:
@@ -248,6 +249,13 @@ def details(status: dict) -> str:
         out += "\n" + str(entry["reason"])
     report = entry.get("report")
     report = report if isinstance(report, dict) else {}
+    routing = delivery_route(report)
+    if routing["route"] == "normal":
+        out += "\nFiltro Jev: revisione normale necessaria (non avviata automaticamente)"
+    else:
+        out += (
+            "\nFiltro Jev: giudizio disponibile sui criteri; controlli e accettazione restano al coordinatore"
+        )
     for item in _assessments(entry):
         out += f"\n- {item.get('criterion')}: {item.get('assessment')} ({item.get('evidence_ref')})"
     limits = report.get("limitations")

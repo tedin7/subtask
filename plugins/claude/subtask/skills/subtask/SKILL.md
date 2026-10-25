@@ -143,6 +143,14 @@ worker's own claim, before reading any Jev advice.
   (`auto`/`manual`/`off`) is the operator's decision, not a way to force a check.
 - Records are mutable by the same OS user: this is advice, not attestation.
   Read `docs/delivery-review.md` for the limits.
+- The delivery details also show the advisory filter route. A normal review
+  remains necessary for unknown/invalid output, any unproven required criterion,
+  a local veto, or missing/unproven full scope. It is not started automatically.
+  A decisive Jev route does not waive independent checks or grant acceptance.
+- Do not infer full-delivery coverage from a successful single-criterion check.
+  Test-plan and recovery classifiers are experimental; use explicit criteria,
+  compare them with the normal model, and do not execute their proposed actions.
+  See `docs/jev-cascade-20261025.md` for the live comparison and its limits.
 
 ## After the job
 

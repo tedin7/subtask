@@ -23,6 +23,15 @@ SECRET = "sk-test-abcdefghijklmnopqrstuvwxyz0123456789"
 KEY = "sk-key-abcdefghijklmnopqrstuvwxyz0123456789"
 
 
+def test_smaller_bounded_campaign_does_not_require_unused_paid_slots(tmp_path):
+    path = tmp_path / "reservations.json"
+    path.write_text(json.dumps([{"slot": 1, "rid": "small-1", "usd": 2, "state": "reserved"}]))
+    assert list(bench._load_reservations(path)) == [1]
+    path.write_text(json.dumps([{"slot": 2, "rid": "gap-2", "usd": 2, "state": "reserved"}]))
+    with pytest.raises(bench.PhaseError):
+        bench._load_reservations(path)
+
+
 def _reservations(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [
