@@ -59,6 +59,14 @@ Git legge oggetti e diff con monitor, hook, programmi esterni e recupero remoto
 disabilitati. Il controllo rifiuta file non regolari, collegamenti simbolici e
 stati con retry ancora pendente.
 
+Git ignora anche `refs/replace`, forza la visualizzazione dei gitlink e impedisce
+diff annidati dei submoduli. I contenuti binari e dei submoduli non sono giudicati:
+`patch_content_not_inspected` impedisce un esito favorevole. Un diff non UTF-8 viene
+rifiutato. Una verifica deve avere output registrato non vuoto, senza indicatori
+espliciti di fallimento (`FAILED`, `FAILURES`, `AssertionError` o traceback Python).
+Questa regola conservativa può lasciare non provati anche controlli silenziosi o
+output con errori attesi. Il comando dell'oracle deve coincidere con quello richiesto.
+
 Il riferimento `evidence_ref` identifica un materiale nel pacchetto salvato; il
 diff contiene file e contesto delle righe, la verifica contiene comando, commit
 ed estratto di output. Questo controllo non esegue nuovi test, non visita siti e
@@ -80,15 +88,20 @@ durante la chiamata, la risposta non viene associata al nuovo candidato.
 
 Il costo fatturato resta `null`: non è disponibile una tariffa verificata nel
 componente. Il controllo prenota il minore tra `SUBTASK_DEFAULT_MAX_USD` e
-`SUBTASK_MAX_JOB_USD` e il limite del job, se presente, nel registro mensile esistente, e lo contabilizza per intero
+`SUBTASK_MAX_JOB_USD` nel registro mensile esistente, e lo contabilizza per intero
 in via prudenziale. `budget_charged_usd` è questa contabilizzazione, non una
 fattura né un limite imposto dal provider. Non cambia il tetto mensile.
+Un limite del job inferiore alla prenotazione impedisce l'invio: un metadato del
+worker non può ridurre l'accantonamento scelto dall'operatore.
 
 Richieste e ricevute sono in `jobs/<id>/reviews/`: `<request_sha256>.request.json`
 contiene la richiesta ripulita e `<binding_sha256>.json` la ricevuta. Il coordinatore
 deve leggere la ricevuta relativa al materiale attuale; una vecchia ricevuta non
 certifica una nuova consegna. La cancellazione delle ricevute non è una procedura
 di retry: potrebbe causare nuovi addebiti.
+Il recupero ripulisce anche le ricevute precedenti con i segreti oggi conosciuti.
+Se un guasto avviene tra prenotazione e intento, serve riconciliazione manuale:
+il componente rifiuta il secondo invio, senza presumere un esito del primo.
 
 ## Prove
 
@@ -122,3 +135,46 @@ l'albero sopra corrisponde all'indice verificato prima della revisione avversari
 La revisione ha richiesto correzioni al codice: quelle prove non certificano il
 candidato successivo. Verifiche finali, prova della wheel e installazione vengono
 registrate separatamente al completamento.
+
+### Candidato corretto dopo la revisione avversaria
+
+Codice verificato: `deb485fdafe5246827eaa9d80d0c5e4835ddb8ce`, albero
+`fa6399d0f66fe3e9a0541e7a351f5081d8ad7f3b`. La prima revisione indipendente
+(`st-ddcce69b47`, test in `9ce8ded`) ha individuato quattro difetti alti, tre medi
+e uno basso. Le correzioni e le regressioni sono nel candidato indicato.
+
+| Prova | Comando o ambiente | Risultato |
+| --- | --- | --- |
+| Regressioni Jev | `build-a-turno .venv/bin/python -m pytest -q tests/test_delivery_review.py tests/test_delivery_review_adversarial.py` | 40 passati, `review4-final-targeted.log` |
+| Suite finale | `build-a-turno .venv/bin/python -m pytest -q -p no:cacheprovider` | 340 passati, 4 live esclusi, 289,82 s; `final-full.log` |
+| Controlli statici | Ruff 0.17.0 check e format; schema `--dump-tools` confrontato con `tools.json` | Verdi; `review4-lint.log`, `final-format.log` |
+| Wheel installata in venv separata | `python -I final_wheel_smoke.py`, client MCP ufficiale senza progressToken | 56 file del pacchetto identici al sorgente; 16 strumenti e attesa conclusa su entrambi i server; nessuna API |
+| Jev reale dalla wheel | `python -I final_live_smoke.py`, fixture Git isolata, registro spese canonico | `jev-1.14.0`, 2077 token input e 292 output; parser supportato, pagina e scope non provati; `final-live-smoke-report.json` |
+
+Wheel: SHA-256 `ab6a16e5c97b888b606a06bc8c66c267ebd8c9acd8182038c6e99086282ac403`.
+Il costo fatturato delle due chiamate reali dell'incarico resta sconosciuto;
+il registro imputa in totale 4 USD prudenziali, senza cambiare il tetto esistente.
+La prova MCP non esegue il modello Codex: il limite del client inattivo è verificato
+nel sorgente ufficiale, come descritto in `progress-matrix.md`.
+
+### Seconda revisione e correzione v5
+
+La seconda revisione (`st-ec3610f12a`) ha respinto `deb485f`: due difetti alti,
+cinque medi e uno basso. I test `25b14f71adbe69661b1a3e43fe84b9f9695565f2`
+riproducono undici casi rossi. Il coordinatore ha riprodotto dieci casi prima
+ dell'ultima aggiunta sui submoduli (`review5-before.log`); dopo le correzioni,
+ tutti i 51 test Jev passano (`review5-after.log`). La policy diventa v5.
+
+La correzione forza diff senza submoduli annidati o replace ref, rende visibili
+le modifiche dei gitlink, limita i giudizi su contenuti non espansi e controlla
+output e comando oracle. Ripulisce cache e intento prima della persistenza,
+rifiuta la radice jobs simbolica, task di tipo errato e budget del job inferiore
+all'accantonamento prudenziale. La fixture positiva ora registra davvero output
+positivo; l'asserzione sulle verifiche incomplete controlla sia esito sia motivo.
+
+Il test del clean filter descrive il limite dello snapshot, non dimostra da solo
+l'assenza di esecuzione: il percorso avversario dei submoduli esercita quel difetto.
+Resta il limite dichiarato dei metadati modificabili dallo stesso utente e della
+riconciliazione manuale dopo un guasto tra prenotazione e intento.
+Le prove complete e la wheel sopra appartengono a deb485f; vanno aggiornate prima
+ di installare v5. La prova reale Jev precedente resta una prova API sulla policy v4.

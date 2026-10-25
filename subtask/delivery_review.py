@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import selectors
 import signal
 import stat
@@ -27,7 +28,7 @@ from . import config, jobs, ledger, redact, verifier
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 MAX_BYTES = 96 * 1024
 MAX_RESPONSE_BYTES = 64 * 1024
-POLICY = "subtask-delivery-shadow-v4"
+POLICY = "subtask-delivery-shadow-v5"
 MODEL = "jev-latest"
 
 
@@ -106,6 +107,7 @@ def _git(repo: str, *args: str) -> str:
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_NO_LAZY_FETCH": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_ALLOW_PROTOCOL": "",
     }
     deadline = time.monotonic() + 15
@@ -136,7 +138,7 @@ def _git(repo: str, *args: str) -> str:
                 pass
             process.wait()
         process.stdout.close()
-    return output.decode("utf-8", errors="replace").strip()
+    return output.decode("utf-8").strip()
 
 
 def _clean(value):
@@ -156,7 +158,7 @@ def _save(path: Path, value: dict) -> None:
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".review-", delete=False) as stream:
             temporary = Path(stream.name)
-            stream.write(_bytes(value))
+            stream.write(_bytes(_clean(value)))
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -180,7 +182,7 @@ def _packet(
     ):
         raise ValueError("criteria must contain 1-12 nonempty strings, at most 2000 characters each")
     folder = jobs.job_dir(job_id)
-    if folder.is_symlink():
+    if config.JOBS.is_symlink() or folder.is_symlink():
         raise ValueError("review job directory must not be a symlink")
     spec = _record(folder / "spec.json")
     status = _record(folder / "status.json")
@@ -194,6 +196,9 @@ def _packet(
         raise ValueError("original_request must be a bounded nonempty string supplied by the coordinator")
     from .core import WORKTREE_NOTE
 
+    if not isinstance(spec.get("task", ""), str):
+        # Malformed stored data uses the CLI's public ValueError error path.
+        raise ValueError("recorded task must be a string")  # noqa: TRY004
     request = (
         original_request if original_request is not None else spec.get("task", "").split(WORKTREE_NOTE, 1)[0]
     )
@@ -223,6 +228,11 @@ def _packet(
         verification = None
     if verification:
         materials["verification"] = {"level": "runner_recorded_unattested", "record": verification}
+        output = verification.get("output_tail")
+        if not isinstance(output, str) or not output.strip():
+            limitations.append("verification_output_unavailable")
+        elif re.search(r"\b(?:FAILED|FAILURES|AssertionError)\b|Traceback \(most recent call last\)", output):
+            limitations.append("verification_output_conflict")
         if type(verification.get("exit_code")) is not int:
             limitations.append("verification_exit_unknown")
         elif verification.get("exit_code") != 0:
@@ -240,6 +250,7 @@ def _packet(
         oracle = verification.get("oracle")
         if (spec.get("oracle_cmd") or oracle) and (
             not isinstance(oracle, dict)
+            or oracle.get("command") != spec.get("oracle_cmd")
             or oracle.get("output_match") is not True
             or oracle.get("exit_match") is not True
         ):
@@ -250,7 +261,22 @@ def _packet(
         repo = spec["repo"]
         head = _git(repo, "rev-parse", "--verify", "--end-of-options", f"{spec['branch']}^{{commit}}")
         base = _git(repo, "rev-parse", "--verify", "--end-of-options", f"{spec['base']}^{{commit}}")
-        patch = _git(repo, "diff", "--no-ext-diff", "--no-textconv", base, head, "--")
+        patch = _git(
+            repo,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "--submodule=short",
+            "--ignore-submodules=none",
+            "--binary",
+            "--full-index",
+            base,
+            head,
+            "--",
+        )
+        if "GIT binary patch" in patch or "Subproject commit" in patch:
+            limitations.append("patch_content_not_inspected")
         candidate.update(base=base, head=head, patch_sha256=hashlib.sha256(patch.encode()).hexdigest())
         materials["patch"] = {"level": "runner_observed", "text": patch}
         # Judge the committed branch snapshot, never live worktree contents.
@@ -305,7 +331,8 @@ def _packet(
         allowance = config.DEFAULT_MAX_USD
     if type(allowance) not in (int, float) or not math.isfinite(allowance) or allowance < 0:
         raise ValueError("invalid recorded job budget")
-    packet["state"]["review_allowance_usd"] = min(config.DEFAULT_MAX_USD, config.MAX_JOB_USD, allowance)
+    packet["state"]["review_allowance_usd"] = min(config.DEFAULT_MAX_USD, config.MAX_JOB_USD)
+    packet["state"]["job_allowance_usd"] = allowance
     # Bind the original bytes/metadata before redaction: changing a secret must
     # invalidate a receipt even when both values would be displayed as REDACTED.
     candidate["binding_sha256"] = _digest(
@@ -439,21 +466,22 @@ def review(
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
             raise ValueError("review lock must be a regular file")
         fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            key = _key()
+        except (ValueError, OSError):
+            key = ""
+        redact.remember([key, *config.load_secrets().values()])
         receipt = folder / f"{binding}.json"
         previous = _record(receipt)
         if previous:
             if previous.get("binding_sha256") != binding or previous.get("advisory_only") is not True:
                 raise ValueError("stored receipt binding invalid; no automatic resubmission")
-            return previous  # includes unresolved intents: no automatic replay after a crash
-        # Recovery never needs the key. Only a new request/preparation loads it
-        # so exact secret values can be redacted before JSON serialization.
-        try:
-            key = _key()
-        except (ValueError, OSError):
-            if submit:
-                raise ValueError("Jev credential unavailable; no request sent") from None
-            key = ""
-        redact.remember([key, *config.load_secrets().values()])
+            cleaned = _clean(previous)
+            if cleaned != previous:
+                _save(receipt, cleaned)
+            return cleaned  # unresolved intents are never replayed, even without credentials
+        if submit and not key:
+            raise ValueError("Jev credential unavailable; no request sent")
         packet = _clean(raw_packet)
         digest = _digest(packet)
         report = {
@@ -475,10 +503,12 @@ def review(
         }
         _save(folder / f"{digest}.request.json", packet)
         if not submit:
-            return report
+            return _clean(report)
         # Reuse the existing monthly cap. With no verified tariff, the entire
         # configured per-call allowance remains charged prudentially, not as a bill.
         reserve = packet["state"]["review_allowance_usd"]
+        if packet["state"]["job_allowance_usd"] < reserve:
+            raise ValueError("recorded job budget is below the operator's review allowance")
         reservation = "jev-review:" + binding
         if ledger.reserve(reservation, job_id, reserve) is None:
             raise ValueError("Jev review budget unavailable or reservation unresolved")

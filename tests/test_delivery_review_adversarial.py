@@ -216,6 +216,7 @@ def test_verification_must_be_complete_and_match_the_job(delivery, home, monkeyp
         "head": head,
         "dirty_after": False,
         "command": "pytest -q",
+        "output_tail": "parser: 1 passed",
     }
     if case == "missing_dirty":
         verification.pop("dirty_after")
@@ -230,11 +231,13 @@ def test_verification_must_be_complete_and_match_the_job(delivery, home, monkeyp
     monkeypatch.setattr(review, "_request", lambda packet, _: answer(packet, "supported", "verification"))
     report = review.review("st-delivery", ["Parser works"], submit=True)
     limitations = set(report["limitations"])
-    assert report["assessments"][0]["assessment"] == "unproven" or limitations & {
-        "verification_dirty_unknown",
-        "verification_command_mismatch",
-        "oracle_mismatch",
+    assert report["assessments"][0]["assessment"] == "unproven"
+    expected = {
+        "missing_dirty": "verification_dirty_unknown",
+        "wrong_command": "verification_command_mismatch",
+        "oracle_mismatch": "oracle_mismatch",
     }
+    assert expected[case] in limitations
 
 
 def test_tied_probabilities_are_not_a_supported_verdict(delivery, home, monkeypatch):

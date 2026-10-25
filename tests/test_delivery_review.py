@@ -215,6 +215,7 @@ def test_git_candidate_and_failed_verification_cannot_be_promoted(delivery, home
     assert report["assessments"][0]["assessment"] == "unproven"
     status = jobs.read_json(delivery / "status.json")
     status["verification"]["exit_code"] = 0
+    status["verification"]["output_tail"] = "parser and UI: 2 passed"
     jobs.write_json(delivery / "status.json", status)
     positive = review.review("st-delivery", ["Parser and UI work"], submit=True)
     assert positive["assessments"][0]["assessment"] == "supported"
@@ -396,7 +397,13 @@ def test_scope_cannot_be_established_from_worker_visible_metadata(delivery, home
         {
             "state": "done",
             "attempt": 1,
-            "verification": {"exit_code": 0, "head": head, "command": "pytest -q", "dirty_after": False},
+            "verification": {
+                "exit_code": 0,
+                "head": head,
+                "command": "pytest -q",
+                "dirty_after": False,
+                "output_tail": "parser: 1 passed",
+            },
         },
     )
     monkeypatch.setattr(review, "_request", lambda packet, _: answer(packet, "supported", "verification"))
