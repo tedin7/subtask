@@ -655,6 +655,8 @@ def _validate_answers(request: dict, body: object) -> dict:
             for probability in probabilities.values()
         ):
             raise InvalidAnswer("probability_out_of_range")
+        if not math.isclose(sum(probabilities.values()), 1, abs_tol=1e-6):
+            raise InvalidAnswer("probabilities_not_normalized")
         choice = value.get("choice")
         maximum = max(probabilities.values())
         if (
@@ -662,7 +664,6 @@ def _validate_answers(request: dict, body: object) -> dict:
             or choice not in probabilities
             or probabilities[choice] != maximum
             or sum(probability == maximum for probability in probabilities.values()) != 1
-            or not math.isclose(sum(probabilities.values()), 1, abs_tol=1e-6)
         ):
             raise InvalidAnswer("choice_not_argmax")
         output[name] = {
@@ -787,7 +788,7 @@ def _normal_run(prompt: str, *, model: str, session_dir: Path, timeout: float) -
             continue
         if not isinstance(event, dict):
             continue
-        if event.get("type") == "tool_use":
+        if event.get("type") in {"tool_use", "server_tool_use", "mcp_tool_use"}:
             tool_use = True
             part = event.get("part") or {}
             tool = part.get("tool") if isinstance(part, dict) else None

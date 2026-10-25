@@ -544,3 +544,31 @@ def test_normal_config_disables_inherited_mcp_without_changing_provider_plugins(
     assert config["mcp"]["servers"] == {"subtask": {"enabled": False}}
     assert "plugins" not in config and "providers" not in config
     assert config["permissions"] == [{"action": "*", "resource": "*", "effect": "deny"}]
+
+
+@pytest.mark.parametrize("event_type", ["server_tool_use", "mcp_tool_use"])
+def test_normal_rejects_other_tool_event_variants(tmp_path, monkeypatch, event_type):
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    script = binary / "opencode"
+    script.write_text(
+        "#!/usr/bin/env python3\nimport json\n"
+        + f"print(json.dumps({{'type': {event_type!r}, 'part': {{'tool': 'read'}}}}))\n"
+        + "print(json.dumps({'type':'text','part':{'text':'{}'}}))\n"
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
+    session = tmp_path / "session"
+    session.mkdir()
+    result = bench._normal_run("classify", model=bench.NORMAL_MODEL, session_dir=session, timeout=10)
+    assert result["tool_use"] is True
+
+
+def test_probability_mass_error_is_distinguished_from_argmax():
+    request = {"state": {}, "questions": _questions()}
+    body = _body(request)
+    body["answers"]["C1"].update(
+        choice="supported", probabilities={"supported": 0.6, "contradicted": 0.25, "unproven": 0.14}
+    )
+    with pytest.raises(bench.InvalidAnswer, match="probabilities_not_normalized"):
+        bench._validate_answers(request, body)
