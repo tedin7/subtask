@@ -29,7 +29,11 @@ def test_git_limit_error_survives_group_signal_permission_race(monkeypatch):
 
     def controlled_child(*_args, **_kwargs):
         child = real_popen(
-            [sys.executable, "-c", "import sys,time;sys.stdout.write('overflow');sys.stdout.flush();time.sleep(30)"],
+            [
+                sys.executable,
+                "-c",
+                "import sys,time;sys.stdout.write('overflow');sys.stdout.flush();time.sleep(30)",
+            ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
