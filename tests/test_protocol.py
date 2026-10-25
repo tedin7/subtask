@@ -278,3 +278,127 @@ def test_a_long_wait_counts_as_one_round_trip(home):
     c.until(2, timeout=40)
     c.close()
     assert [x["tool"] for x in telemetry.calls(job)].count("wait") == 1
+
+
+# The fake engine gets the prompt as $1: "slow" sleeps, everything else is quick.
+CODEX_SCRIPT = (
+    'case "$1" in *slow*) sleep 30;; *) sleep 4;; esac; '
+    'echo \'{"tool":"pytest","exit":0}\'; echo \'{"say":"## Summary\\n- done: \'"$1"\'"}\''
+)
+
+
+def test_codex_gets_no_out_of_band_wake_when_a_job_finishes(home):
+    """Codex 0.164.0 has no server push that starts a turn: with no open request, nothing arrives.
+
+    This is the defect the skill must not paper over. `wait` is the only delivery path.
+    """
+    from subtask import jobs
+
+    fake_cli(home, "kimi", "sleep 1; echo done")
+    c = Client(_env())
+    c.send({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "start", "arguments": {"task": "x", "engine": "kimi", "cwd": str(home)}}})  # fmt: skip
+    job = c.until(1)[0]["result"]["content"][0]["text"].split()[0]
+    before = len(c.raw)
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and jobs.status(job).get("state") not in jobs.FINAL:
+        time.sleep(0.1)
+    assert jobs.status(job).get("state") == "done"
+    time.sleep(0.6)  # let the reader thread drain anything the server may have sent
+    assert len(c.raw) == before, c.raw[before:]
+    c.close()
+
+
+def test_cursor_wait_returns_at_the_first_job_end(home, monkeypatch):
+    """The supported Codex path: mode=any + cursor, with the 60 s server-side budget."""
+    from subtask import jobs
+
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", CODEX_SCRIPT)
+    c = Client(_env())
+    c.send({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "start_many", "arguments": {"tasks": [
+                {"task": "fast", "engine": "fake", "cwd": str(home), "max_usd": 0.5},
+                {"task": "slow", "engine": "fake", "cwd": str(home), "max_usd": 0.5},
+            ]}}})  # fmt: skip
+    started = c.until(1)[0]["result"]["content"][0]["text"]
+    ids = [line.split()[0] for line in started.splitlines() if line.split()[0].startswith("st-")]
+    assert len(ids) == 2, started
+    c.send(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "wait",
+                "arguments": {
+                    "ids": ids,
+                    "mode": "any",
+                    "timeout": 1,
+                    "since": "",
+                },
+            },
+        }
+    )
+    first = c.until(2, timeout=20)[0]["result"]["content"][0]["text"]
+    assert first.startswith("still running") and "cursor=" in first, first
+    cursor = first.rsplit("cursor=", 1)[1].strip()
+    t0 = time.monotonic()
+    c.send(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "wait",
+                "arguments": {
+                    "ids": ids,
+                    "mode": "any",
+                    "timeout": 60,
+                    "since": cursor,
+                },
+            },
+        }
+    )
+    second = c.until(3, timeout=30)[0]["result"]["content"][0]["text"]
+    elapsed = time.monotonic() - t0
+    assert elapsed < 15, elapsed
+    assert f"{ids[0]} done" in second or f"{ids[1]} done" in second, second
+    running = next(i for i in ids if f"{i} done" not in second)
+    assert f"{running} running" in second, second
+    assert "admission" not in second  # the cursor did not replay old events
+    finished = next(i for i in ids if f"{i} done" in second)
+    remaining = [i for i in ids if i != finished]
+    c.send(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "wait",
+                "arguments": {"ids": remaining, "mode": "any", "timeout": 1, "since": ""},
+            },
+        }
+    )
+    third = c.until(4, timeout=20)[0]["result"]["content"][0]["text"]
+    assert third.startswith("still running"), third  # a terminal id would return at once
+    c.send(
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {"name": "stop", "arguments": {"id": running}},
+        }
+    )
+    c.until(5, timeout=20)
+    assert jobs.status(running).get("state") in jobs.FINAL
+    c.close()
+
+
+def test_cursor_wait_budget_is_capped_at_60_seconds():
+    from subtask.progress import wait_budget
+
+    assert wait_budget(600, "") == 60
+    assert wait_budget(600, "cursor") == 60
+    assert wait_budget(30, "") == 30
+    assert wait_budget(600, None) == 600
+    assert wait_budget(0, "") == 1

@@ -10,6 +10,9 @@ Dual-era (MCP 2026-07-28 "Versioning and Compatibility"):
 Progress: a tools/call with `_meta.progressToken` gets `notifications/progress`
 while it runs (see progress.py). `notifications/cancelled` ends the call: no
 further message is sent for it, and the jobs keep running (stop() stops work).
+Notifications are only delivered inside an open request: no MCP client,
+Codex 0.164.0 included, turns an unsolicited notification into a new model turn.
+The supported background delivery is a blocking `wait(..., mode='any', since=...)`.
 
 Importing the mcp package costs ~560 ms; this file answers before `core` is
 even imported. Tool names, descriptions and schemas come from tools.json,
@@ -90,7 +93,9 @@ def _wait(
     mode: str | None = None,
     stall_timeout: float | None = None,
 ) -> str:
-    deadline = time.monotonic() + max(1, min(int(timeout), 600))
+    from .progress import wait_budget
+
+    deadline = time.monotonic() + wait_budget(timeout, since)
     if call.reporter:
         for job_id in ids:
             if core.known(job_id):
@@ -101,6 +106,15 @@ def _wait(
         out = core.wait(ids, 0, any, since=since, count=first, mode=mode, stall_timeout=stall_timeout)
         first = False
         if not out.startswith("still running") or time.monotonic() >= deadline:
+            if "worker died before finishing" in out:
+                # jobs.stop() books a killed worker as failed, then writes stopped;
+                # do not return the intermediate state just because we looked first.
+                time.sleep(0.5)
+                settled = core.wait(
+                    ids, 0, any, since=since, count=False, mode=mode, stall_timeout=stall_timeout
+                )
+                if not settled.startswith("still running"):
+                    out = settled
             if call.reporter:
                 call.reporter.poll()
             return out

@@ -33,8 +33,12 @@ Do NOT delegate when:
 ## The cheap call pattern
 
 1. One call to start everything: `start_many([...])`, or `start(...)` for one job.
-2. One call to collect: `wait(ids)`. It blocks until all jobs end and returns
-   each summary. Do not poll `status()` in a loop.
+2. One call to collect: `wait(ids)`. It blocks until the jobs end and returns
+   each summary. Do not poll `status()` in a loop and never `sleep` before
+   checking. For background delivery keep a wait open:
+   `wait(ids, mode="any", timeout=60, since="")` returns as soon as one job
+   ends. Drop the ids it reports as ended, pass back the returned `cursor=`,
+   and call it again for the rest.
 3. Only if a summary is not enough: `result(id, full=True)`; for checkable
    facts (commits, changed files, test exit codes, cost):
    `result(id, evidence=True)`.
@@ -62,11 +66,48 @@ Do NOT delegate when:
 - Clients that show MCP progress display a live line during `wait`
   (`Subtask · 01:16 · 2/3 ended — st-b2 running tests`). You do not need to
   repeat it.
-- If your client does not show progress, use `wait(ids, timeout=120, since="")`
-  and pass back the returned `cursor=` next time: each reply lists only what
-  changed. Tell the user one short line when something significant changed
-  (a job ended, failed, or is blocked); stay silent otherwise.
+- If your client does not show progress, use `wait(ids, mode="any", timeout=60,
+  since="")` and pass back the returned `cursor=` next time: each reply lists
+  only what changed. Drop ids already reported as ended; otherwise `mode="any"`
+  returns immediately on the old result. Tell the user one short line when
+  something significant changed (a job ended, failed, or is blocked); stay
+  silent otherwise.
 - Cancelling a `wait` does not stop the jobs; `stop(id)` does.
+
+## Codex: delivery, not wake (0.164.0)
+
+MCP is request/response. Codex 0.164.0 accepts `notifications/progress`,
+`notifications/message`, resource updates and tool-list changes, but its client
+handler only writes them to its log (`rmcp-client/src/logging_client_handler.rs`);
+none of them starts a model turn. A progress line or log message cannot wake an idle
+Codex session. Do not claim otherwise, and do not build a "bridge" that pretends
+it can.
+
+The supported path is a blocking wait inside the turn:
+
+```
+wait(ids, mode="any", timeout=60, since="")   # returns at the first end
+# remove the ids now ended, keep cursor= from the reply, call again for the rest
+```
+
+Each call is a blocking server-side wait: it returns immediately when a job
+ends, or after at most 60 s with `still running` and a `cursor=`. That is not
+the same as waking an inactive session: if you end your turn, only a new user
+message resumes Codex. Never `sleep 600` and then check `status()`.
+
+Install for Codex 0.164.0 (the default MCP tool timeout is 300 s; the installer
+writes 660 s, which long non-cursor waits need):
+
+```sh
+codex mcp add subtask -- "$(uv tool dir --bin)/subtask-mcp"
+# ~/.codex/config.toml
+[mcp_servers.subtask]
+tool_timeout_sec = 660
+```
+
+The plugin route (`codex plugin marketplace add ...` then `codex plugin add
+subtask@subtask`) brings the same skill. Verify with `codex mcp list` and
+`subtask doctor --client codex`.
 
 ## After the job
 

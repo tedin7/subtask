@@ -16,6 +16,8 @@ from . import events, jobs
 
 MIN_INTERVAL_S = float(os.environ.get("SUBTASK_PROGRESS_MIN_S", "2"))
 HEARTBEAT_S = float(os.environ.get("SUBTASK_PROGRESS_HEARTBEAT_S", "10"))
+CURSOR_WAIT_MAX_S = 60
+WAIT_MAX_S = 600
 NO_DETAIL = "worker running; internal activity not available"
 LABELS = {
     "admission": "admitting",
@@ -35,6 +37,23 @@ def clock(seconds: float) -> str:
         if seconds < 3600
         else f"{seconds // 3600}h{seconds % 3600 // 60:02d}"
     )
+
+
+def wait_budget(timeout: float, since: str | None, hard_max: float = WAIT_MAX_S) -> float:
+    """Seconds a blocking wait may run before it returns "still running".
+
+    A wait with a cursor is the delivery path for clients that do not render
+    progress and cannot be woken by an MCP notification (Codex 0.164.0 is one:
+    see docs/progress-matrix.md). Keep that path inside 60 s so it also fits
+    Codex's 300 s default MCP tool timeout, not only the 660 s the installer
+    writes. A client that shows progress may still block for the full 600 s.
+    """
+    try:
+        requested = float(timeout)
+    except (TypeError, ValueError):
+        requested = 1.0
+    limit = CURSOR_WAIT_MAX_S if since is not None else hard_max
+    return max(1.0, min(requested, float(limit)))
 
 
 class Reporter:

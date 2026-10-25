@@ -18,8 +18,12 @@ mcp = FastMCP(
     "subtask",
     instructions=(
         "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).\n"
-        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids); it blocks and returns summaries.\n"
-        "Never poll status(). result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.\n"
+        "Pattern: ONE start_many([...]) with every job, then ONE wait(ids) (blocking); it returns as soon as\n"
+        "  the batch ends (or the first job, with mode='any'), not on a timer.\n"
+        "Never poll status(). Background delivery: Codex 0.164.0 cannot wake an idle turn from MCP\n"
+        "  notifications. Keep a wait open with wait(ids, mode='any', timeout=60, since=''), drop ended\n"
+        "  ids, pass back cursor=, repeat. Never sleep 600 and check later; no notification wakes Codex.\n"
+        "result(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.\n"
         "Context: never paste files or diffs into task. Use context_refs=['file:p.py:10-80', 'git:diff',\n"
         "  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths to read.\n"
         "Writes: isolation='worktree' (or repo=) plus verify='pytest -q ...'. invariants are on by default\n"
@@ -101,9 +105,13 @@ async def wait(
 ) -> str:
     """Block until jobs or groups end and return their summaries. mode: all | any (first to end) |
     first_success (first done and verified; the rest are stopped). Returns early on a stalled job.
-    since: cursor for clients without progress notifications. Call again only if it said 'still running'."""
+    since: cursor for clients without progress; with it, timeout is capped at 60 s. For Codex:
+    wait(ids, mode='any', timeout=60, since=''), drop ended ids and pass back cursor=. An idle Codex
+    0.164.0 is not woken by progress or log notifications; only a new user turn is."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
+    from .progress import wait_budget
+
     loop = asyncio.get_running_loop()
     reporter = None
     pending: list = []
@@ -115,7 +123,7 @@ async def wait(
             pending.append(ctx.report_progress(value, total, message))  # awaited before the reply
 
         reporter = Reporter(send, [i for i in ids if core.known(i)])
-    deadline = loop.time() + max(1, min(timeout, 600))
+    deadline = loop.time() + wait_budget(timeout, since)
     first = True
     while True:
         if reporter:
@@ -125,6 +133,15 @@ async def wait(
         out = core.wait(ids, 0, any, since=since, count=first, mode=mode, stall_timeout=stall_timeout)
         first = False
         if not out.startswith("still running") or loop.time() >= deadline:
+            if "worker died before finishing" in out:
+                # jobs.stop() books a killed worker as failed, then writes stopped;
+                # do not return the intermediate state just because we looked first.
+                await asyncio.sleep(0.5)
+                settled = core.wait(
+                    ids, 0, any, since=since, count=False, mode=mode, stall_timeout=stall_timeout
+                )
+                if not settled.startswith("still running"):
+                    out = settled
             return out
         await asyncio.sleep(1)
 
