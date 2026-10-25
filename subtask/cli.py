@@ -7,6 +7,7 @@ subtask steer ID hint|abort|retry ["text"] | inspect ID [--tail N] [--grep W] | 
 subtask integrate ID... [--action diff|apply|discard] [--auto-resolve] | map-reduce GLOB "tpl {{files}}"
 subtask install|uninstall --client claude|codex|kimi|opencode|all [--yes]
 subtask doctor [--json] [--client X] | gc [--days 30] [--apply] | du | roi | routing explain|calibrate | watch ID...
+subtask jev [status] [--json] | jev setup [--key-stdin] [--mode manual|auto|off] | jev auto|manual|off
 
 Differences from the MCP tools: the CLI also has --model, --no-sandbox (same as
 --policy worktree), --untrusted, spend, install, doctor, gc, du, roi,
@@ -63,6 +64,17 @@ def main() -> int:
     rv.add_argument(
         "--submit", action="store_true", help="send one provider request; default prepares offline"
     )
+    je = sub.add_parser("jev", help="stato e configurazione del controllo Jev")
+    je.add_argument(
+        "jev_cmd",
+        nargs="?",
+        default="status",
+        choices=["status", "setup", "auto", "manual", "off"],
+        help="stato, setup interattivo oppure modalità manual/auto/off",
+    )
+    je.add_argument("--json", action="store_true", help="stato leggibile da automazione")
+    je.add_argument("--key-stdin", action="store_true", help="legge la nuova chiave da stdin, mai da argv")
+    je.add_argument("--mode", choices=["manual", "auto", "off"], help="modalità per il setup")
     source = rv.add_mutually_exclusive_group()
     source.add_argument("--original-request", help="original request supplied by the coordinator")
     source.add_argument("--request-file", help="original request file supplied by the coordinator")
@@ -201,6 +213,10 @@ def main() -> int:
                          None, a.engine)  # fmt: skip
     elif a.cmd == "watch":
         return _watch(a.ids, a.interval)
+    elif a.cmd == "jev":
+        from . import jev_config
+
+        return jev_config.run_cli(a)
     else:
         out = core.spend()
     print(out)
