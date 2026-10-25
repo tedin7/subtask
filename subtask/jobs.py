@@ -97,7 +97,7 @@ def liveness(job_id: str, data: dict) -> str:
 
 
 def status(job_id: str) -> dict:
-    """Current state; books a provably dead worker as failed and settles its reservation."""
+    """Current state; settle a provably dead worker, preserving an explicit stop request."""
     data = read_json(job_dir(job_id) / "status.json", {"state": "unknown"})
     if data.get("state") not in ACTIVE:
         return data
@@ -120,6 +120,12 @@ def _close_dead(job_id: str, seen: dict, error: str = "worker died before finish
         data = read_json(job_dir(job_id) / "status.json")
         if data.get("state") not in ACTIVE or _proc(data) != _proc(seen):
             return data  # it finished or was restarted meanwhile
+        stopping = bool(data.get("stop_requested"))
+        proc = _proc(data)
+        if stopping and proc and _group_alive(int(proc["pid"])):
+            return data  # The leader died, but stop still has children to reap.
+        state = "stopped" if stopping else "failed"
+        message = "stopped by request" if stopping else error
         charged = 0.0
         for row in ledger.open_for(job_id):
             # Spend possible but unknown: charge the whole reservation (prudential), else release.
@@ -130,15 +136,15 @@ def _close_dead(job_id: str, seen: dict, error: str = "worker died before finish
         data = update_status(
             job_id,
             locked=True,
-            state="failed",
+            state=state,
             pid=None,
             proc=None,
             liveness=procid.DEAD,
             cost_usd=round(float(data.get("cost_usd") or 0) + charged, 4),
-            error=error,
+            error="" if stopping else error,
         )
     admission.release(job_id)
-    events.emit(job_id, "end", error, state="failed")
+    events.emit(job_id, "end", message, state=state)
     return data
 
 
@@ -178,10 +184,15 @@ def stop(job_id: str, grace_s: float = 8.0) -> bool:
     current = status(job_id)
     if current.get("state") not in ACTIVE:
         return False
+    with job_lock(job_id):
+        current = read_json(job_dir(job_id) / "status.json")
+        if current.get("state") not in ACTIVE:
+            return False
+        # Persist intent before signalling: concurrent wait/status may reap the worker.
+        current = update_status(job_id, locked=True, stop_requested=True)
     proc = _proc(current)
     if not proc:
         # Spawned but not recorded yet: ask the worker to stop itself, then wait for its identity.
-        update_status(job_id, stop_requested=True)
         deadline = time.time() + grace_s
         while time.time() < deadline:
             current = read_json(job_dir(job_id) / "status.json")
@@ -195,7 +206,7 @@ def stop(job_id: str, grace_s: float = 8.0) -> bool:
             return False  # no worker to prove stopped; the request stays and the worker honours it
     if liveness(job_id, current) == procid.ALIVE and not _kill_group(int(proc["pid"]), grace_s):
         return False  # something survived SIGKILL: do not pretend
-    data = status(job_id)  # books a killed worker as failed and settles its reservation
+    data = status(job_id)  # settles the stopped worker once its process group is gone
     if data.get("state") in ACTIVE and _proc(data) and liveness(job_id, data) != procid.DEAD:
         return False
     if read_json(job_dir(job_id) / "status.json").get("state") != "stopped":
