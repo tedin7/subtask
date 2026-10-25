@@ -121,9 +121,9 @@ def _has_tool_marker(value: Any, depth: int = 0) -> bool:
         for key, item in value.items():
             if key in _TOOL_KEYS and _truthy(item):
                 return True
-            if key == "stop_reason" and item in _TOOL_TYPES:
+            if key == "stop_reason" and isinstance(item, str) and item in _TOOL_TYPES:
                 return True
-            if key == "type" and item in _TOOL_TYPES:
+            if key == "type" and isinstance(item, str) and item in _TOOL_TYPES:
                 return True
             # Probability keys and verdict labels are data, not tool metadata.
             if key == "probabilities" or key in _LABEL_FIELDS:
