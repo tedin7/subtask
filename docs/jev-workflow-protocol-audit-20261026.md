@@ -41,3 +41,9 @@ L'audit privato conserva hash dell'input ed esatta sostituzione proposta.
 ## Trovato strada facendo
 
 - `docs/jev-workflow-evidence-20261026.md:36` — medio: la baseline privata è descritta senza distinguere annotazione manuale ed esecuzione misurata.
+
+## Chiusura prima degli invii
+
+Il coordinatore ha ristretto ev-7c42 alla pulizia dopo il run e ha spostato
+le guardie manuali nella provenienza. HOLD risolto prima della preregistrazione;
+nessun gold cambiato. I risultati successivi sono nel [resoconto](jev-workflow-20261026.md).

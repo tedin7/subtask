@@ -1,5 +1,7 @@
 # Instradamento prima della delega — 26 ottobre 2026
 
+Documento di preparazione. [Risultati delle prove dal vivo](jev-workflow-20261026.md).
+
 Preparati tre casi offline da incarichi reali; nessuna chiamata Jev eseguita.
 Non dimostrano ancora un vantaggio semantico rispetto a un controllo deterministico.
 

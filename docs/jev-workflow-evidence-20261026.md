@@ -1,5 +1,7 @@
 # Jev: prove delle consegne, 26 ottobre 2026
 
+Documento di preparazione. [Risultati delle prove dal vivo](jev-workflow-20261026.md).
+
 Tre packet offline pronti per valutare la lettura delle prove. Nessuna inferenza
 eseguita da questo preparatore: non sono risultati di qualità di Jev.
 

@@ -1,5 +1,7 @@
 # Jev: triage consultivo all'ingresso, 2026-10-26
 
+Documento di preparazione. [Risultati delle prove dal vivo](jev-workflow-20261026.md).
+
 Sono preparati tre casi privati di incarichi Subtask reali. Nessuna chiamata
 Jev è stata eseguita da questo lavoro. I verdetti attesi sono annotazioni umane,
 non risultati del modello. Nessun caso autorizza integrazione o rilascio.

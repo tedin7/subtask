@@ -1,5 +1,7 @@
 # Feedback del coordinatore prima di un nuovo tentativo
 
+Documento di preparazione. [Risultati delle prove dal vivo](jev-workflow-20261026.md).
+
 ## Ipotesi e metodo
 
 Un giudizio consultivo sulla prossima istruzione del coordinatore può distinguere
