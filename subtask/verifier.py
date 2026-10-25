@@ -9,6 +9,7 @@ never touches a shared folder: only a job's own worktree.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import subprocess
@@ -132,9 +133,13 @@ def after_failure(job_id: str, spec: dict, attempts: list[dict]) -> str:
 
 def pending(status: dict) -> bool:
     """A finished attempt whose retry is being started: not an end yet."""
-    return (
-        bool(status.get("retry_pending")) and time.time() - float(status.get("updated") or 0) < STALE_RETRY_S
-    )
+    if not status.get("retry_pending"):
+        return False
+    try:
+        updated = float(status.get("updated") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(updated) and -5 <= time.time() - updated < STALE_RETRY_S
 
 
 BREAKER_TASK = (

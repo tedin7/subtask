@@ -7,7 +7,6 @@ import time
 
 import pytest
 
-
 JOB = "st-jev-followup"
 
 

@@ -26,7 +26,7 @@ from .install import commands as install_commands
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         # A mistyped key flag must not echo the credential back into logs.
-        if len(sys.argv) > 1 and sys.argv[1] == "jev":
+        if "jev" in sys.argv[1:]:
             message = "opzioni Jev non valide; usa subtask jev --help. Inserisci la chiave solo nel setup o su stdin"
         super().error(message)
 
@@ -70,7 +70,7 @@ def main() -> int:
     rv.add_argument(
         "--submit", action="store_true", help="send one provider request; default prepares offline"
     )
-    je = sub.add_parser("jev", help="stato e configurazione del controllo Jev")
+    je = sub.add_parser("jev", help="stato e configurazione del controllo Jev", allow_abbrev=False)
     je.add_argument(
         "jev_cmd",
         nargs="?",

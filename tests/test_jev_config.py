@@ -420,3 +420,13 @@ def test_cli_rejects_mode_and_stdin_outside_setup(paths, capsys):
     code = jev_config.run_cli(Namespace(jev_cmd="status", json=True, key_stdin=True, mode=None))
     assert code == 2
     assert "--key-stdin" in capsys.readouterr().err
+
+
+def test_setup_rejects_abbreviated_key_flags_before_reading_input(monkeypatch):
+    from subtask import cli
+
+    monkeypatch.setattr(sys, "argv", ["subtask", "jev", "setup", "--key"])
+    monkeypatch.setattr(jev_config, "run_cli", lambda *_: pytest.fail("ambiguous flag reached key input"))
+    with pytest.raises(SystemExit) as stopped:
+        cli.main()
+    assert stopped.value.code == 2
