@@ -476,3 +476,26 @@ def test_fifo_material_is_refused_without_waiting_for_a_writer(home):
     )
     assert result.returncode != 0
     assert b"regular file" in result.stderr
+
+
+@pytest.mark.parametrize("provider_fails", [False, True])
+def test_review_reservation_and_settlement_keep_jev_engine(delivery, monkeypatch, provider_fails):
+    from subtask import delivery_review as review
+    from subtask import ledger
+
+    def provider(packet, _):
+        if provider_fails:
+            raise OSError("offline provider failure")
+        return answer(packet)
+
+    monkeypatch.setattr(review, "_request", provider)
+    report = review.review("st-delivery", ["Parser fixed"], submit=True)
+    assert report["status"] == ("unknown" if provider_fails else "reviewed")
+    rows = ledger.spend_rows()
+    assert [row["op"] for row in rows] == ["reserve", "settle"]
+    assert all(row.get("engine") == "jev" for row in rows)
+    assert rows[0]["rid"] == rows[1]["rid"]
+    assert ledger.committed() == report["budget_charged_usd"] > 0
+    assert ledger.open_for("st-delivery") == []
+    assert review.review("st-delivery", ["Parser fixed"], submit=True) == report
+    assert ledger.spend_rows() == rows
