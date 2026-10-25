@@ -800,7 +800,12 @@ def reply(job_id: str, message: str) -> str:
                 return refused
             try:
                 booked = (
-                    ledger.reserve(rid, job_id, float(sp.get("max_usd") or config.DEFAULT_MAX_USD), engine=sp.get("engine"))
+                    ledger.reserve(
+                        rid,
+                        job_id,
+                        float(sp.get("max_usd") or config.DEFAULT_MAX_USD),
+                        engine=sp.get("engine"),
+                    )
                     if rid
                     else True
                 )

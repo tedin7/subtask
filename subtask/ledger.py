@@ -124,7 +124,9 @@ def committed(month: str | None = None) -> float:
         return _committed(month or month_of())
 
 
-def reserve(rid: str, job: str, usd: float, cap: float | None = None, engine: str | None = None) -> float | None:
+def reserve(
+    rid: str, job: str, usd: float, cap: float | None = None, engine: str | None = None
+) -> float | None:
     """Book `usd`; None when it would overshoot the cap or is not a sane amount.
 
     Idempotent per rid: reserving an rid that already exists returns None.
