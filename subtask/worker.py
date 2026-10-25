@@ -177,7 +177,7 @@ def main() -> int:
             # Started by an older server that left the booking to the worker (v0 jobs):
             # reserve here, so the spend still counts against the monthly cap.
             rid = f"{job_id}#w{attempt}-{os.getpid()}"
-            if ledger.reserve(rid, job_id, float(spec["max_usd"])) is None:
+            if ledger.reserve(rid, job_id, float(spec["max_usd"]), engine=spec.get("engine")) is None:
                 rid = None
                 raise RuntimeError(f"monthly cap {config.MONTHLY_CAP_USD} $ reached")
         if not Path(spec["cwd"]).is_dir():
