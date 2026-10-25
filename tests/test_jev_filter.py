@@ -511,7 +511,7 @@ def test_delivery_route_accepts_supported_and_contradicted_when_all_proven():
 def test_delivery_route_scope_only_still_requires_at_least_one_criterion():
     routed = delivery_route(delivery_report(scope=review_item("scope", assessment="supported")))
     assert routed["route"] == "normal"
-    assert routed["required_ids"] == ["scope"]
+    assert routed["reason"] == "assessments_invalid"
 
 
 @pytest.mark.parametrize(
