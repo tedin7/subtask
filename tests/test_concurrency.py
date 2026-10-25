@@ -98,6 +98,19 @@ def test_budget_never_overshoots_under_concurrency(home, monkeypatch):
     assert ledger.committed() == pytest.approx(49.0)
 
 
+def test_ledger_rows_carry_the_engine(home):
+    from subtask import ledger
+
+    assert ledger.reserve("st-eeeeeeeeee#1", "st-eeeeeeeeee", 2.0, engine="opencode-go") == 2.0
+    assert ledger.close("st-eeeeeeeeee#1", 0.5) == 0.5
+    assert ledger.reserve("st-ffffffffff#1", "st-ffffffffff", 1.0) == 1.5  # no engine: old rows still work
+    rows = ledger._rows(ledger.month_of())
+    by_op = {(r["rid"], r["op"]): r for r in rows}
+    assert by_op[("st-eeeeeeeeee#1", "reserve")]["engine"] == "opencode-go"
+    assert by_op[("st-eeeeeeeeee#1", "settle")]["engine"] == "opencode-go"
+    assert "engine" not in by_op[("st-ffffffffff#1", "reserve")]
+
+
 def test_settlement_is_idempotent(home):
     from subtask import ledger
 

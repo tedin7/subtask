@@ -213,7 +213,7 @@ def start(
         if refused:
             return refused
         try:
-            booked = ledger.reserve(rid, job_id, budget) if rid else True
+            booked = ledger.reserve(rid, job_id, budget, engine=engine) if rid else True
         except BaseException:
             _drop_slot_locked(job_id)
             raise
@@ -800,7 +800,7 @@ def reply(job_id: str, message: str) -> str:
                 return refused
             try:
                 booked = (
-                    ledger.reserve(rid, job_id, float(sp.get("max_usd") or config.DEFAULT_MAX_USD))
+                    ledger.reserve(rid, job_id, float(sp.get("max_usd") or config.DEFAULT_MAX_USD), engine=sp.get("engine"))
                     if rid
                     else True
                 )
