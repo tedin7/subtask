@@ -508,9 +508,9 @@ def test_delivery_route_accepts_supported_and_contradicted_when_all_proven():
     assert routed["decisions"]["C1"]["evidence_ref"] == "verification"
 
 
-def test_delivery_route_scope_only_is_allowed_when_scope_is_proven():
+def test_delivery_route_scope_only_still_requires_at_least_one_criterion():
     routed = delivery_route(delivery_report(scope=review_item("scope", assessment="supported")))
-    assert routed["route"] == "jev"
+    assert routed["route"] == "normal"
     assert routed["required_ids"] == ["scope"]
 
 
@@ -673,9 +673,11 @@ def test_delivery_route_duplicate_scope_id_forces_normal():
 
 
 def test_delivery_route_defaults_missing_scope_id_to_scope():
+    scope = review_item("scope", assessment="supported")
+    scope.pop("id")
     report = delivery_report(
         review_item("C1", assessment="supported"),
-        scope={"assessment": "supported", "provider_choice": "supported"},
+        scope=scope,
     )
     routed = delivery_route(report)
     assert routed["route"] == "jev"

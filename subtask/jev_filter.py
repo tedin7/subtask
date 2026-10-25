@@ -351,6 +351,8 @@ def _decision(value: Any) -> tuple[dict, str | None]:
     decision["choice"] = effective[0]
 
     probabilities = value.get("probabilities")
+    if probabilities is None:
+        error = error or "probability_invalid"
     if probabilities is not None:
         if not isinstance(probabilities, dict) or any(
             not isinstance(label, str) or not label for label in probabilities
@@ -359,7 +361,7 @@ def _decision(value: Any) -> tuple[dict, str | None]:
         else:
             try:
                 decision["probabilities"] = _probabilities(
-                    probabilities, tuple(probabilities), provider_choice
+                    probabilities, tuple(sorted(KNOWN_VERDICTS)), provider_choice
                 )
             except InvalidAnswer:
                 error = error or "probability_invalid"
@@ -463,7 +465,7 @@ def delivery_route(report: Any) -> dict:
         return _normal(reason or "status_not_reviewed", [])
 
     assessments = report.get("assessments")
-    if not isinstance(assessments, list):
+    if not isinstance(assessments, list) or not assessments:
         return _normal("assessments_invalid", [])
 
     answers: dict[str, dict] = {}
