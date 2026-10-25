@@ -93,11 +93,7 @@ def test_dry_run_does_not_resolve_a_legacy_key(campaign_root, monkeypatch):
     seen: dict = {}
 
     def probe(root, candidates, env):
-        code = (
-            "import json;"
-            "from subtask import jev_config;"
-            "print(json.dumps(jev_config.key_status()))"
-        )
+        code = "import json;from subtask import jev_config;print(json.dumps(jev_config.key_status()))"
         done = subprocess.run(
             [sys.executable, "-c", code],
             cwd=bench.REPO,
