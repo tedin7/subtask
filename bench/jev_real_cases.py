@@ -1432,6 +1432,8 @@ def dry_run(
     for name in ("TYPESAFE_API_KEY", "SUBTASK_JEV_KEY_FILE", "SUBTASK_ENV_FILE"):
         env.pop(name, None)
     env["SUBTASK_ENV_FILE"] = str(dry / "missing-env")
+    env["SUBTASK_JEV_KEY_FILE"] = str(dry / "missing-key")
+    env["HOME"] = str(dry / "isolated-home")
 
     job_ids = {}
     for cid in chosen:
