@@ -24,7 +24,7 @@ from . import config, jobs, ledger, redact
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 MAX_BYTES = 96 * 1024
 MAX_RESPONSE_BYTES = 64 * 1024
-POLICY = "subtask-delivery-shadow-v2"
+POLICY = "subtask-delivery-shadow-v3"
 MODEL = "jev-latest"
 
 
@@ -34,6 +34,17 @@ def _bytes(value: object) -> bytes:
 
 def _digest(value: object) -> str:
     return hashlib.sha256(_bytes(value)).hexdigest()
+
+
+def _subjects(criteria: list[str]) -> list[tuple[str, str]]:
+    return [(f"C{i}", criterion) for i, criterion in enumerate(criteria, 1)] + [
+        (
+            "scope",
+            "The entire original request has relevant evidence for every required deliverable, "
+            "including deliverables omitted from the supplied checklist. Distinguish behavioral deliverables "
+            "from worker instructions; a successful partial task is not the whole request.",
+        )
+    ]
 
 
 def _read(path: Path) -> str:
@@ -109,8 +120,7 @@ def _packet(job_id: str, criteria: list[str]) -> tuple[dict, dict, list[str]]:
     else:
         limitations.append("git_candidate_unavailable")
     questions = {}
-    for i, criterion in enumerate(criteria, 1):
-        name = f"C{i}"
+    for name, criterion in _subjects(criteria):
         questions[name] = {
             "type": "choice",
             "instructions": (
@@ -229,8 +239,7 @@ def _assess(packet: dict, body: dict, criteria: list[str], limitations: list[str
         ):
             raise ValueError("invalid provider choice")
     assessments = []
-    for i, criterion in enumerate(criteria, 1):
-        name = f"C{i}"
+    for name, criterion in _subjects(criteria):
         value = body["answers"][name]
         reference = body["answers"][name + "_evidence"]["choice"]
         conclusion = value["choice"]
@@ -275,6 +284,7 @@ def review(job_id: str, criteria: list[str], submit: bool = False) -> dict:
         "candidate": candidate,
         "limitations": limitations,
         "assessments": [],
+        "scope_assessment": None,
         "cost_usd": None,
         "usage": None,
         "budget_charged_usd": 0.0,
@@ -309,7 +319,8 @@ def review(job_id: str, criteria: list[str], submit: bool = False) -> dict:
             report.update(
                 status="reviewed",
                 reason=None,
-                assessments=assessments,
+                assessments=assessments[:-1],
+                scope_assessment=assessments[-1],
                 model=body["model"],
                 usage=body["usage"],
             )

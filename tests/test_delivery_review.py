@@ -68,6 +68,19 @@ def test_worker_claim_cannot_prove_a_contradiction_either(delivery, monkeypatch)
     assert report["assessments"][0]["provider_choice"] == "contradicted"
 
 
+def test_original_request_is_checked_even_when_parent_criteria_omit_ui(delivery, monkeypatch):
+    from subtask import delivery_review as review
+
+    def provider(packet, _):
+        assert "scope" in packet["questions"]
+        assert "update the UI" in packet["state"]["materials"]["request"]["text"]
+        return answer(packet)
+
+    monkeypatch.setattr(review, "_request", provider)
+    report = review.review("st-delivery", ["Parser fixed"], submit=True)
+    assert report["scope_assessment"]["assessment"] == "unproven"
+
+
 def test_submissions_are_deduplicated_and_candidate_changes_invalidate(delivery, monkeypatch):
     from subtask import delivery_review as review
 

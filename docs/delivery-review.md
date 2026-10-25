@@ -44,6 +44,9 @@ assente, negativa, riferita a un altro commit, o un candidato sporco impedisce d
 promuovere un criterio a `supported`. Gli esiti originari restano disponibili in
 `provider_choice`: il coordinatore vede anche le limitazioni deterministiche.
 
+`scope_assessment` controlla sempre la richiesta originale completa: un elenco
+di criteri che dimentica la pagina non deve far sparire quel requisito dal giudizio.
+
 Il riferimento `evidence_ref` identifica un materiale nel pacchetto salvato; il
 diff contiene file e contesto delle righe, la verifica contiene comando, commit
 ed estratto di output. Questo controllo non esegue nuovi test, non visita siti e
