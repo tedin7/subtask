@@ -461,7 +461,7 @@ def _read_private_cases(path: Path) -> list[dict]:
     return cases
 
 
-def _merge_cases(existing: list[dict], incoming: list[dict]) -> list[dict]:
+def _merge_cases(existing: list[dict], incoming: list[dict], available_slots: list[int]) -> list[dict]:
     by_id = {case["id"]: case for case in existing}
     by_slot = {case["slot"]: case["id"] for case in existing if case.get("slot")}
     new_cases = []
@@ -475,12 +475,14 @@ def _merge_cases(existing: list[dict], incoming: list[dict]) -> list[dict]:
             continue
         slot = case.get("slot")
         if slot is not None:
+            if slot not in available_slots:
+                raise PhaseError(f"slot {slot} non prenotato")
             if slot in by_slot:
                 raise PhaseError(f"slot {slot} gia' occupato da {by_slot[slot]}")
             by_slot[slot] = case["id"]
         new_cases.append(case)
     if new_cases:
-        free = [slot for slot in range(1, MAX_SLOTS + 1) if slot not in by_slot]
+        free = [slot for slot in available_slots if slot not in by_slot]
         for index, case in enumerate(new_cases):
             if case.get("slot") is None:
                 if not free:
@@ -492,6 +494,8 @@ def _merge_cases(existing: list[dict], incoming: list[dict]) -> list[dict]:
     for case in merged:
         if case.get("slot") is None:
             raise PhaseError(f"caso senza slot: {case['id']}")
+        if case["slot"] not in available_slots:
+            raise PhaseError(f"slot {case['slot']} non prenotato")
     if len({case["slot"] for case in merged}) != len(merged):
         raise PhaseError("slot duplicati dopo l'unione dei casi")
     return sorted(merged, key=lambda case: case["slot"])
@@ -521,7 +525,7 @@ def prepare(
         manifest_path = root / "manifest.json"
         cases_path = root / "private" / "cases.json"
         existing = _read_private_cases(cases_path)
-        merged = _merge_cases(existing, normalized)
+        merged = _merge_cases(existing, normalized, sorted(slots))
         if len(merged) > MAX_SLOTS:
             raise PhaseError("massimo 12 casi")
         reservations_sha = _digest([slots[slot] for slot in sorted(slots)])
@@ -916,6 +920,8 @@ def run_one(
             "reservations_sha256"
         ):
             raise PhaseError("prenotazioni diverse da quelle della campagna")
+        if slot not in reservations_data:
+            raise PhaseError(f"slot {slot} non prenotato")
         reservation = reservations_data[slot]
         rid = reservation["rid"]
         allowance = reservation["usd"]

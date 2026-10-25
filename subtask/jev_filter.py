@@ -57,6 +57,8 @@ _TOOL_KEYS = frozenset(
 )
 _TOOL_TYPES = frozenset(
     {
+        "tool_calls",
+        "function_calls",
         "tool",
         "tool_use",
         "toolUse",
@@ -75,6 +77,7 @@ _TOOL_TYPES = frozenset(
 _LABEL_FIELDS = frozenset({"choice", "provider_choice", "assessment"})
 _VETO_FIELDS = frozenset(
     {
+        "reason",
         "veto",
         "vetoes",
         "wrapper_veto",
@@ -118,12 +121,14 @@ def _truthy(value: Any) -> bool:
 
 def _has_tool_marker(value: Any, depth: int = 0) -> bool:
     if depth > 16:
-        return False
+        _reject("metadata_too_deep")
     if isinstance(value, dict):
         for key, item in value.items():
             if key in _TOOL_KEYS and _truthy(item):
                 return True
-            if key == "stop_reason" and isinstance(item, str) and item in _TOOL_TYPES:
+            if key in {"stop_reason", "finish_reason"} and isinstance(item, str) and item in _TOOL_TYPES:
+                return True
+            if key == "role" and item == "tool":
                 return True
             if key == "type" and isinstance(item, str) and item in _TOOL_TYPES:
                 return True
@@ -332,14 +337,16 @@ def _decision(value: Any) -> tuple[dict, str | None]:
         decision["evidence_ref"] = value["evidence_ref"]
     effective: list[str] = []
     error: str | None = None
+    if any(field in value and _is_nonempty(value[field]) for field in (*_VETO_FIELDS, "error")):
+        error = "wrapper_veto"
 
-    if "assessment" in value and value["assessment"] is not None:
+    if "assessment" in value:
         assessment = value["assessment"]
         if not isinstance(assessment, str) or assessment not in KNOWN_VERDICTS:
             error = "wrapper_veto"
         else:
             effective.append(assessment)
-    if "choice" in value and value["choice"] is not None:
+    if "choice" in value:
         choice = value["choice"]
         if not isinstance(choice, str) or choice not in KNOWN_VERDICTS:
             error = "wrapper_veto"
@@ -399,8 +406,11 @@ def route(result: Any, required_ids: Any) -> dict:
     if status != "reviewed":
         reason = _STATUS_REASONS.get(status, "status_not_reviewed") if isinstance(status, str) else ""
         return _normal(reason or "status_not_reviewed", required)
-    if _has_tool_marker(result):
-        return _normal("tool_use_detected", required)
+    try:
+        if _has_tool_marker(result):
+            return _normal("tool_use_detected", required)
+    except InvalidAnswer as exc:
+        return _normal(exc.code, required)
 
     answers = result.get("answers")
     if not isinstance(answers, dict):
@@ -506,7 +516,10 @@ def delivery_route(report: Any) -> dict:
 
     routed = route({**report, "status": "reviewed", "answers": answers}, required)
     if not scope_proven:
+        blocking = routed.get("reasons", []) if routed["route"] == "normal" else []
         routed["route"] = "normal"
         routed["reason"] = "scope_unproven"
-        routed["reasons"] = ["scope_unproven"]
+        routed["reasons"] = list(dict.fromkeys([*blocking, "scope_unproven"]))
+    if routed["route"] == "normal":
+        routed["blocking_reasons"] = list(routed["reasons"])
     return routed

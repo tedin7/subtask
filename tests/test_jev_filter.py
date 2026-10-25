@@ -533,7 +533,7 @@ def test_delivery_route_missing_or_unproven_scope_forces_normal(scope):
     routed = delivery_route(report)
     assert routed["route"] == "normal"
     assert routed["reason"] == "scope_unproven"
-    assert routed["reasons"] == ["scope_unproven"]
+    assert "scope_unproven" in routed["reasons"]
     assert routed["required_ids"] == ["C1", "C2", "scope"]
     assert {"C1", "C2"} <= set(routed["decisions"])
 

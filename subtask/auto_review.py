@@ -250,7 +250,9 @@ def details(status: dict) -> str:
     report = entry.get("report")
     report = report if isinstance(report, dict) else {}
     routing = delivery_route(report)
-    if routing["route"] == "normal":
+    if entry.get("state") != "reviewed" or report.get("status") != "reviewed":
+        out += "\nFiltro Jev: non applicabile; controllo assente o non valido, serve revisione normale"
+    elif routing["route"] == "normal":
         out += "\nFiltro Jev: revisione normale necessaria (non avviata automaticamente)"
     else:
         out += (
