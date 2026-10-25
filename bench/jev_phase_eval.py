@@ -161,9 +161,7 @@ def _write_text(path: Path, text: str, mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent, prefix=f".{path.name}.", delete=False
-        ) as stream:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(text.encode())
             stream.flush()
@@ -527,13 +525,17 @@ def prepare(
         if len(merged) > MAX_SLOTS:
             raise PhaseError("massimo 12 casi")
         reservations_sha = _digest([slots[slot] for slot in sorted(slots)])
-        manifest = _read_json(manifest_path) if manifest_path.is_file() else {
-            "version": VERSION,
-            "created": time.time(),
-            "cases": {},
-            "slots": {},
-            "attempts": {},
-        }
+        manifest = (
+            _read_json(manifest_path)
+            if manifest_path.is_file()
+            else {
+                "version": VERSION,
+                "created": time.time(),
+                "cases": {},
+                "slots": {},
+                "attempts": {},
+            }
+        )
         if manifest.get("version") != VERSION:
             raise PhaseError("manifest di una versione diversa")
         if manifest.get("reservations_sha256") not in (None, reservations_sha):
@@ -648,8 +650,8 @@ def _validate_answers(request: dict, body: object) -> dict:
             raise InvalidAnswer("probabilities_mismatch")
         if any(
             type(probability) not in (int, float)
-            or not math.isfinite(probability)
             or not 0 <= probability <= 1
+            or not math.isfinite(probability)
             for probability in probabilities.values()
         ):
             raise InvalidAnswer("probability_out_of_range")
@@ -686,9 +688,7 @@ def _validate_jev_body(request: dict, body: object, requested_model: str) -> tup
         known = {
             key: value
             for key, value in usage.items()
-            if isinstance(key, str)
-            and type(value) is int
-            and 0 <= value <= 1_000_000_000
+            if isinstance(key, str) and type(value) is int and 0 <= value <= 1_000_000_000
         } or None
     return answers, known, model
 
@@ -714,11 +714,21 @@ def _normal_prompt(request: dict) -> str:
 
 
 def _normal_config() -> dict:
+    # Disable inherited MCP servers without changing providers or their plugins.
+    from subtask.install.clients import strip_jsonc
+
+    directory = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+    disabled = {}
+    for filename in ("opencode.json", "opencode.jsonc"):
+        path = directory / filename
+        if path.is_file():
+            config = json.loads(strip_jsonc(path.read_text()))
+            for name in config.get("mcp", {}).get("servers", {}):
+                disabled[name] = {"enabled": False}
     return {
         "$schema": "https://opencode.ai/config.json",
         "permissions": [{"action": "*", "resource": "*", "effect": "deny"}],
-        "mcp": {"servers": {}},
-        "share": "disabled",
+        "mcp": {"servers": disabled},
         "update": "disable",
     }
 
@@ -1258,8 +1268,9 @@ def report(root: str | Path, *, private: bool = False, baseline: str | Path | No
     elif not guard_seen:
         lines.append("- guard fornita, ma nessun risultato valido da confrontare.")
     lines.extend(["", "## Qualita' per domanda e fase"])
-    phases = sorted({entry.get("phase") for entry in (manifest.get("slots") or {}).values()
-                     if isinstance(entry, dict)})
+    phases = sorted(
+        {entry.get("phase") for entry in (manifest.get("slots") or {}).values() if isinstance(entry, dict)}
+    )
     for phase in phases:
         lines.append(f"### Fase {phase}")
         for engine in ("jev", "normal"):
@@ -1282,8 +1293,12 @@ def report(root: str | Path, *, private: bool = False, baseline: str | Path | No
     lines.extend(["", "## Confronto appaiato (stesse domande, verita' nota)"])
     pairs = Counter()
     per_engine = Counter()
-    for one, two in [(first, second) for first in results for second in results
-                     if first[0] == second[0] and first[2] == "jev" and second[2] == "normal"]:
+    for one, two in [
+        (first, second)
+        for first in results
+        for second in results
+        if first[0] == second[0] and first[2] == "jev" and second[2] == "normal"
+    ]:
         key, entry, _, jev_result = one
         _, _, _, normal_result = two
         labels = truth.get(entry.get("case"), {})
@@ -1316,10 +1331,7 @@ def report(root: str | Path, *, private: bool = False, baseline: str | Path | No
         f"ignote={per_engine.get('normal_unknown', 0)}"
     )
     if pairs:
-        lines.append(
-            "- coppie: "
-            + " · ".join(f"{name}={value}" for name, value in sorted(pairs.items()))
-        )
+        lines.append("- coppie: " + " · ".join(f"{name}={value}" for name, value in sorted(pairs.items())))
     lines.extend(["", "## Tempi e costi osservati"])
     for engine in ("jev", "normal"):
         selected = [result for _, _, current, result in results if current == engine]

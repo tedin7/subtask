@@ -168,8 +168,7 @@ def test_prepare_separates_private_truth_and_engine_neutral_requests(tmp_path):
     # Idempotente e senza nuove prenotazioni.
     bench.prepare(
         root,
-        {"cases": [_case(truth={"C1": "supported", "C2": "unproven"},
-                         provenance={"source_sha": "a" * 64})]},
+        {"cases": [_case(truth={"C1": "supported", "C2": "unproven"}, provenance={"source_sha": "a" * 64})]},
         reservations=reservations,
     )
     again = json.loads((root / "manifest.json").read_text())
@@ -247,9 +246,10 @@ def test_jev_persiste_intent_prima_della_chiamata_e_chiude_solo_lo_slot_usato(tm
         "supported": 1.0,
         "unproven": 0.0,
     }
-    assert result["request_sha256"] == json.loads(
-        (root / "manifest.json").read_text()
-    )["slots"]["1"]["request_sha256"]
+    assert (
+        result["request_sha256"]
+        == json.loads((root / "manifest.json").read_text())["slots"]["1"]["request_sha256"]
+    )
     assert seen["intent"]["state"] == "submit_intent"
     assert seen["intent"]["request_sha256"] == result["request_sha256"]
     assert seen["status"] == "submitting"
@@ -382,7 +382,7 @@ def test_normale_stesso_request_sha_sessione_nuova_e_nessuna_chiusura(tmp_path):
     assert "budget_charged_usd" not in result
     config = json.loads((seen["session_dir"] / "opencode.json").read_text())
     assert {"action": "*", "resource": "*", "effect": "deny"} in config["permissions"]
-    assert config["mcp"] == {"servers": {}}
+    assert all(server.get("enabled") is False for server in config["mcp"]["servers"].values())
     argv = bench._normal_argv(bench.NORMAL_MODEL, "PACKET")
     assert "--standalone" in argv and "--session" not in argv and "--continue" not in argv
     assert argv[-1] == "PACKET"
@@ -447,11 +447,14 @@ def test_normal_cli_finta_usa_parser_standalone_e_sessione_nuova(tmp_path, monke
     assert result["session"] == "ses_fake"
     argv = json.loads((root / "private" / "normal" / "slot-01" / "argv.json").read_text())
     assert argv[-1].startswith("You are an independent inference model")
-    assert json.dumps(
-        json.loads((root / "requests" / "slot-01.json").read_text()),
-        ensure_ascii=False,
-        sort_keys=True,
-    ) in argv[-1]
+    assert (
+        json.dumps(
+            json.loads((root / "requests" / "slot-01.json").read_text()),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        in argv[-1]
+    )
 
 
 def test_report_conta_qualita_astensioni_ignote_e_fattura_unknown(tmp_path):
@@ -520,3 +523,24 @@ def test_cli_prepare_e_run_one_senza_execute_restano_offline(tmp_path, capsys):
     plan = json.loads(capsys.readouterr().out)
     assert plan["execute"] is False
     assert not (root / "slots" / "slot-01.jev.intent.json").exists()
+
+
+def test_provider_giant_integer_is_rejected_without_overflow():
+    request = {"state": {}, "questions": _questions()}
+    body = _body(request)
+    body["answers"]["C1"]["probabilities"]["supported"] = 10**1000
+    with pytest.raises(bench.InvalidAnswer, match="probability_out_of_range"):
+        bench._validate_answers(request, body)
+
+
+def test_normal_config_disables_inherited_mcp_without_changing_provider_plugins(tmp_path, monkeypatch):
+    folder = tmp_path / "opencode"
+    folder.mkdir()
+    (folder / "opencode.jsonc").write_text(
+        '{"plugins":["opencode.provider.opencode-go"],"mcp":{"servers":{"subtask":{"type":"local","command":["subtask-mcp"]}}}}'
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    config = bench._normal_config()
+    assert config["mcp"]["servers"] == {"subtask": {"enabled": False}}
+    assert "plugins" not in config and "providers" not in config
+    assert config["permissions"] == [{"action": "*", "resource": "*", "effect": "deny"}]
