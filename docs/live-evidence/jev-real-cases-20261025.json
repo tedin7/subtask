@@ -1,0 +1,968 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "source_base": "b19846209938915f8517aebe6f7876826f7e9a49",
+  "protocol": "10 historical bug pairs; local replay author; real automatic Jev; C2 primary; hidden regression oracle",
+  "counts": {
+    "C1/provider_choice/incomplete": {
+      "unproven": 9,
+      "missing": 1
+    },
+    "C1/assessment/incomplete": {
+      "unproven": 9,
+      "missing": 1
+    },
+    "C2/provider_choice/incomplete": {
+      "unproven": 9,
+      "missing": 1
+    },
+    "C2/assessment/incomplete": {
+      "unproven": 9,
+      "missing": 1
+    },
+    "C3/provider_choice/incomplete": {
+      "supported": 9,
+      "missing": 1
+    },
+    "C3/assessment/incomplete": {
+      "unproven": 9,
+      "missing": 1
+    },
+    "C1/provider_choice/valid": {
+      "unproven": 8,
+      "missing": 2
+    },
+    "C1/assessment/valid": {
+      "unproven": 8,
+      "missing": 2
+    },
+    "C2/provider_choice/valid": {
+      "unproven": 8,
+      "missing": 2
+    },
+    "C2/assessment/valid": {
+      "unproven": 8,
+      "missing": 2
+    },
+    "C3/provider_choice/valid": {
+      "supported": 8,
+      "missing": 2
+    },
+    "C3/assessment/valid": {
+      "unproven": 8,
+      "missing": 2
+    }
+  },
+  "review_states": {
+    "reviewed": 17,
+    "unknown": 3
+  },
+  "models": {
+    "jev-1.14.0": 17,
+    "null": 3
+  },
+  "budget_charged_usd": 40.0,
+  "invoice": "UNKNOWN",
+  "usage_known_17_only": {
+    "input_tokens": 59691,
+    "output_tokens": 6597
+  },
+  "latency_known_17_only": {
+    "median_s": 0.548,
+    "range_s": [
+      0.449,
+      0.83
+    ]
+  },
+  "cases": [
+    {
+      "candidate": "c01-v1",
+      "family": "probabilita provider fuori scala",
+      "truth": "incomplete",
+      "job": "st-2c7748ad48",
+      "commit": "12b3371b81d3095eccbbca6e5455ab869e2c9c76",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.05,
+            "unproven": 0.93
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.02,
+            "unproven": 0.96
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.61,
+            "unproven": 0.38
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c01-v2",
+      "family": "probabilita provider fuori scala",
+      "truth": "valid",
+      "job": "st-1f97c57d46",
+      "commit": "3f673c31b7de1017ee80ef309008538977e1d116",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.03,
+            "supported": 0.07,
+            "unproven": 0.9
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.04,
+            "supported": 0.02,
+            "unproven": 0.94
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.67,
+            "unproven": 0.32
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c02-v1",
+      "family": "env legacy symlink",
+      "truth": "valid",
+      "job": "st-d966460fc8",
+      "commit": "2ad90f9d52fe87dd07fcfb4ebc60e1eaf39b9db5",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "unknown",
+      "model": null,
+      "criteria": {},
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c02-v2",
+      "family": "env legacy symlink",
+      "truth": "incomplete",
+      "job": "st-de3642f69c",
+      "commit": "fce2a5e65de7596c0580998605549c35bf6570b6",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.06,
+            "supported": 0.03,
+            "unproven": 0.91
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.06,
+            "supported": 0.01,
+            "unproven": 0.93
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.62,
+            "unproven": 0.37
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c03-v1",
+      "family": "env legacy 0644",
+      "truth": "incomplete",
+      "job": "st-a100b33051",
+      "commit": "a878a9a3d897e67a75e1defa7dab32e040d14da6",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "unknown",
+      "model": null,
+      "criteria": {},
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c03-v2",
+      "family": "env legacy 0644",
+      "truth": "valid",
+      "job": "st-91f67ebbda",
+      "commit": "2e1762d8cf19994b4834158df007feffc022542e",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.41,
+            "supported": 0.06,
+            "unproven": 0.53
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.28,
+            "supported": 0.02,
+            "unproven": 0.7
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.03,
+            "supported": 0.62,
+            "unproven": 0.35
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c04-v1",
+      "family": "configurazione con utente inesistente",
+      "truth": "incomplete",
+      "job": "st-e3a7ebec96",
+      "commit": "03bb75018050ca12c946463eb001eb4eb1d74ddc",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.07,
+            "unproven": 0.92
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.03,
+            "supported": 0.02,
+            "unproven": 0.95
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.67,
+            "unproven": 0.32
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c04-v2",
+      "family": "configurazione con utente inesistente",
+      "truth": "valid",
+      "job": "st-90460daa10",
+      "commit": "15dfe97573cc59beb76beed850b87aeb8ce34fba",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.06,
+            "unproven": 0.92
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.05,
+            "supported": 0.02,
+            "unproven": 0.93
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.66,
+            "unproven": 0.33
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c05-v1",
+      "family": "retry di verifica esaurito",
+      "truth": "incomplete",
+      "job": "st-1fd754324f",
+      "commit": "3d2fe4a351bf511033c3d2546a194d6cc22d7a59",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.04,
+            "supported": 0.13,
+            "unproven": 0.83
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.03,
+            "supported": 0.03,
+            "unproven": 0.94
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.63,
+            "unproven": 0.36
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c05-v2",
+      "family": "retry di verifica esaurito",
+      "truth": "valid",
+      "job": "st-310074b0ba",
+      "commit": "bee6ef90d2b5f87e16943ca788fbfa9c079fe0d6",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.23,
+            "unproven": 0.76
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.03,
+            "unproven": 0.96
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.0,
+            "supported": 0.66,
+            "unproven": 0.34
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c06-v1",
+      "family": "chiave CLI prima e dopo jev",
+      "truth": "valid",
+      "job": "st-26b498fe6d",
+      "commit": "2cce1fa364135a16574af5f6d11284a917f85542",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.05,
+            "supported": 0.03,
+            "unproven": 0.92
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.06,
+            "supported": 0.01,
+            "unproven": 0.9299999999999999
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.59,
+            "unproven": 0.4
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c06-v2",
+      "family": "chiave CLI prima e dopo jev",
+      "truth": "incomplete",
+      "job": "st-0991a7fa60",
+      "commit": "2a88178e45c62d828810abe959bed6f973790363",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.05,
+            "supported": 0.04,
+            "unproven": 0.91
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.03,
+            "supported": 0.01,
+            "unproven": 0.96
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.58,
+            "unproven": 0.41
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c07-v1",
+      "family": "timestamp Jev enorme",
+      "truth": "valid",
+      "job": "st-4673e6431c",
+      "commit": "c60bdaa56eb56ed203bfa8c1475e456e54503615",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.14,
+            "unproven": 0.85
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.03,
+            "unproven": 0.95
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.59,
+            "unproven": 0.4
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c07-v2",
+      "family": "timestamp Jev enorme",
+      "truth": "incomplete",
+      "job": "st-5ee0299f3c",
+      "commit": "57d00be3d415986e72f5d988b8a6a611fdb15909",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.11,
+            "unproven": 0.88
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.02,
+            "unproven": 0.97
+          },
+          "evidence_ref": "verification"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.65,
+            "unproven": 0.34
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c08-v1",
+      "family": "timestamp retry enorme",
+      "truth": "incomplete",
+      "job": "st-2b5ede2a1c",
+      "commit": "e4aa221aa00147e2bcfcf22ebfdb434914463716",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.17,
+            "unproven": 0.8099999999999999
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.03,
+            "unproven": 0.95
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.56,
+            "unproven": 0.43
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c08-v2",
+      "family": "timestamp retry enorme",
+      "truth": "valid",
+      "job": "st-fec9ceba0f",
+      "commit": "422dfd2dbfd08d2f418d5131e2447b42f476a68a",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "unknown",
+      "model": null,
+      "criteria": {},
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c09-v1",
+      "family": "reporter nuovo dopo interruzione",
+      "truth": "incomplete",
+      "job": "st-9d449725e8",
+      "commit": "37da293abc69b5f50b02e1b76d3550e3efbc2c30",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.0,
+            "supported": 0.11,
+            "unproven": 0.89
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.02,
+            "unproven": 0.97
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.65,
+            "unproven": 0.34
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c09-v2",
+      "family": "reporter nuovo dopo interruzione",
+      "truth": "valid",
+      "job": "st-b791e901e8",
+      "commit": "92da368f7fa2fd632210d0552568818934b3e009",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.0,
+            "supported": 0.09,
+            "unproven": 0.91
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.0,
+            "supported": 0.02,
+            "unproven": 0.98
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.64,
+            "unproven": 0.35
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c10-v1",
+      "family": "flag CLI abbreviato",
+      "truth": "incomplete",
+      "job": "st-1da9827e96",
+      "commit": "b6dd94f3c4b699f18f5ac5080d65cfd8f525ac24",
+      "verify_exit": 0,
+      "regression_exit": 1,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.19,
+            "unproven": 0.8
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.02,
+            "supported": 0.02,
+            "unproven": 0.96
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.65,
+            "unproven": 0.34
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    },
+    {
+      "candidate": "c10-v2",
+      "family": "flag CLI abbreviato",
+      "truth": "valid",
+      "job": "st-f1c31f620a",
+      "commit": "113385448d5e425a8e8a4062d16261021e38754b",
+      "verify_exit": 0,
+      "regression_exit": 0,
+      "review_state": "reviewed",
+      "model": "jev-1.14.0",
+      "criteria": {
+        "C1": {
+          "id": "C1",
+          "criterion": "The delivery addresses the subtask request recorded in the supplied material.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.24,
+            "unproven": 0.75
+          },
+          "evidence_ref": "patch"
+        },
+        "C2": {
+          "id": "C2",
+          "criterion": "The worker's claims are supported by the supplied changes and recorded verification.",
+          "assessment": "unproven",
+          "provider_choice": "unproven",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.04,
+            "unproven": 0.95
+          },
+          "evidence_ref": "patch"
+        },
+        "C3": {
+          "id": "C3",
+          "criterion": "The report makes unfinished requirements and limits of the available evidence explicit.",
+          "assessment": "unproven",
+          "provider_choice": "supported",
+          "probabilities": {
+            "contradicted": 0.01,
+            "supported": 0.64,
+            "unproven": 0.35
+          },
+          "evidence_ref": "worker_report"
+        }
+      },
+      "charged_usd": 2.0
+    }
+  ]
+}

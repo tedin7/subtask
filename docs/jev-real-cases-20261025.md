@@ -59,3 +59,79 @@ Ricevute private del coordinatore in
 ricevute per riprendere senza duplicare richieste. Le worktree non pubblicate
 si conservano. I comandi riproducibili sono in `bench/jev_real_cases.py`;
 scegliere root differenti per dry-run e campagna reale.
+
+## Risultato delle venti richieste reali
+
+Il percorso automatico funziona, ma **in questo campione Jev non ha distinto
+correzioni complete da incomplete**. Il modello osservato è `jev-1.14.0`.
+Le venti consegne hanno commit distinti, worker `done`, smoke registrato con
+exit 0 e venti ricevute di accantonamento e chiusura sul ledger canonico.
+Gli oracle sui commit effettivamente consegnati confermano 10 baseline con
+exit 1, 10 correzioni complete con exit 0 e 10 incomplete con exit 1.
+
+| C2: supporto alla dichiarazione di correzione | Complete, 10 | Incomplete, 10 |
+|---|---:|---:|
+| `supported`, scelta grezza e filtrata | 0 | 0 |
+| `contradicted`, scelta grezza e filtrata | 0 | 0 |
+| `unproven`, scelta grezza e filtrata | 8 | 9 |
+| Risposta non utilizzabile, stato `unknown` | 2 | 1 |
+
+Sono quindi 17 astensioni e 3 revisioni non validabili. Zero falsi via libera
+osservati, ma anche zero identificazioni esplicite delle correzioni incomplete:
+non trasformiamo le astensioni in successi del rilevatore. Il solo smoke non
+dimostra il comportamento; il modello resta prudente anche sulle patch complete.
+Il risultato non dimostra che Jev sia inutile su altri incarichi, né misura
+venti consegne scritte da modelli. Non giustifica una sostituzione dei test.
+
+C1 è `unproven` in tutte le 17 risposte utilizzabili. Per C3 il modello sceglie
+`supported` 17 volte, riconoscendo le limitazioni dichiarate nel report; il
+wrapper filtra tutte queste scelte in `unproven`. Questo filtro non è una
+scoperta del modello. Lo scope originale automatico rimane non provato.
+
+Gli esiti ignoti sono c02-v1, c03-v1 e c08-v2, tutti registrati con motivo
+`ValueError`. La ricevuta conserva soltanto la classe dell'errore: non basta
+per attribuirlo al provider, al trasporto o a una specifica validazione locale.
+Nessuno dei tre invii è stato ritentato. Non sostituiamo campioni sfavorevoli.
+
+| Consumo osservato | Valore |
+|---|---|
+| Accantonamento prudenziale campagna | 40 USD, 20 revisioni × 2 USD |
+| Revisioni automatiche dei preparatori, escluse dal campione | 4 USD: autore istruzioni e revisore; builder bloccato prima dell'invio |
+| Replay locale | 0 USD imputati, nessun modello autore |
+| Costo fatturato | UNKNOWN |
+| Token noti, sole 17 risposte utilizzabili | 59.691 input, 6.597 output |
+| Latenza revisione, sole 17 risposte utilizzabili | mediana 0,548 s; intervallo 0,449–0,830 s |
+
+Saldo mensile osservato a fine audit: 304,757665 USD impegnati sul tetto360;
+include altri lavori dei client e non misura il costo di questa sola campagna.
+L'audit finale sui 20 packet e artefatti non trova etichette o test nascosti.
+Sono unici i 20 job e i 20 binding; il ledger contiene esattamente una riserva
+e una chiusura per ciascun binding. L'audit offline non aggiunge invii.
+
+Ricevute pubblicabili, con commit e classificazioni per caso:
+[JSON della campagna](live-evidence/jev-real-cases-20261025.json).
+I packet completi e le credenziali restano privati.
+
+## Verifiche e disponibilità
+
+- Suite completa locale: `env -u SUBTASK_MONTHLY_CAP_USD -u SUBTASK_MAX_RUNNING
+  build-a-turno .venv/bin/python -m pytest -q`, 498 pass, 4 live esclusi,
+  368,33 secondi. Codice di comportamento213f682; successive modifiche di testo
+  e fixture portabile, senza cambi al comportamento del runtime.
+- `ruff check subtask tests bench/jev_real_cases.py bench/jev_replay.py` verde;
+  formato e dump dei 17 strumenti coerenti. Le quattro skill sorgenti coincidono;
+  istruzioni MCP1997 caratteri.
+- Wheel installata e confrontata byte per byte: 58 file. Entrambi i server MCP
+  passano initialize, elenco17 strumenti, start/wait, stop concorrente e
+  preparazione offline di review con `original_request`; 0 API nelle prove wheel.
+- Skill aggiornate in Claude, Codex, Kimi e OpenCode, inclusi Claude2 e cache
+  del plugin Claude. Istruzioni globali aggiornate per i modelli. Doctor conferma
+  i quattro client connessi; Codex e i due contesti OpenCode sono stati ricollegati.
+  Il PID del servizio OpenCode è rimasto invariato. Le chat Claude già aperte
+  devono ricollegare MCP per acquisire il nuovo testo.
+
+La policy resta automatica per scelta dell'operatore. Non sono stati cambiati
+modello, provider o criteri per cercare risultati migliori. Nessuna consegna è
+stata integrata in base al solo giudizio Jev. Il limite aperto è l'assenza di
+discriminazione osservata su C2, oltre ai tre esiti ignoti non diagnosticabili
+dalla sola classe d'errore.

@@ -12,9 +12,9 @@ never part of the job, the task, the report, the spec or the Jev packet.
 
 Commands (all offline except ``run --execute``).  Use the coordinator dev venv:
 the uv reference venv has no pytest, the dev venv at
-``/root/wt/subtask-jev-eval-20261025/.venv/bin/python`` has it::
+``/root/subtask/.venv/bin/python`` has it::
 
-    PY=/root/wt/subtask-jev-eval-20261025/.venv/bin/python
+    PY=/root/subtask/.venv/bin/python
     $PY bench/jev_real_cases.py prepare --root /root/wt/jev-real-20261025
     $PY bench/jev_real_cases.py dry-run --root /root/wt/jev-real-dry-20261025 --case c01 --keep
     $PY bench/jev_real_cases.py run --root /root/wt/jev-real-20261025 \
