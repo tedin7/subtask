@@ -135,3 +135,17 @@ modello, provider o criteri per cercare risultati migliori. Nessuna consegna è
 stata integrata in base al solo giudizio Jev. Il limite aperto è l'assenza di
 discriminazione osservata su C2, oltre ai tre esiti ignoti non diagnosticabili
 dalla sola classe d'errore.
+
+## TODO emersi e limiti conservati
+
+- [x] Smoke vacuo e fallback credenziali nel dry-run: riprodotti e corretti con test avversari.
+- [ ] Diagnostica Jev: distinguere gli errori di validazione senza registrare payload o segreti; i tre `ValueError` storici restano ignoti.
+- [ ] Banco di prova, gravità bassa: `_head()` consulta il repository del modulo anziché quello del manifest; il fallback sulla worktree esistente copre questa campagna.
+- [ ] Banco di prova, gravità bassa: il preflight mostra il residuo ma non prenota l'intera campagna; il ledger applica comunque il tetto a ogni invio.
+- [ ] Banco di prova, gravità bassa: `cleanup()` presuppone un manifest privato integro; non usarlo su manifest modificati o per eliminare worktree non pubblicate.
+
+Note di manutenzione: il runtime installato non include pytest; usare il venv
+di sviluppo. Le istruzioni MCP hanno solo tre caratteri di margine. Il controllo
+anti-etichette scansiona `state`, perché il testo standard dei criteri usa anche
+la parola inglese “incomplete”. Le famiglie CLI e Reporter comprendono due
+correzioni storiche successive: la prima costituisce la variante incompleta.
