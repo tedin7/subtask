@@ -1,12 +1,13 @@
 # Controllo consultivo delle consegne con Jev
 
 Stato del 25 ottobre 2026: **installato e verificato localmente** da
-`eec72e1103e980c486452db901c4a04f50b8ccf2`, con 412 test passati.
+`9405d029a55741145fe954c64157549ee2d44dad`, con 419 test passati.
 Jev resta consultivo e su richiesta. Codex riceve le conclusioni tramite attesa
 aperta: il normale MCP non risveglia un turno già chiuso.
 Il limite Subtask è impostato a 10 nei client configurati. Codex e OpenCode sono
 stati ricaricati; questa sessione Codex espone ora 16 strumenti, incluso `review`.
-Le sessioni Claude già aperte richiedono la riconnessione da `/mcp`. Dettagli in fondo.
+Le sessioni Claude già aperte richiedono `/reload-plugins`, oppure la riconnessione
+del solo MCP da `/mcp`. Dettagli in fondo.
 
 ## Contratto
 
@@ -329,3 +330,74 @@ I log e le ricevute di questo passaggio sono in
 La wheel precedente verificata (SHA-256 `5bae513caa95c7ac29afd8344cc16be76fb6b45aa0c14461d456abc58881b40a`)
 resta disponibile in `accepted-dist` per il ritorno. Modelli e tetti economici dei
 client sono stati preservati; il limite di concorrenza richiesto è 10.
+
+### Coerenza tra stop e attese concorrenti
+
+La CI del commit `e85e4e6` ha riprodotto su Python 3.13 e 3.14 una corsa
+preesistente: `wait` vedeva il worker morto e pubblicava `failed` mentre `stop`
+stava ancora completando l'arresto. Il test di protocollo originale resta
+invariato. Il primo candidato `86703bf` registra `stop_requested` sotto lock prima
+del segnale. Le tre prove iniziali passano, ma la revisione `st-895d2d863f` lo
+respinge: due nuove prove mostrano falsi `stopped` con figli vivi o PID riusati.
+Il coordinatore riproduce anche un costo legacy azzerato invece che prudenziale.
+
+Il candidato corretto `2237644` conserva l'intento, impedisce la finalizzazione
+se il gruppo resta vivo e preserva `spend_possible` dei vecchi status durante
+l'aggiornamento. Un decesso senza richiesta di stop conserva `failed` e il
+conteggio prudenziale. Le prenotazioni restano aperte per gruppi vivi o sconosciuti.
+
+Le tre prove di `tests/test_stop_delivery.py` falliscono sulla base `e85e4e6`
+e passano sul fix. Due impongono l'interleaving morte del worker, `wait`, ritorno
+di `stop`, con e senza spesa possibile. La terza conserva attivo un gruppo con
+figli superstiti. I log sono `stop-delivery-before.log` e `stop-delivery-after.log`.
+La prima suite conta 415 passati in 289,39 s (`stop-delivery-full.log`). I due
+test del revisore falliscono sul candidato iniziale (`stop-review-before.log`),
+come il nuovo test legacy (`stop-legacy-before.log`: 0 invece di 1,5 USD).
+Le sei nuove prove sono verdi dopo la correzione, senza indebolire gli assert.
+I 42 controlli mirati passano in 22,98 s (`stop-review-after.log`).
+La suite completa sul candidato corretto conta 418 passati e 4 live esclusi in
+288,27 s: `build-a-turno .venv/bin/python -m pytest -q`, log `stop-review-full.log`.
+Ruff check/format resta verde su `subtask tests`; 93 file Python.
+
+La wheel del candidato `2237644` ha SHA-256
+`d35a5655b870e85f20fee7f640503a0a6665b80e6f5ece2f058b04c91ec4cf9f`.
+Il confronto verifica 56 file del pacchetto. Il client MCP ufficiale esercita
+entrambi i backend: 16 strumenti, attesa del risultato, preparazione Jev offline
+e `wait`/`stop` simultanei, senza chiamate a provider. Il backup della wheel
+precedente installata (`ab90a711...`) è in `cli-rollout-20261025/pre-stop-dist/`.
+
+Restano due rischi preesistenti fuori dal delta: morte prima della registrazione
+dell'intento e riuso del PID tra verifica e segnale al gruppo. Il rapporto del
+revisore li distingue dalle regressioni corrette; non sono dichiarati risolti.
+
+### Installazione finale e compatibilità con il ledger aggiornato
+
+Il revisore finale `st-c7eb52eb03` approva `2237644` con `severe_open=false`:
+42 test mirati passati in 23,02 s e quattro probe indipendenti verdi su figli
+superstiti, identità sconosciuta, PID riusato e chiusura unica della prenotazione.
+Il rapporto completo distingue i rischi preesistenti dal delta accettato.
+
+Durante l'integrazione, un'altra sessione aveva già pubblicato `577ca9c`, che
+aggiunge il motore alle righe del ledger. Il merge `9405d02` conserva entrambe
+le modifiche; `subtask/jobs.py` è identico byte per byte al commit approvato.
+La suite sul merge passa con 419 test e 4 live esclusi in 287,68 s, stesso comando
+completo; `combined-final-full.log`. Ruff check/format e schema MCP sono verdi.
+
+Wheel effettivamente installata: SHA-256
+`420f8e17523d2cc7194fc7a6c17a7ba0dec6177b9ec16e1648e34363312d2357`.
+I 56 file del pacchetto corrispondono al sorgente e all'installazione globale.
+Entrambi i backend espongono 16 strumenti e passano attesa, prepare offline e
+stop concorrente via client MCP ufficiale. Nessuna chiamata aggiuntiva a Jev.
+
+Codex è stato ricaricato di nuovo con `SUBTASK_MCP_BUILD=9405d02`: nuovi processi
+con limite 10, catalogo effettivo di questa sessione con 16 strumenti e `review`
+provato offline su `st-c7eb52eb03` (`prepared`, nessun invio al provider).
+OpenCode ha creato due nuovi processi Subtask, connessi in `/root/arvos` e `/root`,
+con servizio gestito invariato. Il controllo attende lo stato `connected` dopo
+il primo stato transitorio `pending`; la sola risposta HTTP 204 non basta.
+
+Le nuove connessioni dei CLI usano il pacchetto aggiornato. Le chat Claude e
+Claude2 già aperte conservano la propria connessione: richiedono `/reload-plugins`,
+oppure la riconnessione del solo server da `/mcp`. Non sono state comandate
+tramite la loro interfaccia interattiva. Il limite persistente è 10 nei client
+configurati; i budget, i modelli e le credenziali restano quelli precedenti.
