@@ -57,15 +57,31 @@ I metadati condividono l'utente del sistema operativo con il worker: il livello
 con `working_tree_inspected=false`; non certifica le modifiche locali successive.
 Git legge oggetti e diff con monitor, hook, programmi esterni e recupero remoto
 disabilitati. Il controllo rifiuta file non regolari, collegamenti simbolici e
-stati con retry ancora pendente.
+stati con retry ancora pendente. Sono rifiutati anche `SUBTASK_HOME`, `jobs`, la
+cartella del job e `reviews` se sono collegamenti simbolici; gli antenati di
+`SUBTASK_HOME` non sono controllati (su macOS `/tmp` è già un collegamento di sistema).
+`repo`, `branch` e `base` registrati devono essere stringhe.
+
+Git non verifica l'hash degli oggetti che legge. Prima del diff il controllo legge
+con `git cat-file --batch` i due commit, gli alberi con id diversi tra base e
+candidato e i blob cambiati, e ricalcola l'id di ognuno (SHA-1 o SHA-256). Alberi
+uguali sono saltati come fa `git diff`: il lavoro cresce con la consegna, non con
+la storia. Un oggetto mancante, corrotto o sostituito produce `ValueError` prima di
+salvare la richiesta e prima del provider: il contenuto originale non viene
+ricostruito. Oltre 4096 oggetti o 16 MiB di contenuto il controllo rifiuta in modo
+conservativo. Nessun comando della configurazione del candidato viene eseguito.
+Il diff usa `--no-renames` e `--no-relative`, quindi non dipende da quelle impostazioni.
 
 Git ignora anche `refs/replace`, forza la visualizzazione dei gitlink e impedisce
 diff annidati dei submoduli. I contenuti binari e dei submoduli non sono giudicati:
 `patch_content_not_inspected` impedisce un esito favorevole. Un diff non UTF-8 viene
-rifiutato. Una verifica deve avere output registrato non vuoto, senza indicatori
-espliciti di fallimento (`FAILED`, `FAILURES`, `AssertionError` o traceback Python).
+rifiutato. Un puntatore Git LFS nel diff conta come contenuto non espanso.
+Una verifica deve avere output registrato non vuoto, senza indicatori
+espliciti di fallimento (`FAILED`, `FAILURES`, `AssertionError`, traceback Python
+o riepiloghi come `1 failed` e `2 errors`). L'output è controllato sia così com'è
+sia senza sequenze di colore ANSI.
 Questa regola conservativa può lasciare non provati anche controlli silenziosi o
-output con errori attesi. Il comando dell'oracle deve coincidere con quello richiesto.
+output con errori attesi. Il comando dell'oracle deve esistere e coincidere con quello richiesto.
 
 Il riferimento `evidence_ref` identifica un materiale nel pacchetto salvato; il
 diff contiene file e contesto delle righe, la verifica contiene comando, commit
@@ -99,7 +115,12 @@ contiene la richiesta ripulita e `<binding_sha256>.json` la ricevuta. Il coordin
 deve leggere la ricevuta relativa al materiale attuale; una vecchia ricevuta non
 certifica una nuova consegna. La cancellazione delle ricevute non è una procedura
 di retry: potrebbe causare nuovi addebiti.
-Il recupero ripulisce anche le ricevute precedenti con i segreti oggi conosciuti.
+Ogni controllo ripulisce anche richieste e ricevute già salvate con i segreti oggi
+conosciuti. Una richiesta ripulita dopo la scrittura conserva il nome originale e
+riceve `stored_copy_redacted_after_write` con `request_sha256` (digest della
+richiesta originale, non dei byte conservati), `stored_sha256` (digest del
+materiale conservato senza questo campo) e l'ora. Con più di 128 file salvati il
+controllo rifiuta e chiede di archiviare i vecchi; ogni file è letto fino a 192 KiB.
 Se un guasto avviene tra prenotazione e intento, serve riconciliazione manuale:
 il componente rifiuta il secondo invio, senza presumere un esito del primo.
 
@@ -178,3 +199,20 @@ Resta il limite dichiarato dei metadati modificabili dallo stesso utente e della
 riconciliazione manuale dopo un guasto tra prenotazione e intento.
 Le prove complete e la wheel sopra appartengono a deb485f; vanno aggiornate prima
  di installare v5. La prova reale Jev precedente resta una prova API sulla policy v4.
+
+### Terza revisione e correzione v6
+
+La terza revisione (`st-4ccaeaa532`, test in `b5e9e40`) ha respinto `8434b44`: un
+oggetto loose con contenuto diverso dal suo hash cambiava il diff senza cambiare il
+commit. La policy diventa v6. La correzione verifica gli oggetti letti dal diff,
+rifiuta prima del provider il materiale corrotto e limita il lavoro come descritto
+sopra. Chiude anche i marker ANSI, i riepiloghi minuscoli, il collegamento simbolico
+su `SUBTASK_HOME`, la pulizia delle richieste già salvate, LFS, l'oracle senza
+comando e `repo` non stringa. `tests/test_delivery_review_integrity.py` copre questi
+casi; il test dell'oggetto sostituito ammette il rifiuto controllato.
+
+Limiti restanti: un processo dello stesso utente può cambiare gli oggetti tra
+verifica e diff (`same_user_mutable_records`); la verifica non rileva un blob LFS
+mancante, solo il puntatore; un crash tra ricevuta finale e chiusura del registro
+richiede ancora riconciliazione manuale. Le prove complete e la wheel vanno
+rifatte su questo candidato.

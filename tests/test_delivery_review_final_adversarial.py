@@ -475,11 +475,22 @@ def test_substituted_loose_object_cannot_rewrite_the_committed_patch(home, monke
         _git_spec(repo, base),
         {"state": "done", "attempt": 1, "verification": _verification(head)},
     )
-    report = review.review(DELIVERY, ["Parser fixed"])
+    calls = []
+    monkeypatch.setattr(
+        review, "_request", lambda packet, _: calls.append(packet) or _answer(packet, "supported", "patch")
+    )
+    try:
+        report = review.review(DELIVERY, ["Parser fixed"], submit=True, original_request="Fix parser")
+    except ValueError:
+        # The original content is unrecoverable: a controlled refusal before the provider is correct.
+        assert calls == [], "a corrupt snapshot reached the provider"
+        assert not list((folder / "reviews").glob("*.request.json"))
+        return
     patch = _packet(folder, report)["state"]["materials"]["patch"]["text"]
     assert report["candidate"]["head"] == head
     assert "value = 2" in patch, "the review read a substituted object instead of the committed blob"
     assert "value = 3" not in patch
+    assert all("value = 3" not in json.dumps(packet) for packet in calls)
 
 
 def test_symlinked_home_parent_is_rejected(home, monkeypatch):

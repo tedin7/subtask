@@ -28,7 +28,20 @@ from . import config, jobs, ledger, redact, verifier
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 MAX_BYTES = 96 * 1024
 MAX_RESPONSE_BYTES = 64 * 1024
-POLICY = "subtask-delivery-shadow-v5"
+MAX_GIT_OBJECTS = 4096
+MAX_GIT_OBJECT_BYTES = 16 * 1024 * 1024
+MAX_STORED_RECORDS = 128
+STORED_RECORD = re.compile(r"([0-9a-f]{64})(\.request)?\.json")
+LATE_REDACTION = "stored_copy_redacted_after_write"
+ANSI_ESCAPE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[@-Z\\-_])|\x9b[0-?]*[ -/]*[@-~]"
+)
+FAILURE_MARKER = re.compile(
+    r"\b(?:FAILED|FAILURES|AssertionError)\b|Traceback \(most recent call last\)"
+    r"|\b[1-9][0-9]* (?:failed|errors?)\b"
+)
+LFS_POINTER = re.compile(r"^[ +-]version https://git-lfs\.github\.com/spec/", re.MULTILINE)
+POLICY = "subtask-delivery-shadow-v6"
 MODEL = "jev-latest"
 
 
@@ -53,16 +66,16 @@ def _subjects(criteria: list[str]) -> list[tuple[str, str]]:
     ]
 
 
-def _read_bytes(path: Path) -> bytes:
+def _read_bytes(path: Path, limit: int = MAX_BYTES) -> bytes:
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(descriptor, "rb") as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise ValueError("review material must be a regular file")
-            raw = stream.read(MAX_BYTES + 1)
+            raw = stream.read(limit + 1)
     except FileNotFoundError:
         return b""
-    if len(raw) > MAX_BYTES:
+    if len(raw) > limit:
         raise ValueError("review material too large; narrow the delivery before review")
     return raw
 
@@ -71,18 +84,18 @@ def _read(path: Path) -> str:
     return _read_bytes(path).decode("utf-8", errors="replace")
 
 
-def _record(path: Path) -> dict:
+def _record(path: Path, limit: int = MAX_BYTES) -> dict:
     try:
-        value = json.loads(_read_bytes(path))
+        value = json.loads(_read_bytes(path, limit))
     except json.JSONDecodeError:
         return {}
     return value if isinstance(value, dict) else {}
 
 
-def _git(repo: str, *args: str) -> str:
+def _git_bytes(repo: str, *args: str, stdin: bytes | None = None, limit: int = MAX_BYTES) -> bytes:
     # Read commands must not run candidate-configured hooks, monitors, pagers
     # or external diff/textconv programs, or refresh the candidate's index.
-    if not args or args[0] not in {"rev-parse", "diff"}:
+    if not args or args[0] not in {"rev-parse", "diff"} and args != ("cat-file", "--batch"):
         raise ValueError("unsupported Git evidence operation")
     argv = [
         "git",
@@ -112,9 +125,18 @@ def _git(repo: str, *args: str) -> str:
     }
     deadline = time.monotonic() + 15
     output = bytearray()
-    process = subprocess.Popen(
-        argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, start_new_session=True
-    )
+    # A temporary file feeds batch input without a pipe deadlock against stdout.
+    with tempfile.TemporaryFile() as source:
+        source.write(stdin or b"")
+        source.seek(0)
+        process = subprocess.Popen(
+            argv,
+            stdin=source,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            start_new_session=True,
+        )
     try:
         with selectors.DefaultSelector() as selector:
             selector.register(process.stdout, selectors.EVENT_READ)
@@ -122,12 +144,12 @@ def _git(repo: str, *args: str) -> str:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or not selector.select(remaining):
                     raise ValueError("review Git evidence timed out")
-                chunk = os.read(process.stdout.fileno(), min(16384, MAX_BYTES + 1 - len(output)))
+                chunk = os.read(process.stdout.fileno(), min(65536, limit + 1 - len(output)))
                 if not chunk:
                     break
                 output.extend(chunk)
-                if len(output) > MAX_BYTES:
-                    raise ValueError("review Git material too large")
+                if len(output) > limit:
+                    raise ValueError("review Git material too large; narrow the delivery")
         if process.wait(timeout=max(0.01, deadline - time.monotonic())):
             raise ValueError("review candidate Git evidence unavailable")
     finally:
@@ -138,7 +160,101 @@ def _git(repo: str, *args: str) -> str:
                 pass
             process.wait()
         process.stdout.close()
-    return output.decode("utf-8").strip()
+    return bytes(output)
+
+
+def _git(repo: str, *args: str) -> str:
+    return _git_bytes(repo, *args).decode("utf-8").strip()
+
+
+def _objects(repo: str, oids: set[str], algorithm: str, budget: dict) -> dict[str, tuple[bytes, bytes]]:
+    """Read objects once and recompute their ids: Git does not verify loose/packed reads."""
+    wanted = sorted(oids)
+    budget["objects"] -= len(wanted)
+    if budget["objects"] < 0:
+        raise ValueError("review Git snapshot has too many changed objects to verify; narrow the delivery")
+    raw = _git_bytes(
+        repo,
+        "cat-file",
+        "--batch",
+        stdin="".join(oid + "\n" for oid in wanted).encode(),
+        limit=budget["bytes"] + 128 * len(wanted),
+    )
+    found, position = {}, 0
+    for oid in wanted:
+        end = raw.find(b"\n", position)
+        header = raw[position:end].split(b" ") if end >= 0 else []
+        if len(header) != 3 or header[0] != oid.encode() or not header[2].isdigit():
+            raise ValueError("review Git object unavailable; content is not reconstructed")
+        kind, size = header[1], int(header[2])
+        content = raw[end + 1 : end + 1 + size]
+        position = end + 2 + size
+        budget["bytes"] -= size
+        if budget["bytes"] < 0 or len(content) != size or raw[position - 1 : position] != b"\n":
+            raise ValueError("review Git objects too large or truncated; narrow the delivery")
+        if hashlib.new(algorithm, kind + b" %d\0" % size + content).hexdigest() != oid:
+            raise ValueError("review Git object failed its integrity check; content is not reconstructed")
+        found[oid] = (kind, content)
+    if position != len(raw):
+        raise ValueError("review Git object batch malformed")
+    return found
+
+
+def _tree(content: bytes, width: int) -> dict[bytes, tuple[bytes, str]]:
+    entries, position = {}, 0
+    while position < len(content):
+        space = content.find(b" ", position)
+        nul = content.find(b"\0", space + 1)
+        if space < 0 or nul < 0 or len(content) < nul + 1 + width:
+            raise ValueError("review Git tree malformed")
+        entries[content[space + 1 : nul]] = (
+            content[position:space],
+            content[nul + 1 : nul + 1 + width].hex(),
+        )
+        position = nul + 1 + width
+    return entries
+
+
+def _verify_snapshot(repo: str, base: str, head: str) -> None:
+    """Verify every object the base..head diff reads, bounded by changed material only.
+
+    Trees with equal ids are skipped exactly as `git diff` skips them, so the work
+    grows with the delivery, not with the repository history.
+    """
+    algorithm = _git(repo, "rev-parse", "--show-object-format")
+    width = {"sha1": 20, "sha256": 32}.get(algorithm)
+    if width is None or not all(re.fullmatch(f"[0-9a-f]{{{2 * width}}}", oid) for oid in (base, head)):
+        raise ValueError("unsupported review Git object format")
+    budget = {"objects": MAX_GIT_OBJECTS, "bytes": MAX_GIT_OBJECT_BYTES}
+    commits = _objects(repo, {base, head}, algorithm, budget)
+    roots = []
+    for oid in (base, head):
+        kind, content = commits[oid]
+        first = content.split(b"\n", 1)[0]
+        if kind != b"commit" or not re.fullmatch(rb"tree [0-9a-f]{%d}" % (2 * width), first):
+            raise ValueError("review Git commit malformed")
+        roots.append(first[5:].decode())
+    pairs, blobs = [(roots[0], roots[1])] if roots[0] != roots[1] else [], set()
+    while pairs:
+        trees = _objects(repo, {oid for pair in pairs for oid in pair if oid}, algorithm, budget)
+        if any(kind != b"tree" for kind, _ in trees.values()):
+            raise ValueError("review Git tree malformed")
+        following = []
+        for old, new in pairs:
+            left = _tree(trees[old][1], width) if old else {}
+            right = _tree(trees[new][1], width) if new else {}
+            for name in left.keys() | right.keys():
+                entries = (left.get(name), right.get(name))
+                if entries[0] == entries[1]:
+                    continue
+                subtrees = tuple(e[1] if e and e[0] == b"40000" else None for e in entries)
+                if any(subtrees):
+                    following.append(subtrees)
+                # Gitlinks name another repository's commit; they stay flagged as not inspected.
+                blobs.update(e[1] for e in entries if e and e[0] not in {b"40000", b"160000"})
+        pairs = following
+    if blobs and any(kind != b"blob" for kind, _ in _objects(repo, blobs, algorithm, budget).values()):
+        raise ValueError("review Git blob malformed")
 
 
 def _clean(value):
@@ -172,6 +288,47 @@ def _save(path: Path, value: dict) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _failure_reported(output: str) -> bool:
+    # Check raw and de-coloured text: an escape must neither hide nor fake a word boundary.
+    return any(FAILURE_MARKER.search(text) for text in (output, ANSI_ESCAPE.sub("", output)))
+
+
+def _reject_symlinks(*paths: Path) -> None:
+    # SUBTASK_HOME itself is checked, its system ancestors are not (macOS /tmp is a symlink).
+    for path in (config.HOME, config.JOBS, *paths):
+        if path.is_symlink():
+            raise ValueError("review storage must not traverse a symlink below SUBTASK_HOME")
+
+
+def _reclean_stored(folder: Path) -> None:
+    """Apply today's known secrets to older requests/receipts, within fixed limits."""
+    names = []
+    with os.scandir(folder) as entries:
+        for entry in entries:
+            if STORED_RECORD.fullmatch(entry.name):
+                names.append(entry.name)
+                if len(names) > MAX_STORED_RECORDS:
+                    raise ValueError("too many stored review records; archive old ones before review")
+    for name in sorted(names):
+        path = folder / name
+        record = _record(path, limit=2 * MAX_BYTES)
+        cleaned = _clean(record)
+        if cleaned == record:
+            continue
+        if name.endswith(".request.json"):
+            # The filename stays the original request digest; the stored bytes no longer match it.
+            body = {key: value for key, value in cleaned.items() if key != LATE_REDACTION}
+            cleaned = {
+                **body,
+                LATE_REDACTION: {
+                    "request_sha256": name.split(".", 1)[0],
+                    "stored_sha256": _digest(body),
+                    "redacted_at": time.time(),
+                },
+            }
+        _save(path, cleaned)
+
+
 def _packet(
     job_id: str, criteria: list[str], original_request: str | None = None
 ) -> tuple[dict, dict, list[str]]:
@@ -182,8 +339,7 @@ def _packet(
     ):
         raise ValueError("criteria must contain 1-12 nonempty strings, at most 2000 characters each")
     folder = jobs.job_dir(job_id)
-    if config.JOBS.is_symlink() or folder.is_symlink():
-        raise ValueError("review job directory must not be a symlink")
+    _reject_symlinks(folder)
     spec = _record(folder / "spec.json")
     status = _record(folder / "status.json")
     if not spec or status.get("state") not in jobs.FINAL or verifier.pending(status):
@@ -231,7 +387,7 @@ def _packet(
         output = verification.get("output_tail")
         if not isinstance(output, str) or not output.strip():
             limitations.append("verification_output_unavailable")
-        elif re.search(r"\b(?:FAILED|FAILURES|AssertionError)\b|Traceback \(most recent call last\)", output):
+        elif _failure_reported(output):
             limitations.append("verification_output_conflict")
         if type(verification.get("exit_code")) is not int:
             limitations.append("verification_exit_unknown")
@@ -249,7 +405,9 @@ def _packet(
             limitations.append("verification_command_mismatch")
         oracle = verification.get("oracle")
         if (spec.get("oracle_cmd") or oracle) and (
-            not isinstance(oracle, dict)
+            not isinstance(spec.get("oracle_cmd"), str)
+            or not spec["oracle_cmd"].strip()
+            or not isinstance(oracle, dict)
             or oracle.get("command") != spec.get("oracle_cmd")
             or oracle.get("output_match") is not True
             or oracle.get("exit_match") is not True
@@ -257,16 +415,22 @@ def _packet(
             limitations.append("oracle_mismatch")
     else:
         limitations.append("verification_not_run")
+    if any(type(spec.get(key)) not in (str, type(None)) for key in ("repo", "branch", "base")):
+        raise ValueError("recorded Git candidate fields must be strings")
     if spec.get("branch") and spec.get("repo") and spec.get("base"):
         repo = spec["repo"]
         head = _git(repo, "rev-parse", "--verify", "--end-of-options", f"{spec['branch']}^{{commit}}")
         base = _git(repo, "rev-parse", "--verify", "--end-of-options", f"{spec['base']}^{{commit}}")
+        # Refuse corrupt or substituted objects before any diff text exists.
+        _verify_snapshot(repo, base, head)
         patch = _git(
             repo,
             "diff",
             "--no-ext-diff",
             "--no-textconv",
             "--no-color",
+            "--no-renames",
+            "--no-relative",
             "--submodule=short",
             "--ignore-submodules=none",
             "--binary",
@@ -275,7 +439,7 @@ def _packet(
             head,
             "--",
         )
-        if "GIT binary patch" in patch or "Subproject commit" in patch:
+        if "GIT binary patch" in patch or "Subproject commit" in patch or LFS_POINTER.search(patch):
             limitations.append("patch_content_not_inspected")
         candidate.update(base=base, head=head, patch_sha256=hashlib.sha256(patch.encode()).hexdigest())
         materials["patch"] = {"level": "runner_observed", "text": patch}
@@ -459,8 +623,7 @@ def review(
     binding = candidate["binding_sha256"]
     folder = jobs.job_dir(job_id) / "reviews"
     folder.mkdir(mode=0o700, exist_ok=True)
-    if folder.is_symlink():
-        raise ValueError("review storage must not be a symlink")
+    _reject_symlinks(folder.parent, folder)
     descriptor = os.open(folder / ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     with os.fdopen(descriptor, "a") as lock:
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
@@ -471,8 +634,9 @@ def review(
         except (ValueError, OSError):
             key = ""
         redact.remember([key, *config.load_secrets().values()])
+        _reclean_stored(folder)
         receipt = folder / f"{binding}.json"
-        previous = _record(receipt)
+        previous = _record(receipt, limit=2 * MAX_BYTES)
         if previous:
             if previous.get("binding_sha256") != binding or previous.get("advisory_only") is not True:
                 raise ValueError("stored receipt binding invalid; no automatic resubmission")
