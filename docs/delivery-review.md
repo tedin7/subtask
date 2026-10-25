@@ -114,7 +114,7 @@ richiesto; il responso registra anche quello risolto dal provider.
   difetto trovato dal wrapper, e non leggere un esito declassato come un via
   libera.
 - `scope_assessment=unproven` non è un pass e non è una contraddizione: senza
-  `original_request` lo scope non è stato esaminato. La revisione automatica non
+  `original_request` lo scope completo non è provato. La revisione automatica non
   riceve mai `original_request`: solo quella manuale può riceverlo dal
   coordinatore. I metadati visibili al worker non bastano.
 - Jev non esegue test, non apre l'app e non sostituisce `verify`, il diff del

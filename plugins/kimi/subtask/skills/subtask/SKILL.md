@@ -126,7 +126,7 @@ worker's own claim, before reading any Jev advice.
   did not cover, or for full scope. Pass the coordinator's original request to
   the manual call: the automatic check never receives it, and worker-visible
   metadata cannot authenticate it. Without it, `scope_assessment` stays
-  `unproven`: not a pass, not a contradiction, just scope not checked.
+  `unproven`: not a pass, not a contradiction, full scope not proven.
 - `supported` is advice on one criterion, never acceptance of the delivery.
   `contradicted` means the material points the other way; `unproven` means the
   material cannot establish it. A worker's own report does not prove either.
