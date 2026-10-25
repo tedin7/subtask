@@ -10,6 +10,9 @@ Dual-era (MCP 2026-07-28 "Versioning and Compatibility"):
 Progress: a tools/call with `_meta.progressToken` gets `notifications/progress`
 while it runs (see progress.py). `notifications/cancelled` ends the call: no
 further message is sent for it, and the jobs keep running (stop() stops work).
+For a local MCP server, Codex 0.164.0 does not turn an unsolicited notification
+into a new model turn. Progress is delivered only while its request is open.
+The supported background delivery is a blocking `wait(..., mode='any', since=...)`.
 
 Importing the mcp package costs ~560 ms; this file answers before `core` is
 even imported. Tool names, descriptions and schemas come from tools.json,
@@ -90,7 +93,9 @@ def _wait(
     mode: str | None = None,
     stall_timeout: float | None = None,
 ) -> str:
-    deadline = time.monotonic() + max(1, min(int(timeout), 600))
+    from .progress import wait_budget
+
+    deadline = time.monotonic() + wait_budget(timeout, since)
     if call.reporter:
         for job_id in ids:
             if core.known(job_id):

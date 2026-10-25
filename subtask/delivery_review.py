@@ -40,9 +40,11 @@ def _subjects(criteria: list[str]) -> list[tuple[str, str]]:
     return [(f"C{i}", criterion) for i, criterion in enumerate(criteria, 1)] + [
         (
             "scope",
-            "The entire original request has relevant evidence for every required deliverable, "
-            "including deliverables omitted from the supplied checklist. Distinguish behavioral deliverables "
-            "from worker instructions; a successful partial task is not the whole request.",
+            (
+                "The entire original request has relevant evidence for every required deliverable, "
+                "including deliverables omitted from the supplied checklist. Distinguish behavioral deliverables "
+                "from worker instructions; a successful partial task is not the whole request."
+            ),
         )
     ]
 

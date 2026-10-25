@@ -85,3 +85,23 @@ separatamente e non sostituisce la valutazione su consegne già giudicate.
 Misura successiva: tempo del coordinatore, omissioni reali trovate, obiezioni
 inutili, uso token e costo di tutti i ruoli. Nessun vantaggio di qualità o costo è
 dichiarato da questa implementazione.
+
+## Registro delle verifiche del 25 ottobre 2026
+
+Ambiente: worktree `/root/wt/subtask-jev-delivery-20261025`, venv installata
+in modo editable da quel checkout con `constraints.txt`, Python 3.14.8,
+MCP 1.30.0, pytest 9.1.1 e Ruff 0.17.0. Nessun modello Codex viene avviato
+dai test: le prove dell'adattatore usano un CLI simulato e il client MCP ufficiale.
+
+| Revisione o input | Comando e directory | Esito | Invalidazione |
+|---|---|---|---|
+| Albero candidato `e5900345a8d0b99d4698505c0a413baf94798842` | `build-a-turno .venv/bin/python -m pytest -q -p no:cacheprovider --tb=short` nel worktree | 322 passati, 4 live esclusi, 283,33 s; `combined-full.log` | Codice, schema, test o dipendenze pertinenti |
+| Stesso candidato, prima delle sole modifiche di resoconto | `build-a-turno .venv/bin/ruff check subtask tests` e `ruff format --check subtask tests` | Entrambi verdi; 85 file formattati | Codice Python o configurazione del controllo |
+| Candidato combinato | Test mirati di controllo Jev, protocollo, client indipendente, guida e schema | 58 passati in 51,78 s; `combined-targeted.log` | Percorsi esercitati o dipendenze |
+| `server.py` da `5ad997a` confrontato con `03c1cc8` | Stesso ritardo simulato di 200 ms nel tool, chiamato attraverso FastMCP | Ciclo eventi bloccato per 201 ms prima, disponibile dopo 21 ms con il fix | Percorso del tool FastMCP |
+
+I log e gli inventari privati sono in
+`/root/.local/state/subtask-jev-20261025/`. La suite legge il working tree:
+l'albero sopra corrisponde all'indice verificato. Le modifiche successive di
+sola documentazione non cambiano il codice esercitato. Revisione indipendente,
+prova della wheel e installazione sono registrate separatamente al completamento.

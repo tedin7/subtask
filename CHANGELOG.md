@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Opt-in advisory Jev delivery review through MCP and CLI, bound to the original request,
+  criteria, candidate and recorded evidence. Offline preparation is the default; submissions
+  use the existing monthly cap and retain unknown invoice costs.
+
+### Fixed
+- Codex delegation guidance keeps a blocking wait open and reports each completion, instead
+  of sleeping between status checks. Cursor waits have a 60-second budget on both servers.
+- Jev review runs outside the FastMCP event loop so it does not block wait or stop requests.
+
 ## 0.5.0 - 2026-10-24
 
 ### Removed

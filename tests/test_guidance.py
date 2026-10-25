@@ -77,6 +77,22 @@ def test_skill_has_frontmatter_and_recipes_for_04():
     assert (ROOT / "plugins/claude/subtask/skills/subtask/SKILL.md").read_text() == text
 
 
+def test_skill_documents_codex_delivery_without_a_fake_wake():
+    text = (ROOT / "subtask" / "skill" / "SKILL.md").read_text()
+    for needle in (
+        'mode="any"',
+        "timeout=60",
+        'since=""',
+        "cursor=",
+        "0.164.0",
+        "tool_timeout_sec = 660",
+        "cannot wake an idle",
+        "the same as waking an inactive session",
+        "sleep 600",
+    ):
+        assert needle in text, needle
+
+
 def test_install_skill_writes_updates_and_leaves_foreign_files(tmp_path):
     from subtask.install import commands
 

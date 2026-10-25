@@ -22,6 +22,41 @@ from mcp.client.stdio import stdio_client
 SERVERS = {"fast": "subtask.fastserver", "fastmcp": "subtask.server"}
 
 
+@pytest.mark.parametrize("module", list(SERVERS.values()))
+def test_codex_adapter_finishes_through_wait_without_progress_token(home, module):
+    """Exercise the Codex adapter and real MCP transport, with a fake CLI and no paid model."""
+    fake_cli(
+        home,
+        "codex",
+        """
+if [ "$1" = "--version" ]; then echo "codex-cli 0.164.0"; exit; fi
+echo '{"type":"thread.started","thread_id":"fixture-codex-thread"}'
+sleep 0.3
+echo '{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}'
+echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+""",
+    )
+
+    async def check():
+        params = StdioServerParameters(command=sys.executable, args=["-m", module], env=dict(os.environ))
+        async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+            await session.initialize()
+            started = await session.call_tool(
+                "start", {"task": "Return OK", "engine": "codex", "cwd": str(home)}
+            )
+            assert not started.isError
+            job = started.content[0].text.split()[0]
+            assert job.startswith("st-"), started.content
+            result = await session.call_tool(
+                "wait", {"ids": [job], "mode": "any", "timeout": 20, "since": ""}
+            )
+            assert not result.isError
+            assert f"{job} done" in result.content[0].text
+            assert "OK" in result.content[0].text
+
+    asyncio.run(check())
+
+
 async def _session(module: str, home) -> tuple[list[str], list[tuple[float, str]], float, str]:
     params = StdioServerParameters(
         command=sys.executable,
