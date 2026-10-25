@@ -18,6 +18,24 @@ from subtask import jobs
 DELIVERY = "st-integrity"
 
 
+def test_real_git_directory_order_is_accepted(home, monkeypatch):
+    from subtask import delivery_review as review
+
+    monkeypatch.setattr(review, "_key", lambda: "test-key-not-real")
+    repo, base, head = _repo(home, {"d/f.py": "old\n", "d.extra.py": "x\n"}, {"d/f.py": "new\n"})
+    _job(repo, base, head)
+    assert review.review(DELIVERY, ["Nested change"])["status"] == "prepared"
+
+
+@pytest.mark.parametrize("names", [[b"z", b"a"], [b"same", b"same"], [b"../x"], [b""]])
+def test_noncanonical_git_tree_is_refused(names):
+    from subtask import delivery_review as review
+
+    content = b"".join(b"100644 " + name + b"\0" + b"\x01" * 20 for name in names)
+    with pytest.raises(ValueError, match="malformed"):
+        review._tree(content, 20)
+
+
 @pytest.fixture(autouse=True)
 def _fresh_redaction_set():
     from subtask import redact

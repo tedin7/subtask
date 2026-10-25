@@ -216,3 +216,18 @@ verifica e diff (`same_user_mutable_records`); la verifica non rileva un blob LF
 mancante, solo il puntatore; un crash tra ricevuta finale e chiusura del registro
 richiede ancora riconciliazione manuale. Le prove complete e la wheel vanno
 rifatte su questo candidato.
+
+### Chiusura degli alberi ambigui e della cache Git
+
+Il candidato Opus `aafedf3` ha superato 90 test Jev e la suite completa (390
+passati, 4 live esclusi, `v6-full.log`), ma la revisione `st-f936375bcb` ha trovato
+un aggiramento con entry omonime. Il coordinatore lo ha riprodotto anche a parte.
+Il commit di prova `344c1d9` contiene due regressioni: albero ambiguo e cache
+commit-graph alterata. Prima della correzione falliscono entrambe in 0,48 s;
+dopo passano (`final-tree-before.log`, `final-tree-after.log`).
+
+Il parser ora rifiuta nomi duplicati, percorsi o modalità illegali e ordine non
+canonico, senza perdere entry prima di verificarle. Git ignora la cache con
+`core.commitGraph=false`. Una prova su una directory reale verifica l'ordine
+canonico di Git. I 97 test Jev passano in 9,37 s; la suite completa e la wheel
+precedenti appartengono ad aafedf3, non ancora a questa correzione.

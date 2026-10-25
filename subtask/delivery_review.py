@@ -103,6 +103,8 @@ def _git_bytes(repo: str, *args: str, stdin: bytes | None = None, limit: int = M
         "-c",
         "core.fsmonitor=false",
         "-c",
+        "core.commitGraph=false",
+        "-c",
         "core.hooksPath=/dev/null",
         "-c",
         "core.untrackedCache=false",
@@ -201,16 +203,26 @@ def _objects(repo: str, oids: set[str], algorithm: str, budget: dict) -> dict[st
 
 
 def _tree(content: bytes, width: int) -> dict[bytes, tuple[bytes, str]]:
-    entries, position = {}, 0
+    entries, position, previous = {}, 0, None
     while position < len(content):
         space = content.find(b" ", position)
         nul = content.find(b"\0", space + 1)
         if space < 0 or nul < 0 or len(content) < nul + 1 + width:
             raise ValueError("review Git tree malformed")
-        entries[content[space + 1 : nul]] = (
-            content[position:space],
-            content[nul + 1 : nul + 1 + width].hex(),
-        )
+        mode, name = content[position:space], content[space + 1 : nul]
+        if (
+            mode not in {b"100644", b"100755", b"120000", b"40000", b"160000"}
+            or not name
+            or name in {b".", b"..", b".git"}
+            or b"/" in name
+            or name in entries
+        ):
+            raise ValueError("review Git tree malformed: ambiguous entry")
+        order = name + (b"/" if mode == b"40000" else b"\0")
+        if previous is not None and order <= previous:
+            raise ValueError("review Git tree malformed: noncanonical order")
+        previous = order
+        entries[name] = (mode, content[nul + 1 : nul + 1 + width].hex())
         position = nul + 1 + width
     return entries
 
