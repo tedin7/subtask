@@ -10,7 +10,7 @@ Sono esclusi i replay a coppie e il precedente confronto 193/172 test.
 
 | Caso opaco | Affermazione C1 | Verità osservabile | Origine |
 |---|---|---|---|
-| ev-7c42 | Verifica indipendente: 116 test verdi sul commit indicato | supported | Storico, senza alterazione dei risultati |
+| ev-7c42 | Verifica indipendente: 116 test verdi sul commit indicato; checkout pulito dopo il run | supported | Storico, senza alterazione dei risultati |
 | ev-18a6 | Sei test verdi provano il successo di un secondo deploy nella fixture separata | contradicted | Sovraffermazione controllata; la fixture registra exit 1 e rollback |
 | ev-90df | Il backend condiviso è la causa provata dell'incidente storico | unproven | Report storico: causa non provata, nessuna traccia causale fornita |
 
@@ -27,7 +27,8 @@ traccia. Il contributo semantico eventualmente misurato riguarda la lettura del
 mandato e dei diversi ambiti. Non va attribuito a Jev il rilevamento di un exit
 non zero già disponibile. Nessun caso sostituisce la falsificazione del codice.
 
-Packet, verità, baseline deterministica e hash SHA-256 delle fonti sono privati
+Le guardie sono annotazioni manuali, non una baseline eseguibile misurata.
+Packet, verità, annotazioni di regole e hash SHA-256 delle fonti sono privati
 in `/root/.local/state/subtask-jev-workflow-20261026/evidence-cases.json`.
 Solo `request` va inviato al modello; etichette, note e provenienza restano fuori.
 Non sono state cambiate policy, credenziali, limiti o provider. Nessun invio API,
