@@ -83,6 +83,7 @@ class ReplayAdapter(Adapter):
             "user.email=bench@localhost",
             "commit",
             "-q",
+            "--no-verify",
             "-F",
             str(message),
         )

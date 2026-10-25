@@ -120,6 +120,7 @@ def test_every_candidate_patch_applies_and_oracle_discriminates(campaign):
             capture_output=True,
             text=True,
             timeout=300,
+            check=False,
         )
         return done.returncode
 

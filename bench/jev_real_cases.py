@@ -10,15 +10,19 @@ engine is a real adapter that applies a patch and commits with ``git commit -F``
 and verify is a common smoke (AST parse, no ``__pycache__``).  Oracle tests are
 never part of the job, the task, the report, the spec or the Jev packet.
 
-Commands (all offline except ``run --execute``)::
+Commands (all offline except ``run --execute``).  Use the coordinator dev venv:
+the uv reference venv has no pytest, the dev venv at
+``/root/wt/subtask-jev-eval-20261025/.venv/bin/python`` has it::
 
-    python bench/jev_real_cases.py prepare --root /root/wt/jev-real
-    python bench/jev_real_cases.py dry-run --root /tmp/jev-dry --case c01
-    python bench/jev_real_cases.py run --root /root/wt/jev-real --execute --candidate c01-v1 --limit 1
-    python bench/jev_real_cases.py run --root /root/wt/jev-real --execute --batch 4
-    python bench/jev_real_cases.py oracle --root /root/wt/jev-real
-    python bench/jev_real_cases.py report --root /root/wt/jev-real --private
-    python bench/jev_real_cases.py cleanup --root /root/wt/jev-real
+    PY=/root/wt/subtask-jev-eval-20261025/.venv/bin/python
+    $PY bench/jev_real_cases.py prepare --root /root/wt/jev-real-20261025
+    $PY bench/jev_real_cases.py dry-run --root /root/wt/jev-real-dry-20261025 --case c01
+    $PY bench/jev_real_cases.py run --root /root/wt/jev-real-20261025 \
+        --execute --candidate c01-v1 --limit 1 --batch 1
+    $PY bench/jev_real_cases.py run --root /root/wt/jev-real-20261025 --execute --batch 4
+    $PY bench/jev_real_cases.py oracle --root /root/wt/jev-real-20261025
+    $PY bench/jev_real_cases.py report --root /root/wt/jev-real-20261025 --private
+    $PY bench/jev_real_cases.py cleanup --root /root/wt/jev-real-20261025 --purge
 
 ``run`` never calls Jev itself: the real worker triggers the automatic review
 once per candidate.  Unknown receipts are never retried and an existing job is
@@ -938,6 +942,7 @@ def _prepare_locked(root: Path, repo: Path, base: str | None, seed: int) -> dict
                 "user.email=bench@localhost",
                 "commit",
                 "-q",
+                "--no-verify",
                 "-F",
                 str(baseline_message),
             )
