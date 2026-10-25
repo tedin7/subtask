@@ -45,6 +45,21 @@ subtask install --client all --yes    # applies it: MCP server + skill
 subtask doctor --client all           # checks app, config entry and a real handshake
 ```
 
+Jev can check deliveries automatically, or only when requested:
+
+```sh
+subtask jev                 # policy, key availability and the current process's budget limits
+subtask jev setup           # guided setup; key input is hidden
+subtask jev auto            # advisory check after every final delivery
+subtask jev manual          # explicit review submissions only
+subtask jev off             # block new Jev submissions
+```
+
+New installations start in manual mode. The policy and private key are shared by
+the configured clients; no key goes in a chat or command argument. `wait` and
+`result` include automatic advice when enabled. Advice never accepts, merges or
+retries work. See [Jev setup and limits](docs/delivery-review.md#configurazione).
+
 Claude Code plugin: `claude plugin marketplace add tedin7/subtask` then
 `claude plugin install subtask@subtask`. Codex: `codex plugin marketplace add tedin7/subtask`.
 API engines read `ANTHROPIC_API_KEY` from `~/.config/subtask/env` (chmod 600).

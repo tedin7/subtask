@@ -1,4 +1,4 @@
-"""Configurazione Jev: modalità, chiave privata e UX CLI senza segreti."""
+"""Jev policy, private credentials and CLI flows without secret disclosure."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import os
 import stat
 import sys
+import warnings
 from argparse import Namespace
 from pathlib import Path
 
@@ -269,8 +270,39 @@ def test_status_uses_process_budget_limits_without_writing(paths, monkeypatch):
 def test_default_paths_can_be_overridden_by_home(tmp_path, monkeypatch):
     monkeypatch.delenv("SUBTASK_JEV_CONFIG", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    assert jev_config.config_path() == tmp_path / "home" / ".config" / "subtask" / "jev.json"
-    assert jev_config.key_path() == tmp_path / "home" / ".config" / "subtask" / "jev-key"
+    assert jev_config.config_path() == tmp_path / "home" / ".config" / "subtask" / "jev" / "settings.json"
+    assert jev_config.key_path() == tmp_path / "home" / ".config" / "subtask" / "jev" / "jev-key"
+
+
+def test_default_setup_accepts_an_existing_public_subtask_directory(tmp_path, monkeypatch):
+    monkeypatch.delenv("SUBTASK_JEV_CONFIG")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    existing = tmp_path / "home" / ".config" / "subtask"
+    existing.mkdir(parents=True)
+    existing.chmod(0o755)
+    result = jev_config.configure(mode="auto", api_key="fake-key-for-private-setup")
+    assert result["keyconfigured"]
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o755
+    assert jev_config.config_path().parent == existing / "jev"
+    assert stat.S_IMODE(jev_config.config_path().parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(jev_config.key_path().stat().st_mode) == 0o600
+
+
+def test_setup_aborts_before_getpass_can_fall_back_to_echo(paths, monkeypatch, capsys):
+    fallback = []
+    monkeypatch.setattr(jev_config, "_is_tty", lambda: True)
+
+    def unsafe_getpass(prompt):
+        warnings.warn("cannot disable terminal echo", jev_config.getpass.GetPassWarning)
+        fallback.append(True)
+        return "fake-secret-that-must-not-be-read"
+
+    monkeypatch.setattr(jev_config.getpass, "getpass", unsafe_getpass)
+    code = jev_config.run_cli(Namespace(jev_cmd="setup", json=False, key_stdin=False, mode="auto"))
+    assert code == 2 and fallback == []
+    assert not jev_config.key_path().exists()
+    output = capsys.readouterr()
+    assert "fake-secret-that-must-not-be-read" not in output.out + output.err
 
 
 def test_default_legacy_key_file_is_read_from_home(tmp_path, monkeypatch):

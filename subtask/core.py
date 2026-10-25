@@ -17,7 +17,20 @@ import sys
 import time
 from pathlib import Path
 
-from . import admission, config, events, jobs, ledger, policy, procid, router, telemetry, verifier, watchdog
+from . import (
+    admission,
+    auto_review,
+    config,
+    events,
+    jobs,
+    ledger,
+    policy,
+    procid,
+    router,
+    telemetry,
+    verifier,
+    watchdog,
+)
 from .engines import registry
 from .redact import redact
 
@@ -387,7 +400,8 @@ def _compensate(job_id: str, rid: str | None, folder: Path) -> None:
 
 
 def _line(job_id: str) -> str:
-    st, sp = jobs.status(job_id), jobs.spec(job_id)
+
+    st, sp = auto_review.current(job_id, jobs.status(job_id)), jobs.spec(job_id)
     age = int((time.time() - sp.get("created", time.time())) / 60)
     adapter = registry.get(sp.get("engine", ""))
     cost = f"{st.get('cost_usd', 0):.3f}$" if adapter and adapter.capabilities.paid else "-"
@@ -406,6 +420,9 @@ def _line(job_id: str) -> str:
     verified = ""
     if st.get("verification"):
         verified = " · verified" if st["verification"].get("exit_code") == 0 else " · verify FAILED"
+    jev = auto_review.line(st)
+    if jev:
+        extra = jev + (" · " + extra if extra else "")
     return f"{job_id} {st.get('state')} · {sp.get('engine')} · {age}m · {cost}{verified}{live} · {extra}"[
         :160
     ]
@@ -505,7 +522,8 @@ def _deliver_hints(job_ids: list[str]) -> list[str]:
     resumed = []
     for job_id in job_ids:
         st = jobs.status(job_id)
-        if st.get("state") not in jobs.FINAL or not st.get("hints"):
+
+        if st.get("state") not in jobs.FINAL or not st.get("hints") or auto_review.pending(job_id, st):
             continue
         hints = list(st["hints"])
         jobs.update_status(job_id, hints=[])
@@ -561,8 +579,14 @@ def wait(
             break
         _deliver_hints(job_ids)
         statuses = {j: jobs.status(j) for j in job_ids}
+
         ended = [
-            j for j in job_ids if statuses[j].get("state") in jobs.FINAL and not verifier.pending(statuses[j])
+            j
+            for j in job_ids
+            if statuses[j].get("state") in jobs.FINAL
+            and not verifier.pending(statuses[j])
+            and not statuses[j].get("hints")
+            and not auto_review.pending(j, statuses[j])
         ]
         stalled = [j for j in job_ids if watchdog.check(j, statuses[j], stall_timeout)]
         all_ended = len(ended) == len(job_ids) and not waiting
@@ -720,7 +744,7 @@ _summary = summary_of
 
 def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool = True) -> str:
     folder = jobs.job_dir(job_id)
-    st, sp = jobs.status(job_id), jobs.spec(job_id)
+    st, sp = auto_review.current(job_id, jobs.status(job_id)), jobs.spec(job_id)
     if _count:
         telemetry.count_call([job_id], "result")
     if st.get("state") not in jobs.FINAL:
@@ -731,6 +755,10 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
         return json.dumps(ev.envelope(job_id), ensure_ascii=False, indent=1)
     text = (folder / "result.md").read_text() if (folder / "result.md").is_file() else ""
     head = _line(job_id)
+
+    jev = auto_review.details(st)
+    if jev:
+        head += "\n" + jev
     left = config.MONTHLY_CAP_USD - ledger.committed()
     head += f"\ncost_usd: {float(st.get('cost_usd') or 0):.4f} · budget_remaining_usd: {left:.2f}"
     if sp.get("branch") and sp.get("repo"):
@@ -782,13 +810,16 @@ def reply(job_id: str, message: str) -> str:
     if not known(job_id):
         return f"unknown job: {job_id}"
     telemetry.count_call([job_id], "reply")
-    jobs.status(job_id)  # settle a dead worker first: it takes the lock itself
+    auto_review.current(job_id, jobs.status(job_id))  # settle/reconcile before taking the lock
     sp = jobs.spec(job_id)
     adapter = registry.get(sp.get("engine", ""))
     with jobs.job_lock(job_id):  # two replies at once must not both start a worker
         st = jobs.read_json(jobs.job_dir(job_id) / "status.json")
         if st.get("state") not in jobs.FINAL:
             return f"{job_id} is still running: wait or stop it"
+
+        if auto_review.is_pending(st):
+            return f"{job_id}: Jev review is still running; use wait() before replying"
         if not st.get("session_id"):
             return f"{job_id} has no session to resume"
         n = int(st.get("attempt") or 1) + 1
@@ -823,7 +854,7 @@ def reply(job_id: str, message: str) -> str:
             ]
             jobs.update_status(
                 job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False,
-                stop_requested=False, locked=True,
+                stop_requested=False, jev_review=None, locked=True,
             )  # fmt: skip
         except BaseException:
             _undo_reply(job_id, rid, st, locked=True)
@@ -875,7 +906,9 @@ def steer(job_id: str, action: str, instruction: str | None = None) -> str:
     if action == "abort":
         return stop(job_id)
     instruction = (instruction or "").strip()
-    final = jobs.status(job_id).get("state") in jobs.FINAL
+    status = jobs.status(job_id)
+
+    final = status.get("state") in jobs.FINAL and not auto_review.pending(job_id, status)
     if action == "hint":
         if not instruction:
             return "hint needs an instruction"

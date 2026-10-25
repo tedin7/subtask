@@ -1,13 +1,57 @@
 # Controllo consultivo delle consegne con Jev
 
-Stato del 25 ottobre 2026: **installato e verificato localmente** da
-`9405d029a55741145fe954c64157549ee2d44dad`, con 419 test passati.
-Jev resta consultivo e su richiesta. Codex riceve le conclusioni tramite attesa
-aperta: il normale MCP non risveglia un turno già chiuso.
-Il limite Subtask è impostato a 10 nei client configurati. Codex e OpenCode sono
-stati ricaricati; questa sessione Codex espone ora 16 strumenti, incluso `review`.
-Le sessioni Claude già aperte richiedono `/reload-plugins`, oppure la riconnessione
-del solo MCP da `/mcp`. Dettagli in fondo.
+Jev resta consultivo. La modalità si sceglie con `subtask jev`: manuale,
+automatica su tutte le consegne oppure disattivata. Il setup guidato aggiunge la
+chiave con input nascosto. La prima installazione e le sue verifiche restano
+registrate nello storico in fondo.
+
+Codex riceve le conclusioni tramite attesa aperta: il normale MCP non risveglia
+un turno già chiuso. Quando il controllo automatico è attivo, `wait` attende
+anche l'esito Jev e lo include nel risultato.
+
+## Configurazione
+
+```sh
+subtask jev
+subtask jev setup
+subtask jev auto
+subtask jev manual
+subtask jev off
+```
+
+Il default del pacchetto è `manual`: la configurazione non attiva nuove chiamate
+a pagamento da sola. `auto` controlla ogni nuova consegna finale, anche se il
+coordinatore non chiama `review`. Uno stop e una continuazione già programmata
+non sono consegne da controllare. `off` blocca nuovi invii; una richiesta già
+inviata conserva la propria ricevuta e il proprio accantonamento.
+
+La modalità è condivisa dai client configurati e viene riletta a ogni consegna.
+Il file è `~/.config/subtask/jev/settings.json`, con chiave dedicata nella stessa
+cartella privata; `SUBTASK_JEV_CONFIG` permette di scegliere un altro percorso.
+Il tool MCP `jev()` mostra lo stato; `jev(action="auto"|"manual"|"off")` cambia la
+modalità. Non riceve chiavi. Dopo l'installazione del codice, cambiare modalità
+o chiave non richiede un riavvio del server.
+
+Il setup usa un terminale e `getpass`: riconosce una chiave esistente e permette
+di mantenerla o sostituirla. Il valore non viene mostrato. La chiave nuova resta
+in un file privato dedicato a Subtask, senza sovrascrivere quello globale TypeSafe.
+Le credenziali si ottengono dalla [console ufficiale](https://console.typesafe.ai).
+Per automazione esiste `subtask jev setup --key-stdin --mode auto`: stdin è
+esplicito, la chiave non è un argomento del processo. Senza terminale e senza
+questa opzione, il comando dà istruzioni e non ripiega su input visibile.
+
+`wait` e `result` mostrano fase ed esito Jev. Un errore di credenziali, budget o
+provider lascia intatto il risultato del worker. Ogni tentativo ha una sola
+richiesta automatica; un invio dall'esito ignoto non viene ritentato. Il processo
+di controllo ha un limite complessivo di tempo e viene raccolto dal worker.
+
+Il controllo usa il tetto mensile già configurato nel processo chiamante, che
+può essere diverso tra CLI e client MCP. Conserva l'accantonamento prudenziale
+esistente (di norma 2 USD) e il limite del job: non cambia budget o modello.
+Il costo fatturato resta sconosciuto. I criteri automatici riguardano richiesta
+registrata, sostegno delle affermazioni e limiti del rapporto. La richiesta nei
+metadati non autentica lo scope originale: questo resta non provato. Per valutarlo
+il coordinatore può chiamare `review` con `original_request` e criteri propri.
 
 ## Contratto
 

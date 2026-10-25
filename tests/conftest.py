@@ -13,6 +13,15 @@ MODULES = (
 )  # fmt: skip
 
 
+@pytest.fixture(autouse=True)
+def isolate_jev_configuration(tmp_path, monkeypatch):
+    """The operator's automatic, paid policy must never leak into offline tests."""
+    monkeypatch.setenv("SUBTASK_JEV_CONFIG", str(tmp_path / "jev.json"))
+    monkeypatch.setenv("SUBTASK_JEV_KEY_FILE", str(tmp_path / "missing-jev-key"))
+    monkeypatch.setenv("SUBTASK_ENV_FILE", str(tmp_path / "missing-jev-env"))
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     """A private SUBTASK_HOME, fresh module state, and a bin dir first on PATH."""

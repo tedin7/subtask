@@ -67,6 +67,7 @@ def envelope(job_id: str) -> dict:
         "model": sp.get("model") or (adapter.model if adapter else None),
         "kind": sp.get("kind"),
         "state": st.get("state"),
+        "jev_review": st.get("jev_review"),
         "detail": st.get("detail"),
         "policy": sp.get("policy"),
         "verification": verification

@@ -135,6 +135,9 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _on_term)  # first thing: an early stop is never lost
     secrets = config.load_secrets()
     _redact.remember(list(secrets.values()) + [config.deepseek_key()])
+    from . import auto_review
+
+    review_key = auto_review.capture_environment_key()
     scrub_environ()
     parser = argparse.ArgumentParser()
     parser.add_argument("job_id")
@@ -280,6 +283,9 @@ def main() -> int:
             "verification": verification,
         }
         attempts = attempts[:-1] + [{**(attempts[-1] if attempts else {}), **record}]
+        review_state = auto_review.prepare(
+            attempt, state, failed_check, jobs.read_json(folder / "status.json").get("hints")
+        )
         jobs.update_status(
             job_id,
             state=state,
@@ -294,6 +300,7 @@ def main() -> int:
             proc=None,
             pid=None,
             liveness=None,
+            jev_review=review_state,
         )
         admission.release(job_id)
         emit("end", f"{state}: {detail}", state=state)
@@ -303,6 +310,8 @@ def main() -> int:
             verifier.after_failure(job_id, spec, attempts)
         elif verification and verification.get("exit_code") == 0:
             _learn(job_id, spec, attempts)
+        if review_state:
+            auto_review.finish(job_id, attempt, api_key=review_key)
     return 0
 
 

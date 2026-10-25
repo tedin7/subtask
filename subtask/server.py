@@ -30,7 +30,9 @@ mcp = FastMCP(
         "  (no deleted/skipped tests, no new noqa/type: ignore); allowed_paths=[...] reverts the rest.\n"
         "  Several jobs on one Python file: give each symbol_scope=['f.py::func'].\n"
         "Review: integrate(ids, action='diff') before integrate(ids, action='apply'); apply is all or nothing.\n"
-        "Optional Jev advice: review(id, criteria) prepares offline; submit=True uses the authorized budget.\n"
+        "Jev follows the configured policy: jev() shows status, jev(action='auto') enables every delivery.\n"
+        "wait() includes automatic Jev advice when enabled; it never accepts or integrates the work.\n"
+        "Manual review(id, criteria) prepares offline; submit=True uses the authorized budget.\n"
         "Pick the tool:\n"
         "  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over\n"
         "    the parent's .subtask/fanout.json (max 8); after='any' joins on the first success.\n"
@@ -166,6 +168,23 @@ async def stop(id: str) -> str:
 async def steer(id: str, action: str, instruction: str | None = None) -> str:
     """Correct a job: hint (instruction sent when the attempt ends) | abort | retry (fresh job with the instruction)."""
     return await asyncio.to_thread(core.steer, id, action, instruction)
+
+
+@mcp.tool(structured_output=False)
+def jev(action: str = "status") -> str:
+    """Show or change the shared Jev policy: status | auto | manual | off.
+    Auto checks every new final delivery within the existing budget. All advice is consultative.
+    Credentials are never accepted here: add or replace a key in a terminal with subtask jev setup.
+    Changes apply to new submissions in every configured CLI; no server reload is needed."""
+    from . import jev_config
+
+    if action == "status":
+        report = jev_config.status()
+    elif action in {"auto", "manual", "off"}:
+        report = jev_config.configure(mode=action)
+    else:
+        raise ValueError("Jev action must be status, auto, manual or off")
+    return json.dumps(report, ensure_ascii=False)
 
 
 @mcp.tool(structured_output=False)

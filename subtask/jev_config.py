@@ -1,11 +1,8 @@
-"""Configurazione locale del controllo Jev.
+"""Local Jev policy and private credentials.
 
-Il file gestito contiene solo la modalità (``manual``, ``auto`` o ``off``); la
-chiave vive in un file privato dedicato accanto alla configurazione. Le fonti
-legacy restano leggibili, ma una chiave salvata dal setup Subtask ha la
-precedenza anche quando nell'ambiente esiste una chiave diversa.
-
-Nessuna funzione qui chiama il provider o stampa il valore della chiave.
+The managed configuration stores only manual/auto/off. A separate private key
+file takes precedence over legacy sources after an explicit setup replacement.
+Nothing in this module calls the provider or prints credential values.
 """
 
 from __future__ import annotations
@@ -16,13 +13,15 @@ import os
 import stat
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 
 from . import config, redact
 
 MODES = ("manual", "auto", "off")
 DEFAULT_MODE = "manual"
-DEFAULT_CONFIG = "~/.config/subtask/jev.json"
+DEFAULT_CONFIG = "~/.config/subtask/jev/settings.json"
+CONSOLE_URL = "https://console.typesafe.ai"
 DEFAULT_LEGACY_KEY_FILE = "~/.config/typesafe/api-key"
 SETUP_COMMAND = "subtask jev setup"
 
@@ -41,15 +40,15 @@ _SOURCE_LABELS = {
     SOURCE_MANAGED: "file privato Subtask",
     SOURCE_ENV: "variabile TYPESAFE_API_KEY",
     SOURCE_ENV_FILE: "file env Subtask",
-    SOURCE_KEY_FILE: "file chiave legacy",
+    SOURCE_KEY_FILE: "chiave TypeSafe esistente",
 }
 
 
 class JevConfigError(ValueError):
-    """Configurazione o chiave non utilizzabile in modo sicuro."""
+    """Configuration or credential that cannot be used safely."""
 
 
-# Alias esplicito per i chiamanti che distinguono i due errori.
+# Separate credential errors from policy errors for callers.
 class JevKeyError(JevConfigError):
     pass
 
@@ -59,13 +58,13 @@ class JevKeyMissing(JevKeyError):
 
 
 def config_path() -> Path:
-    """Percorso della configurazione gestita, letto a ogni chiamata."""
+    """Managed configuration path, resolved on each call."""
     raw = os.environ.get("SUBTASK_JEV_CONFIG") or DEFAULT_CONFIG
     return Path(raw).expanduser()
 
 
 def key_path() -> Path:
-    """File privato della chiave Subtask, mai il file globale TypeSafe."""
+    """Dedicated Subtask key, separate from the shared TypeSafe file."""
     return config_path().parent / "jev-key"
 
 
@@ -330,6 +329,7 @@ def status() -> dict:
         "keyconfigured": bool(keys["configured"]),
         "source": keys["source"],
         "setup_command": SETUP_COMMAND,
+        "console_url": CONSOLE_URL,
         "config_valid": bool(configuration["valid"]),
         "budget": _budget_limits(),
     }
@@ -410,10 +410,12 @@ def _ask(prompt: str, *, as_json: bool) -> str:
 
 def _hidden_key(prompt: str) -> str:
     try:
-        return getpass.getpass(prompt)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            return getpass.getpass(prompt)
     except (EOFError, KeyboardInterrupt):
         raise
-    except OSError:
+    except (OSError, getpass.GetPassWarning):
         raise JevConfigError("impossibile leggere la chiave in modo nascosto") from None
 
 
@@ -457,6 +459,7 @@ def _wizard(mode: str | None = None, *, as_json: bool = False) -> dict:
             new_key = _clean_key(entered)
     else:
         _say("Nessuna chiave Jev configurata.", as_json=as_json)
+        _say(f"Crea una chiave: {CONSOLE_URL}", as_json=as_json)
         entered = _hidden_key("Chiave Jev (input nascosto, invio per saltare): ")
         if entered.strip():
             new_key = _clean_key(entered)
@@ -506,11 +509,16 @@ def format_status(value: dict) -> str:
         lines.append("Configurazione: non valida; resta attiva la modalità manuale")
     budget = value["budget"]
     lines.append(
-        "Budget: "
+        "Budget del processo corrente: "
         f"tetto mensile {budget['monthly_cap_usd']:.2f} $ · "
         f"job predefinito {budget['default_max_usd']:.2f} $ · "
         f"massimo job {budget['max_job_usd']:.2f} $"
     )
+    lines.append(
+        f"Accantonamento per controllo: fino a {budget['review_allowance_usd']:.2f} $; "
+        "costo fatturato sconosciuto"
+    )
+    lines.append(f"Ottieni una chiave: {CONSOLE_URL}")
     lines.append(f"Setup: {value['setup_command']}")
     lines.append("Comandi: subtask jev setup | subtask jev auto | subtask jev manual | subtask jev off")
     return "\n".join(lines)

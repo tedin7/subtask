@@ -528,20 +528,9 @@ def _packet(
 
 
 def _key() -> str:
-    key = os.environ.get("TYPESAFE_API_KEY") or config.load_secrets().get("TYPESAFE_API_KEY")
-    if not key:
-        path = Path(os.environ.get("SUBTASK_JEV_KEY_FILE", Path.home() / ".config/typesafe/api-key"))
-        try:
-            info = path.lstat()
-            if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
-                raise ValueError("Jev key file must be owned by this user and private (0600)")
-            key = path.read_text().strip()
-        except FileNotFoundError:
-            pass
-    if not key:
-        raise ValueError("Jev is not configured: set TYPESAFE_API_KEY or SUBTASK_JEV_KEY_FILE")
-    redact.remember([key])
-    return key
+    from .jev_config import resolve_key
+
+    return resolve_key()
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -660,6 +649,10 @@ def review(
             if cleaned != previous:
                 _save(receipt, cleaned)
             return cleaned  # unresolved intents are never replayed, even without credentials
+        from . import jev_config
+
+        if submit and jev_config.load().get("mode") == "off":
+            raise ValueError("Jev disattivato: usa subtask jev manual oppure subtask jev auto")
         if submit and not key:
             raise ValueError("Jev credential unavailable; no request sent")
         packet = _clean(raw_packet)
@@ -690,7 +683,7 @@ def review(
         if packet["state"]["job_allowance_usd"] < reserve:
             raise ValueError("recorded job budget is below the operator's review allowance")
         reservation = "jev-review:" + binding
-        if ledger.reserve(reservation, job_id, reserve) is None:
+        if ledger.reserve(reservation, job_id, reserve, engine="jev") is None:
             raise ValueError("Jev review budget unavailable or reservation unresolved")
         report.update(status="unknown", reason="submission_unresolved", submitted_at=time.time())
         report.update(

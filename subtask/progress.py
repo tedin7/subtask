@@ -100,6 +100,8 @@ class Reporter:
         self._maybe_send(text, significant=True, force=force)
 
     def poll(self) -> None:
+        from . import auto_review
+
         significant = False
         for job_id in self.ids:
             new, self.offsets[job_id] = events.read_since(job_id, self.offsets[job_id])
@@ -111,7 +113,11 @@ class Reporter:
                     self.activity[job_id] = text
                     self.changed[job_id] = self.now()
                     significant = True
-            state = jobs.status(job_id).get("state", "unknown")
+            status = auto_review.current(job_id, jobs.status(job_id))
+            state = status.get("state", "unknown")
+            if state in jobs.FINAL and auto_review.is_pending(status):
+                state = "jev"  # A display phase, never a change to the worker's result.
+                self.activity[job_id] = "Jev: controllo automatico in corso"
             if state != self.states.get(job_id):
                 self.states[job_id] = state
                 self.changed[job_id] = self.now()

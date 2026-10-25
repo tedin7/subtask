@@ -132,6 +132,17 @@ def _call(name: str, args: dict, call: Call) -> str:
             review(args["id"], args["criteria"], args.get("submit", False), args.get("original_request")),
             ensure_ascii=False,
         )
+    if name == "jev":
+        from . import jev_config
+
+        action = args.get("action", "status")
+        if action == "status":
+            report = jev_config.status()
+        elif action in {"auto", "manual", "off"}:
+            report = jev_config.configure(mode=action)
+        else:
+            raise ValueError("Jev action must be status, auto, manual or off")
+        return json.dumps(report, ensure_ascii=False)
     if name == "map_reduce":
         from . import map_reduce
 
