@@ -30,7 +30,8 @@
     "cascade_total_wall_s": 12.864,
     "normal_total_component_s": 134.356,
     "cascade_median_wall_s": 0.3,
-    "normal_median_component_s": 10.153
+    "normal_median_component_s": 10.153,
+    "jev_false_supported": 0
   },
   "phases": {
     "test_plan": {
@@ -43,7 +44,8 @@
       "cascade_total_wall_s": 1.304,
       "normal_total_component_s": 60.202,
       "cascade_median_wall_s": 0.315,
-      "normal_median_component_s": 13.348
+      "normal_median_component_s": 13.348,
+      "jev_false_supported": 0
     },
     "delivery": {
       "n": 2,
@@ -55,7 +57,8 @@
       "cascade_total_wall_s": 10.457,
       "normal_total_component_s": 19.006,
       "cascade_median_wall_s": 5.229,
-      "normal_median_component_s": 9.503
+      "normal_median_component_s": 9.503,
+      "jev_false_supported": 0
     },
     "recovery": {
       "n": 4,
@@ -67,7 +70,8 @@
       "cascade_total_wall_s": 1.103,
       "normal_total_component_s": 55.148,
       "cascade_median_wall_s": 0.277,
-      "normal_median_component_s": 9.87
+      "normal_median_component_s": 9.87,
+      "jev_false_supported": 0
     }
   },
   "invoice": "UNKNOWN",
@@ -841,6 +845,14 @@
     "normal baseline reused for fallback; comparison-only calls excluded from cascade",
     "no automatic normal-agent launch enabled on deliveries",
     "prior intake failure not replaced; small phase samples",
-    "recovery statuses already detected deterministically"
-  ]
+    "recovery statuses already detected deterministically",
+    "preparing criteria, actual test execution, code writing and coordinator effort excluded from timings; not end-to-end task time or cost"
+  ],
+  "live_filter_source": "6412f7c (accepted author6b67b91)",
+  "hardened_filter_source": "a1af3a8",
+  "offline_route_revalidation": {
+    "routes_checked": 10,
+    "routes_unchanged": true,
+    "api_calls": 0
+  }
 }
