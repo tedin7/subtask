@@ -401,3 +401,19 @@ Claude2 già aperte conservano la propria connessione: richiedono `/reload-plugi
 oppure la riconnessione del solo server da `/mcp`. Non sono state comandate
 tramite la loro interfaccia interattiva. Il limite persistente è 10 nei client
 configurati; i budget, i modelli e le credenziali restano quelli precedenti.
+
+### Pulizia portabile della prova macOS
+
+Il run GitHub `40213701814` passa su Linux 3.11–3.14 e nel pacchetto. Nel job
+macOS sperimentale la nuova prova del PID passa le asserzioni, ma la sua pulizia
+fallisce con `PermissionError` sul probe `killpg(..., 0)` mentre il figlio termina.
+Il test `test_group_cleanup_survives_a_permission_race` riproduce lo stesso errore
+su Linux con un figlio reale: rosso prima, verde dopo. Il helper ora raccoglie
+il proprio figlio prima del probe e ritenta il controllo se la fine del gruppo
+produce un errore transitorio di permessi. Le asserzioni avversarie restano intatte.
+
+Le sette prove dei due file stop passano dopo la correzione. Questa modifica
+riguarda solo la pulizia dei test: codice distribuito, wheel e installazione
+restano quelli verificati sopra. La matrice CI del push successivo verifica
+il test anche su macOS. Il run precedente mostrava inoltre un fallimento del
+test hint preesistente, senza modifiche al suo percorso: non è dichiarato risolto.

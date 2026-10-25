@@ -48,13 +48,49 @@ def _kill_group(pgid: int) -> None:
         os.killpg(pgid, signal.SIGKILL)
     except ProcessLookupError:
         return
+    try:
+        os.waitpid(pgid, 0)  # Reap our own leader before probing a dying group.
+    except ChildProcessError:
+        pass
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         try:
             os.killpg(pgid, 0)
         except ProcessLookupError:
             return
+        except PermissionError:
+            pass  # Retry teardown probes; a permission error does not prove absence.
         time.sleep(0.01)
+
+
+def test_group_cleanup_survives_a_permission_race(home, monkeypatch):
+    """macOS may reject a group probe while a killed process is being torn down."""
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import sys; sys.stdin.read()"],
+        stdin=subprocess.PIPE,
+        start_new_session=True,
+    )
+    real_killpg = os.killpg
+    injected = False
+
+    def killpg(pgid, sig):
+        nonlocal injected
+        assert pgid == proc.pid
+        if sig == 0 and not injected:
+            injected = True
+            raise PermissionError("group teardown race")
+        return real_killpg(pgid, sig)
+
+    monkeypatch.setattr(os, "killpg", killpg)
+    try:
+        _kill_group(proc.pid)
+        assert injected
+        assert proc.poll() is not None
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=5)
+        proc.stdin.close()
 
 
 def test_stop_retry_must_not_finalize_a_surviving_worker_child(home, monkeypatch, tmp_path):
