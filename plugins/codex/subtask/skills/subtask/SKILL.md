@@ -113,13 +113,25 @@ subtask@subtask`) brings the same skill. Verify with `codex mcp list` and
 
 ## After the job
 
-- Optional Jev advice: `review(id, criteria=[...], original_request="...")` prepares a local packet from
+- Jev policy is shared by the configured clients: `jev()` shows it; `jev(action="auto")`
+  enables an automatic advisory check on every final delivery. Change a paid policy only when
+  authorized by the operator. `wait` includes the automatic outcome and progress shows the Jev
+  phase. Read that outcome before submitting a second manual check. `jev(action="manual")`
+  restores explicit submission; `jev(action="off")` blocks new provider submissions.
+  Add or replace credentials only in the terminal with `subtask jev setup` (hidden input),
+  never in a tool argument. A policy or credential change applies without restarting the server.
+  All checks share the existing monthly cap and prudent per-review allowance; unknown invoices
+  remain unknown. A missing key, exhausted budget or failed check never changes the worker result.
+- Manual Jev advice: `review(id, criteria=[...], original_request="...")` prepares a local packet from
   the coordinator's original request, report, committed diff and recorded checks. Supply
   `original_request` yourself: worker-visible job metadata cannot establish full scope.
   Records are mutable by the same OS user, so this is advice, not attestation. `submit=True` sends one
   provider request only within the task's authorized budget. The result checks
   the whole request as well as the checklist; missing evidence stays unproven.
   Advice never accepts or integrates a delivery. Read `docs/delivery-review.md`.
+  Automatic checks use recorded job metadata and a fixed checklist, so full original scope stays
+  unproven. Supply the original request yourself for that stronger manual check. Use `verify`
+  when launching work: a worker's account of its own tests cannot replace the runner's evidence.
 
 - A summary is what the worker reports. Trust a `verified` status or the
   evidence envelope over a sentence like "all tests pass".
