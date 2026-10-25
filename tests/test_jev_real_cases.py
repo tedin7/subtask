@@ -231,3 +231,18 @@ def test_minimal_offline_dry_run_uses_real_worker_and_hidden_oracle(campaign):
     labels = json.loads((campaign / "private" / "labels.json").read_text())["labels"]
     assert set(result["job_ids"]) <= set(labels)
     assert Counter(labels[cid] for cid in result["job_ids"]) == Counter({"valid": 1, "incomplete": 1})
+
+
+@pytest.mark.parametrize(
+    ("source", "succeeds"),
+    [("def sample():\n    return 1\n", True), ("def broken(\n", False), (None, False)],
+)
+def test_common_smoke_checks_actual_python_files(tmp_path, source, succeeds):
+    if source is not None:
+        package = tmp_path / "subtask"
+        package.mkdir()
+        (package / "sample.py").write_text(source)
+    result = subprocess.run(
+        bench._smoke(), shell=True, cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    assert (result.returncode == 0) is succeeds

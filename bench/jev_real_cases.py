@@ -743,6 +743,7 @@ def _campaign_lock(root: Path):
 def _spec_hash() -> str:
     value = {
         "version": VERSION,
+        "smoke": _smoke(),
         "families": [
             {
                 "id": family.id,
@@ -820,7 +821,9 @@ def _candidate_ids(family: Family) -> tuple[str, str]:
 def _smoke() -> str:
     code = (
         "import ast,pathlib,sys;"
-        "[ast.parse(pathlib.Path(p).read_text(encoding='utf-8'),filename=p) for p in sys.argv[1:]];"
+        "paths=sorted(pathlib.Path('subtask').rglob('*.py'));"
+        "assert paths,'no Python source files';"
+        "[ast.parse(p.read_text(encoding='utf-8'),filename=str(p)) for p in paths];"
         "caches=[p for p in pathlib.Path('subtask').rglob('__pycache__')];"
         "assert not caches,caches;print('smoke ok')"
     )
@@ -931,7 +934,8 @@ def _prepare_locked(root: Path, repo: Path, base: str | None, seed: int) -> dict
         try:
             for path, text in seeded.items():
                 (scratch / path).write_text(text)
-            _git(scratch, "add", "-A")
+            for staged_path in seeded:
+                _git(scratch, "add", "--", staged_path)
             baseline_message = root / "messages" / f"_baseline-{family.id}.txt"
             _write_atomic(baseline_message, f"bench: stato iniziale {family.id}\n")
             _git(
@@ -942,7 +946,6 @@ def _prepare_locked(root: Path, repo: Path, base: str | None, seed: int) -> dict
                 "user.email=bench@localhost",
                 "commit",
                 "-q",
-                "--no-verify",
                 "-F",
                 str(baseline_message),
             )
@@ -958,7 +961,8 @@ def _prepare_locked(root: Path, repo: Path, base: str | None, seed: int) -> dict
                 _git(scratch, "clean", "-fdq")
                 for path, text in texts.items():
                     (scratch / path).write_text(text)
-                _git(scratch, "add", "-A")
+                for staged_path in texts:
+                    _git(scratch, "add", "--", staged_path)
                 patch = _git(scratch, "diff", "--cached", "--binary", "--no-renames", baseline, "--").stdout
                 if not patch.strip():
                     raise CampaignError(f"{candidate}: empty candidate patch")
