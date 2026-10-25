@@ -124,7 +124,7 @@ def committed(month: str | None = None) -> float:
         return _committed(month or month_of())
 
 
-def reserve(rid: str, job: str, usd: float, cap: float | None = None) -> float | None:
+def reserve(rid: str, job: str, usd: float, cap: float | None = None, engine: str | None = None) -> float | None:
     """Book `usd`; None when it would overshoot the cap or is not a sane amount.
 
     Idempotent per rid: reserving an rid that already exists returns None.
@@ -139,18 +139,18 @@ def reserve(rid: str, job: str, usd: float, cap: float | None = None) -> float |
         total = _committed(month)
         if total + usd > cap:
             return None
-        _append(
-            month,
-            {
-                "v": VERSION,
-                "ts": now(),
-                "op": "reserve",
-                "rid": rid,
-                "job": job,
-                "usd": float(usd),
-                "month": month,
-            },
-        )
+        row = {
+            "v": VERSION,
+            "ts": now(),
+            "op": "reserve",
+            "rid": rid,
+            "job": job,
+            "usd": float(usd),
+            "month": month,
+        }
+        if engine:
+            row["engine"] = engine
+        _append(month, row)
         return total + usd
 
 
@@ -184,6 +184,8 @@ def close(rid: str, usd: float, op: str = "settle") -> float | None:
         booked = 0.0 if op == "release" else reserved if reported is None else min(reported, reserved)
         closing = {"v": VERSION, "ts": now(), "op": op, "rid": rid, "job": row.get("job"),
                    "usd": round(booked, 6), "month": month}  # fmt: skip
+        if row.get("engine"):
+            closing["engine"] = row["engine"]
         if op == "settle" and reported is None:
             closing["note"] = "unknown cost: charged the reservation"
         elif op == "settle" and reported > reserved:
