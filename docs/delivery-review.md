@@ -461,3 +461,71 @@ riguarda solo la pulizia dei test: codice distribuito, wheel e installazione
 restano quelli verificati sopra. La matrice CI del push successivo verifica
 il test anche su macOS. Il run precedente mostrava inoltre un fallimento del
 test hint preesistente, senza modifiche al suo percorso: non è dichiarato risolto.
+
+
+## Automatico e configurazione semplice — 2026-10-25
+
+Operatore: automatico su tutte le nuove consegne. Implementazione verificata
+`9b139fccc198fde26d040f91e0615e9e0e0c046e`, installata localmente come wheel
+0.5.0 aggiornata dal sorgente. La configurazione personale è ora `auto`;
+il default per nuove installazioni resta `manual`. Non è una nuova release PyPI:
+il README installa ora da `main` per includere queste funzioni.
+
+- Esecutore CLI/config: `st-5fa09f2bfb`, commit `46bb6d3`, integrato in `6ea2696`.
+- Coordinatore: runtime automatico, wait/progresso, server MCP, integrazione e prove reali.
+- Falsificatore indipendente OpenCode Go: `st-61523685d8`, test `e637a69`;
+  otto casi rossi riprodotti, stessi byte dei test inclusi nel candidato.
+- Revisore delle correzioni: `st-1f22330372`, test `01aecb6` integrato esattamente;
+  tre varianti residue rosse, poi verdi. Su `9b139fc`: `severe_open=0`, 51 mirati verdi,
+  tentativo successivo preservato. Nessun cambiamento del sorgente da parte del revisore.
+
+| Prova | Comando/ambiente | Esito |
+|---|---|---|
+| Gate completo finale | `build-a-turno .venv/bin/python -m pytest -q`, worktree completo, Python3.14.8 | 485 passed,4 deselected,288.56s; `full-v4.log` |
+| Stile | `.venv/bin/ruff check subtask tests`; `.venv/bin/ruff format --check subtask tests` | verdi,99 file formattati |
+| Regole MCP | dump di `subtask.server`, schema e istruzioni | 17 strumenti; istruzioni1968 caratteri, entro il limite2000 |
+| Pacchetto isolato | `wheel_smoke.py`, venv separata, entrambi i server | 58 file del pacchetto identici al sorgente; 17 strumenti; avvio e stop concorrenti;0 provider |
+| Prova automatica reale | `canary.py`, wheel780d07a, start/wait/result senza review manuale; ledger canonico | `st-07dc5b88fc`, done/reviewed,21.105s,1 invio |
+| Provider osservato | stessa ricevuta reale | jev-1.14.0; 1846 token input,334 output;3 criteri e scope non provati |
+| Installazione e client | `installed_smoke.py`, doctor nativi | wheel finale58 file; entrambi i backend17 strumenti; Claude/Codex/Kimi/OpenCode configurati e collegati; Claude2/plugin collegato in processo fresco |
+| Ricaricamento | RPC Codex; sostituzione del solo MCP OpenCode nelle due directory | Codex collegato17 strumenti; OpenCode collegato, PID servizio2327792 conservato |
+
+La prova reale precede l'ultima correzione di CLI/progresso/timestamp. I sette
+file che costruiscono e inviano la richiesta automatica sono identici tra
+780d07a e9b139fc (`git diff --exit-code` verificato). Il pacchetto finale è
+stato nuovamente provato in isolamento, senza ripetere una richiesta a pagamento
+sullo stesso percorso nominale. La prova minima verifica il meccanismo automatico;
+un compito demo non dimostra la qualità della revisione di codice reale.
+
+Wheel finale SHA256 `4bce9b802bc00d91c4c5f7a9a0af262cacc6c43296d0fdb42d91f1b33a6691e1`. Prove e ricevute private:
+`/root/.local/state/subtask-jev-auto-20261025/`. `review-original.md`,
+`review-fixes-round2.md` e `review-final.md` conservano i rapporti completi.
+Backup del pacchetto precedente e dei file dei client pronti; ripristino:
+prima `subtask jev off`, poi wheel precedente, skill salvate e ricaricamento del
+solo MCP. Non ripristinare o cancellare il ledger e la chiave TypeSafe.
+
+La chiave esistente è riusata (`source=key_file`), non riscritta. Configurazione
+personale `~/.config/subtask/jev/settings.json`, directory0700 e file0600.
+`subtask jev setup` inserisce o sostituisce la chiave con input nascosto;
+`subtask jev` mostra lo stato; `manual` e `off` cambiano la politica senza riavvio.
+Per chat Claude/Claude2 già aperte serve `/mcp` → Subtask → Reconnect; una
+connessione fresca è verificata, la UI delle chat esistenti non è controllabile
+via questo MCP. Codex espone il nuovo elenco nel collegamento aggiornato;
+il catalogo dei tool già fornito al modello può richiedere il turno successivo.
+
+Budget invariati. La prova Jev accantona2 USD prudenziali, costo fatturato
+UNKNOWN. Motori Go dell'esecutore e dei revisori:0 USD imputati dal ledger.
+Saldo osservato dopo il canary: 232.757665 USD impegnati,
+127.24 residui contro il tetto360 di Codex/Claude. OpenCode continua
+con il default180 (verificato nei due processi MCP), perciò il registro attuale
+blocca lì nuovi invii; nessun tetto è stato aumentato. Anche gli altri client
+senza override mantengono180. Il controllo resta consultivo: non accetta,
+integra, rilancia né completa automaticamente il lavoro del sottoagente.
+
+### Trovato strada facendo
+
+- Installazione README fissata al vecchio tag: corretta a `main`, così il setup documentato esiste nel sorgente installato.
+- Vecchio percorso del draft6ea2696 mai installato/attivato: nessun file reale da migrare osservato.
+- Errori CLI generici se `jev` appare solo come valore: limite non bloccante accettato dal revisore, per evitare eco di credenziali.
+- Revisione manuale con timeout per operazione preesistente; automatica con watchdog45s e supervisione50s. Intenti ignoti mai ritentati.
+- Wrapper globale dei controlli senza coda FIFO: attesa lunga osservata, nessuna modifica dei limiti o del wrapper.
