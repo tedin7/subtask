@@ -191,6 +191,7 @@ def test_git_candidate_and_failed_verification_cannot_be_promoted(delivery, home
             "cwd": str(repo),
             "branch": git("branch", "--show-current"),
             "base": base,
+            "verify": "pytest -q",
         },
     )
     jobs.write_json(
@@ -202,6 +203,7 @@ def test_git_candidate_and_failed_verification_cannot_be_promoted(delivery, home
                 "exit_code": 1,
                 "head": head,
                 "dirty_after": False,
+                "command": "pytest -q",
                 "output_tail": "test_ui FAILED",
             },
         },
@@ -327,6 +329,143 @@ def test_recovered_intent_is_not_replayed(delivery, monkeypatch):
 
     prepared = review.review("st-delivery", ["UI works"])
     pending = {**prepared, "status": "unknown", "reason": "submission_unresolved"}
-    jobs.write_json(delivery / "reviews" / f"{prepared['request_sha256']}.json", pending)
+    jobs.write_json(delivery / "reviews" / f"{prepared['binding_sha256']}.json", pending)
     monkeypatch.setattr(review, "_request", lambda *_: pytest.fail("must not replay an unresolved request"))
     assert review.review("st-delivery", ["UI works"], submit=True) == pending
+
+
+def test_cached_receipt_is_recoverable_without_a_key(delivery, monkeypatch):
+    from subtask import delivery_review as review
+
+    calls = []
+
+    def provider(packet, _):
+        calls.append(1)
+        return answer(packet)
+
+    monkeypatch.setattr(review, "_request", provider)
+    first = review.review("st-delivery", ["UI works"], submit=True)
+
+    def unavailable():
+        raise ValueError("credential removed")
+
+    monkeypatch.setattr(review, "_key", unavailable)
+    assert review.review("st-delivery", ["UI works"], submit=True) == first
+    assert len(calls) == 1
+
+
+def test_pinned_provider_model_cannot_change(delivery, monkeypatch):
+    from subtask import delivery_review as review
+
+    monkeypatch.setenv("SUBTASK_JEV_MODEL", "jev-1.14.0")
+    monkeypatch.setattr(review, "_request", lambda packet, _: answer(packet))
+    assert review.review("st-delivery", ["UI works"], submit=True)["status"] == "unknown"
+
+
+def test_raw_report_bytes_invalidate_even_if_decoding_is_identical(delivery, monkeypatch):
+    from subtask import delivery_review as review
+
+    (delivery / "result.md").write_bytes(b"report\xff")
+
+    def provider(packet, _):
+        (delivery / "result.md").write_bytes(b"report\xfe")
+        return answer(packet)
+
+    monkeypatch.setattr(review, "_request", provider)
+    assert review.review("st-delivery", ["UI works"], submit=True)["status"] == "unknown"
+
+
+def test_scope_cannot_be_established_from_worker_visible_metadata(delivery, home, monkeypatch):
+    from subtask import delivery_review as review
+    from tests.test_delivery_review_adversarial import _git_repo
+
+    repo, git, base, head = _git_repo(home)
+    jobs.write_json(
+        delivery / "spec.json",
+        {
+            "task": "Parser only",
+            "engine": "fake",
+            "repo": str(repo),
+            "base": base,
+            "branch": git("branch", "--show-current"),
+            "verify": "pytest -q",
+        },
+    )
+    jobs.write_json(
+        delivery / "status.json",
+        {
+            "state": "done",
+            "attempt": 1,
+            "verification": {"exit_code": 0, "head": head, "command": "pytest -q", "dirty_after": False},
+        },
+    )
+    monkeypatch.setattr(review, "_request", lambda packet, _: answer(packet, "supported", "verification"))
+    report = review.review("st-delivery", ["Parser works"], submit=True)
+    assert report["assessments"][0]["assessment"] == "supported"
+    assert report["scope_assessment"]["assessment"] == "unproven"
+    assert report["metadata_assurance"] == "same_user_mutable_records"
+
+
+def test_prepare_never_runs_a_candidate_clean_filter(delivery, home):
+    import shlex
+
+    from subtask import delivery_review as review
+    from tests.test_delivery_review_adversarial import _git_repo
+
+    repo, git, base, _ = _git_repo(home)
+    (repo / ".gitattributes").write_text("parser.py filter=candidate\n")
+    git("add", ".gitattributes")
+    git("commit", "-qm", "attributes")
+    sentinel = home / "clean-filter-ran"
+    script = home / "filter.sh"
+    script.write_text("#!/bin/sh\ntouch " + shlex.quote(str(sentinel)) + "\ncat\n")
+    script.chmod(0o700)
+    git("config", "filter.candidate.clean", str(script))
+    (repo / "parser.py").write_text("value = 3\n")
+    jobs.write_json(
+        delivery / "spec.json",
+        {
+            "task": "Parser",
+            "engine": "fake",
+            "repo": str(repo),
+            "base": base,
+            "branch": git("branch", "--show-current"),
+            "cwd": str(repo),
+        },
+    )
+    report = review.review("st-delivery", ["Parser"])
+    assert report["candidate"]["kind"] == "committed_snapshot"
+    assert not sentinel.exists()
+
+
+def test_worker_report_cannot_be_a_symlink(delivery, home, monkeypatch):
+    from subtask import delivery_review as review
+
+    outside = home / "outside.txt"
+    outside.write_text("unrelated private material")
+    (delivery / "result.md").unlink()
+    (delivery / "result.md").symlink_to(outside)
+    monkeypatch.setattr(review, "_request", lambda *_: pytest.fail("must reject before submitting"))
+    with pytest.raises(OSError):
+        review.review("st-delivery", ["Parser works"], submit=True)
+
+
+def test_fifo_material_is_refused_without_waiting_for_a_writer(home):
+    import os
+    import sys
+
+    fifo = home / "report.pipe"
+    os.mkfifo(fifo)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; from subtask.delivery_review import _read; _read(Path(__import__('sys').argv[1]))",
+            str(fifo),
+        ],
+        check=False,
+        timeout=3,
+        capture_output=True,
+    )
+    assert result.returncode != 0
+    assert b"regular file" in result.stderr

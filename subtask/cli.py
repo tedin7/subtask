@@ -63,6 +63,9 @@ def main() -> int:
     rv.add_argument(
         "--submit", action="store_true", help="send one provider request; default prepares offline"
     )
+    source = rv.add_mutually_exclusive_group()
+    source.add_argument("--original-request", help="original request supplied by the coordinator")
+    source.add_argument("--request-file", help="original request file supplied by the coordinator")
     rp = sub.add_parser("reply")
     rp.add_argument("id")
     rp.add_argument("message")
@@ -144,10 +147,12 @@ def main() -> int:
         out = core.result(a.id, a.full, a.evidence)
     elif a.cmd == "review":
         import json
+        from pathlib import Path
 
-        from .delivery_review import review
+        from .delivery_review import _read, review
 
-        out = json.dumps(review(a.id, a.criteria, a.submit), ensure_ascii=False, indent=2)
+        original = _read(Path(a.request_file)) if a.request_file else a.original_request
+        out = json.dumps(review(a.id, a.criteria, a.submit, original), ensure_ascii=False, indent=2)
     elif a.cmd == "reply":
         out = core.reply(a.id, a.message)
     elif a.cmd == "stop":

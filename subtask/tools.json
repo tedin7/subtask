@@ -255,7 +255,7 @@
   },
   {
    "name": "review",
-   "description": "Advisory Jev review of a terminal delivery against the parent's criteria (1-12).\nDefault prepares a local evidence packet without network. submit=True sends one request using\nthe configured TypeSafe key. Returns candidate-bound advice, citations and unknown costs;\nnever accepts, merges, deploys or retries the worker. Missing evidence remains unproven.",
+   "description": "Advisory Jev review of a terminal delivery against the parent's criteria (1-12).\nDefault prepares a local evidence packet without network. submit=True sends one request using\nthe configured TypeSafe key. Returns candidate-bound advice, citations and unknown costs;\nnever accepts, merges, deploys or retries the worker. Supply original_request from the coordinator\nto judge full scope: worker-visible job metadata cannot authenticate the original request.",
    "inputSchema": {
     "properties": {
      "id": {
@@ -270,6 +270,9 @@
      "submit": {
       "default": false,
       "type": "boolean"
+     },
+     "original_request": {
+      "type": "string"
      }
     },
     "required": [

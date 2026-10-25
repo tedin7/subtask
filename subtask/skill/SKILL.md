@@ -113,8 +113,10 @@ subtask@subtask`) brings the same skill. Verify with `codex mcp list` and
 
 ## After the job
 
-- Optional Jev advice: `review(id, criteria=[...])` prepares a local packet from
-  the original request, report, diff and recorded checks. `submit=True` sends one
+- Optional Jev advice: `review(id, criteria=[...], original_request="...")` prepares a local packet from
+  the coordinator's original request, report, committed diff and recorded checks. Supply
+  `original_request` yourself: worker-visible job metadata cannot establish full scope.
+  Records are mutable by the same OS user, so this is advice, not attestation. `submit=True` sends one
   provider request only within the task's authorized budget. The result checks
   the whole request as well as the checklist; missing evidence stays unproven.
   Advice never accepts or integrates a delivery. Read `docs/delivery-review.md`.

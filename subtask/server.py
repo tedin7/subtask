@@ -169,14 +169,17 @@ async def steer(id: str, action: str, instruction: str | None = None) -> str:
 
 
 @mcp.tool(structured_output=False)
-async def review(id: str, criteria: list[str], submit: bool = False) -> str:
+async def review(
+    id: str, criteria: list[str], submit: bool = False, original_request: str | None = None
+) -> str:
     """Advisory Jev review of a terminal delivery against the parent's criteria (1-12).
     Default prepares a local evidence packet without network. submit=True sends one request using
     the configured TypeSafe key. Returns candidate-bound advice, citations and unknown costs;
-    never accepts, merges, deploys or retries the worker. Missing evidence remains unproven."""
+    never accepts, merges, deploys or retries the worker. Supply original_request from the coordinator
+    to judge full scope: worker-visible job metadata cannot authenticate the original request."""
     from .delivery_review import review as review_delivery
 
-    report = await asyncio.to_thread(review_delivery, id, criteria, submit)
+    report = await asyncio.to_thread(review_delivery, id, criteria, submit, original_request)
     return json.dumps(report, ensure_ascii=False)
 
 
