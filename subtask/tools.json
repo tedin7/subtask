@@ -254,6 +254,32 @@
    }
   },
   {
+   "name": "review",
+   "description": "Advisory Jev review of a terminal delivery against the parent's criteria (1-12).\nDefault prepares a local evidence packet without network. submit=True sends one request using\nthe configured TypeSafe key. Returns candidate-bound advice, citations and unknown costs;\nnever accepts, merges, deploys or retries the worker. Missing evidence remains unproven.",
+   "inputSchema": {
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "criteria": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "submit": {
+      "default": false,
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "id",
+     "criteria"
+    ],
+    "type": "object"
+   }
+  },
+  {
    "name": "inspect",
    "description": "Raw log lines of a job (last `tail`, filtered by `grep`). Only when the summary is not enough.",
    "inputSchema": {

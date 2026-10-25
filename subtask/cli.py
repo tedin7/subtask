@@ -57,6 +57,12 @@ def main() -> int:
     r.add_argument("id")
     r.add_argument("--full", action="store_true")
     r.add_argument("--evidence", action="store_true", help="JSON envelope with sources")
+    rv = sub.add_parser("review", help="advisory Jev review of a finished delivery")
+    rv.add_argument("id")
+    rv.add_argument("--criterion", action="append", required=True, dest="criteria")
+    rv.add_argument(
+        "--submit", action="store_true", help="send one provider request; default prepares offline"
+    )
     rp = sub.add_parser("reply")
     rp.add_argument("id")
     rp.add_argument("message")
@@ -136,6 +142,12 @@ def main() -> int:
         out = core.status(a.id)
     elif a.cmd == "result":
         out = core.result(a.id, a.full, a.evidence)
+    elif a.cmd == "review":
+        import json
+
+        from .delivery_review import review
+
+        out = json.dumps(review(a.id, a.criteria, a.submit), ensure_ascii=False, indent=2)
     elif a.cmd == "reply":
         out = core.reply(a.id, a.message)
     elif a.cmd == "stop":

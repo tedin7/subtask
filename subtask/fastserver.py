@@ -120,6 +120,10 @@ def _call(name: str, args: dict, call: Call) -> str:
         return core.stop(args["id"])
     if name == "result":
         return core.result(args["id"], args.get("full", False), args.get("evidence", False))
+    if name == "review":
+        from .delivery_review import review
+
+        return json.dumps(review(args["id"], args["criteria"], args.get("submit", False)), ensure_ascii=False)
     if name == "map_reduce":
         from . import map_reduce
 
