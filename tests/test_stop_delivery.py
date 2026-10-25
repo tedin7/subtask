@@ -65,3 +65,29 @@ def test_stop_intent_does_not_finish_a_group_with_surviving_children(home, monke
     monkeypatch.setattr(jobs, "_group_alive", lambda pgid: pgid == proc.pid)
     assert jobs.status("st-123456789b")["state"] == "running"
     assert len(ledger.open_for("st-123456789b")) == 1
+
+
+def test_stop_preserves_the_prudential_reservation_of_a_legacy_job(home):
+    from subtask import core, jobs, ledger, procid
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import sys; sys.stdin.read()"],
+        stdin=subprocess.PIPE,
+        start_new_session=True,
+    )
+    job_id = "st-123456789c"
+    try:
+        _job(job_id, proc, True)
+        path = jobs.job_dir(job_id) / "status.json"
+        legacy = jobs.read_json(path)
+        del legacy["v"], legacy["spend_possible"]
+        legacy["liveness"] = procid.ALIVE
+        jobs.write_json(path, legacy)
+        assert core.stop(job_id) == f"{job_id} stopped"
+        assert ledger.committed() == pytest.approx(1.5)
+        assert ledger.open_for(job_id) == []
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=5)
+        proc.stdin.close()

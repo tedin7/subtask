@@ -189,7 +189,12 @@ def stop(job_id: str, grace_s: float = 8.0) -> bool:
         if current.get("state") not in ACTIVE:
             return False
         # Persist intent before signalling: concurrent wait/status may reap the worker.
-        current = update_status(job_id, locked=True, stop_requested=True)
+        current = update_status(
+            job_id,
+            locked=True,
+            stop_requested=True,
+            spend_possible=current.get("spend_possible", "v" not in current),
+        )
     proc = _proc(current)
     if not proc:
         # Spawned but not recorded yet: ask the worker to stop itself, then wait for its identity.
@@ -207,7 +212,11 @@ def stop(job_id: str, grace_s: float = 8.0) -> bool:
     if liveness(job_id, current) == procid.ALIVE and not _kill_group(int(proc["pid"]), grace_s):
         return False  # something survived SIGKILL: do not pretend
     data = status(job_id)  # settles the stopped worker once its process group is gone
-    if data.get("state") in ACTIVE and _proc(data) and liveness(job_id, data) != procid.DEAD:
+    if (
+        data.get("state") in ACTIVE
+        and _proc(data)
+        and (liveness(job_id, data) != procid.DEAD or _group_alive(int(proc["pid"])))
+    ):
         return False
     if read_json(job_dir(job_id) / "status.json").get("state") != "stopped":
         from . import admission, events

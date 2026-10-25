@@ -96,7 +96,7 @@ def test_stop_must_not_finalize_a_reused_pid_group(home):
     try:
         recorded = procid.identity(foreign.pid)
         assert recorded["start"]
-        recorded["start"] = str(int(recorded["start"]) - 1)  # same numeric PID, different process
+        recorded["start"] = "different-start-time"  # same numeric PID, different process (also on macOS)
         _job(job_id, recorded, True)
         jobs.update_status(job_id, stop_requested=True)
         assert procid.alive(recorded) == procid.DEAD
