@@ -322,8 +322,8 @@ def test_risposta_provider_non_valida_salva_raw_privato_e_errore_sicuro(tmp_path
     def request(packet, key):
         body = _body(packet)
         body["answers"]["C1"]["probabilities"] = {
-            "supported": 0.9,
-            "contradicted": 0.9,
+            "supported": 0.5,
+            "contradicted": 0.5,
             "unproven": 0.0,
         }
         body["note"] = SECRET
