@@ -1,5 +1,12 @@
 # Controllo consultivo delle consegne con Jev
 
+Stato del 25 ottobre 2026: **installato e verificato localmente** da
+`3a469ba82e41fab6e9d53307962193c28d6ba9ed`, con 411 test passati.
+Jev resta consultivo e su richiesta. Codex riceve le conclusioni tramite attesa
+aperta: il normale MCP non risveglia un turno già chiuso.
+Il limite Codex/Subtask è impostato a 10 nelle nuove connessioni; serve riaprire
+Codex per aggiornare connessioni e schema già caricati. Dettagli finali in fondo.
+
 ## Contratto
 
 Il coordinatore confronta una consegna terminale con 1–12 criteri scritti dal
@@ -231,3 +238,50 @@ canonico, senza perdere entry prima di verificarle. Git ignora la cache con
 `core.commitGraph=false`. Una prova su una directory reale verifica l'ordine
 canonico di Git. I 97 test Jev passano in 9,37 s; la suite completa e la wheel
 precedenti appartengono ad aafedf3, non ancora a questa correzione.
+
+
+### Risultato finale installato
+
+- Sorgente e test accettati: `3a469ba82e41fab6e9d53307962193c28d6ba9ed`,
+  albero `63413df8a6d43c36249728f647ec3e0b35e0feaf`.
+- Gate completo finale: `build-a-turno .venv/bin/python -m pytest -q -p no:cacheprovider`,
+  **411 passati, 4 live esclusi in 288,77 s**, `release-full.log`.
+- Ruff 0.17.0 check e format: verdi (91 file); schema MCP identico al dump.
+- Ultima revisione indipendente `st-512365624d`: `severe_open=false` sul diff finale;
+  i due aggiramenti sono rossi prima e verdi dopo, con 14 nuovi controlli di
+  accettazione su alberi Git reali SHA-1/SHA-256. Gli altri difetti registrati
+  sopra hanno regressioni distinte; restano i limiti dichiarati del controllo consultivo.
+- Wheel installata: SHA-256
+  `5bae513caa95c7ac29afd8344cc16be76fb6b45aa0c14461d456abc58881b40a`.
+  Il confronto dell'installazione verifica 56 file identici, 16 strumenti e il
+  parametro `original_request` su entrambi i server MCP. Nessuna API nello smoke.
+- Prova reale sulla policy v6: `jev-1.14.0`, 2144 token input e 293 output;
+  parser `supported`, pagina e scope `unproven`, `v6-live-smoke-report.json`.
+- Skill Codex installata e confrontata con sorgente e tre copie dei plugin.
+  Configurazione persistente `SUBTASK_MAX_RUNNING=10`; budget mensile invariato.
+
+Ambiente: Linux, Python 3.14.8, venv editable con `constraints.txt` per i test;
+venv separata e interprete `-I` per la wheel e la prova reale. Il client HTTP
+installato coincide con il pacchetto verificato. Nessun modello Codex reale è
+stato eseguito: il percorso adapter usa una CLI simulata, quello MCP il client
+ufficiale. Il limite del turno inattivo è verificato nel sorgente Codex 0.164.0.
+
+Contributi: OpenCode ha prodotto il percorso di consegna e le prove avversarie;
+Opus ha corretto integrità e redazione (`aafedf3`); il coordinatore ha integrato,
+corretto i due aggiramenti finali ed eseguito gate, wheel, prova reale e installazione.
+Il registro completo dei sette ruoli è `final-accounting.json` nella directory
+privata delle prove. Opus: 1,3003 USD registrati dal SDK. Tre chiamate Jev: 6 USD
+prudenziali, fatturato sconosciuto. Il costo del coordinatore e la quota degli
+abbonamenti non sono ripartiti; nessun risparmio economico è dimostrato.
+Alle 12:47:14 UTC il registro mensile impegnava 230,7577 su 360 USD, con
+129,2423 USD residui. Questa è una fotografia del registro, non una fattura.
+
+Il rilascio è locale: main integrato, wheel installata tramite uv e skill Codex
+aggiornata. La versione resta 0.5.0; nessun push o rilascio PyPI è stato eseguito.
+I processi MCP già aperti conservano codice e configurazione caricati: riaprire
+Codex per usare il nuovo tool e i dieci slot. La CLI installata è già disponibile.
+
+Ripristino pronto in `/root/.local/state/subtask-jev-20261025/rollback_install.py`:
+backup di 63 file verificato prima dell'installazione, inventario dei file aggiunti
+e copia della skill precedente. Il ritorno del pacchetto non cambia il limite 10
+richiesto dall'operatore, i job o il registro delle spese.
