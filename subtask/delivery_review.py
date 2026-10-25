@@ -579,7 +579,7 @@ def _assess(packet: dict, body: dict, criteria: list[str], limitations: list[str
         if not isinstance(probs, dict) or set(probs) != set(question["criteria"]):
             raise ValueError("invalid provider probabilities")
         if any(
-            type(p) not in (int, float) or not math.isfinite(p) or not 0 <= p <= 1 for p in probs.values()
+            type(p) not in (int, float) or not 0 <= p <= 1 or not math.isfinite(p) for p in probs.values()
         ):
             raise ValueError("invalid provider probability")
         choice = value.get("choice")

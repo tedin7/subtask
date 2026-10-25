@@ -57,10 +57,17 @@ class JevKeyMissing(JevKeyError):
     pass
 
 
+def _expand(raw: str | Path, what: str, error: type[JevConfigError] = JevConfigError) -> Path:
+    try:
+        return Path(raw).expanduser()
+    except (RuntimeError, ValueError, TypeError):
+        raise error(f"percorso {what} non valido") from None
+
+
 def config_path() -> Path:
     """Managed configuration path, resolved on each call."""
     raw = os.environ.get("SUBTASK_JEV_CONFIG") or DEFAULT_CONFIG
-    return Path(raw).expanduser()
+    return _expand(raw, "configurazione Jev")
 
 
 def key_path() -> Path:
@@ -228,19 +235,9 @@ def _clean_key(value: str, error: type[JevConfigError] = JevKeyError) -> str:
 
 
 def _env_file_secrets() -> dict[str, str]:
-    """Legacy SUBTASK_ENV_FILE, read safely when its path is overridden at runtime."""
-    override = os.environ.get("SUBTASK_ENV_FILE")
-    if not override:
-        try:
-            return config.load_secrets()
-        except (OSError, UnicodeError):
-            return {}
-    try:
-        raw = _read_owned(
-            Path(override).expanduser(), MAX_ENV_BYTES, "file env", private=False, error=JevConfigError
-        )
-    except JevConfigError:
-        return {}
+    """Read every legacy env source with the same private-file checks."""
+    path = _expand(os.environ.get("SUBTASK_ENV_FILE") or config.ENV_FILE, "file env", JevKeyError)
+    raw = _read_owned(path, MAX_ENV_BYTES, "file env", private=True, error=JevKeyError)
     if raw is None:
         return {}
     values: dict[str, str] = {}
@@ -264,7 +261,9 @@ def _read_managed_key() -> str | None:
 
 
 def _read_legacy_key_file() -> str | None:
-    path = Path(os.environ.get("SUBTASK_JEV_KEY_FILE") or DEFAULT_LEGACY_KEY_FILE).expanduser()
+    path = _expand(
+        os.environ.get("SUBTASK_JEV_KEY_FILE") or DEFAULT_LEGACY_KEY_FILE, "file chiave Jev", JevKeyError
+    )
     raw = _read_owned(path, MAX_KEY_BYTES, "file chiave Jev", private=True, error=JevKeyError)
     if raw is None:
         return None

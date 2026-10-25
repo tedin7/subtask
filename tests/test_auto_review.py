@@ -378,3 +378,17 @@ def test_wait_does_not_finish_between_hint_check_and_delivery(home, monkeypatch)
     monkeypatch.setattr(core, "_deliver_hints", deliver)
     assert "st-hint-race done" in core.wait(["st-hint-race"], timeout=5)
     assert len(count) == 2
+
+
+def test_refused_retry_exposes_automatic_review_without_a_wait_gap(delivery, monkeypatch):
+    from subtask import auto_review, core, jobs, verifier
+
+    job = "st-auto-review"
+    jobs.update_status(job, retry_pending=True, jev_review=None)
+    monkeypatch.setattr(core, "reply", lambda *_: "retry refused for this test")
+    attempts = [{"n": 1, "verification": {"exit_code": 1, "command": "false"}}]
+    assert verifier.after_failure(job, {"max_retries": 1}, attempts) == "retry refused"
+    status = jobs.status(job)
+    assert not status["retry_pending"]
+    assert auto_review.is_pending(status)
+    assert "still running" in core.wait([job], timeout=0)

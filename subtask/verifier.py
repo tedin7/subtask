@@ -80,10 +80,25 @@ def verified_attempts(attempts: list[dict]) -> list[dict]:
     return [a for a in attempts if a.get("verification")]
 
 
+def _finish_retry(job_id: str, attempt: int, **fields) -> None:
+    from . import auto_review
+
+    with jobs.job_lock(job_id):
+        status = jobs.read_json(jobs.job_dir(job_id) / "status.json")
+        if status.get("attempt", 1) != attempt:
+            return
+        review = status.get("jev_review")
+        if review is None:
+            review = auto_review.prepare(attempt, status.get("state"), False, status.get("hints"))
+        # Ending retry and exposing the advisory phase must be one transition.
+        jobs.update_status(job_id, locked=True, retry_pending=False, jev_review=review, **fields)
+
+
 def after_failure(job_id: str, spec: dict, attempts: list[dict]) -> str:
     """Retry with the failure, or roll back to the best attempt. Returns what happened."""
     from . import core
 
+    attempt = jobs.read_json(jobs.job_dir(job_id) / "status.json").get("attempt", 1)
     tried = verified_attempts(attempts)
     retries = int(spec.get("max_retries") or 0)
     if len(tried) <= retries:
@@ -97,10 +112,10 @@ def after_failure(job_id: str, spec: dict, attempts: list[dict]) -> str:
         if out.endswith("resumed"):
             events.emit(job_id, "verify", f"retry {len(tried)}/{retries}")
             return "retry"
-        jobs.update_status(job_id, retry_pending=False, retry_error=out[:200])
+        _finish_retry(job_id, attempt, retry_error=out[:200])
         events.emit(job_id, "verify", f"retry not started: {out[:100]}")
         return "retry refused"
-    jobs.update_status(job_id, retry_pending=False)
+    _finish_retry(job_id, attempt)
     if not spec.get("branch") or len(tried) < 2:
         return "no rollback"
     # Ties go to the latest attempt: rolling back only pays when an earlier one was strictly better.

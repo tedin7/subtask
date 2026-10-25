@@ -99,12 +99,21 @@ def _record(job_id: str, attempt: int, *, expected: dict | None = None, **fields
         return entry
 
 
+def _finite(value: object) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def pending(job_id: str, status: dict) -> bool:
     entry = _entry(status)
     if entry.get("state") not in PENDING:
         return False
     created = entry.get("created")
-    if type(created) not in (int, float) or not math.isfinite(created) or created > time.time() + 5:
+    if not _finite(created) or created > time.time() + 5:
         current = _record(
             job_id, entry["attempt"], expected=entry, state="unknown", reason="invalid_metadata"
         )
@@ -245,7 +254,7 @@ def details(status: dict) -> str:
     if isinstance(limits, list):
         out += "\nLimiti Jev: " + ", ".join(str(x)[:100] for x in limits[:20])
     budget = report.get("budget_charged_usd")
-    if type(budget) in (int, float) and math.isfinite(budget):
+    if _finite(budget):
         out += f"\nAccantonamento Jev: {budget:.2f} USD; costo fatturato sconosciuto"
     return redact.redact(out[:8000])
 

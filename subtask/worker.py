@@ -310,7 +310,7 @@ def main() -> int:
             verifier.after_failure(job_id, spec, attempts)
         elif verification and verification.get("exit_code") == 0:
             _learn(job_id, spec, attempts)
-        if review_state:
+        if review_state or failed_check:
             auto_review.finish(job_id, attempt, api_key=review_key)
     return 0
 

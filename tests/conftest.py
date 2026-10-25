@@ -33,6 +33,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("SUBTASK_PROGRESS_MIN_S", "0")
     monkeypatch.setenv("SUBTASK_ENGINE_PLUGINS", "tests.fake_engine:adapter")
     (tmp_path / "env").write_text("ANTHROPIC_API_KEY=sk-ant-test-secret-0000000000\n")
+    (tmp_path / "env").chmod(0o600)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")

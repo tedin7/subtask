@@ -118,6 +118,8 @@ class Reporter:
             if state in jobs.FINAL and auto_review.is_pending(status):
                 state = "jev"  # A display phase, never a change to the worker's result.
                 self.activity[job_id] = "Jev: controllo automatico in corso"
+            elif state in jobs.FINAL and self.states.get(job_id) == "jev":
+                self.activity[job_id] = auto_review.line(status) or "Jev: controllo terminato"
             if state != self.states.get(job_id):
                 self.states[job_id] = state
                 self.changed[job_id] = self.now()

@@ -23,10 +23,16 @@ from . import core
 from .install import commands as install_commands
 
 
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        # A mistyped key flag must not echo the credential back into logs.
+        if len(sys.argv) > 1 and sys.argv[1] == "jev":
+            message = "opzioni Jev non valide; usa subtask jev --help. Inserisci la chiave solo nel setup o su stdin"
+        super().error(message)
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(
-        prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    p = _Parser(prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("start")
     s.add_argument("task", help="brief, or - to read it from stdin")
