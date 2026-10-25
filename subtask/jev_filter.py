@@ -1,11 +1,13 @@
 """Pure offline advisory filter for native structured Choice answers.
 
-The filter has two independent steps:
+The filter has three independent steps:
 
 * :func:`validate_answers` checks a provider ``body`` against the expected
   question definitions and returns only normalized answer data.
 * :func:`route` decides whether a reviewed result may use the empirical Jev
   answer (``"jev"``) or must fall back to the normal path (``"normal"``).
+* :func:`delivery_route` adapts a delivery-review report to the same decision,
+  additionally requiring a proven scope assessment.
 
 Everything here is inert data handling. A ``"jev"`` route is advice about which
 answer to prefer, never acceptance, integration, verification or execution. No
@@ -326,6 +328,8 @@ def _decision(value: Any) -> tuple[dict, str | None]:
         raise TypeError("answer_invalid")
 
     decision: dict[str, Any] = {"provider_choice": provider_choice}
+    if isinstance(value.get("evidence_ref"), str):
+        decision["evidence_ref"] = value["evidence_ref"]
     effective: list[str] = []
     error: str | None = None
 
@@ -335,8 +339,6 @@ def _decision(value: Any) -> tuple[dict, str | None]:
             error = "wrapper_veto"
         else:
             effective.append(assessment)
-            if assessment not in DECISIVE:
-                error = "wrapper_veto"
     if "choice" in value and value["choice"] is not None:
         choice = value["choice"]
         if not isinstance(choice, str) or choice not in KNOWN_VERDICTS:
@@ -365,11 +367,11 @@ def _decision(value: Any) -> tuple[dict, str | None]:
     if error is not None:
         return decision, error
     if any(label not in DECISIVE for label in [provider_choice, *effective]):
+        if provider_choice in DECISIVE and any(label not in DECISIVE for label in effective):
+            return decision, "wrapper_veto"
         return decision, "not_decisive"
     if len({provider_choice, *effective}) != 1:
         return decision, "provider_wrapper_disagreement"
-    if isinstance(value.get("evidence_ref"), str):
-        decision["evidence_ref"] = value["evidence_ref"]
     return decision, None
 
 
@@ -397,27 +399,35 @@ def route(result: Any, required_ids: Any) -> dict:
         return _normal(reason or "status_not_reviewed", required)
     if _has_tool_marker(result):
         return _normal("tool_use_detected", required)
-    for field in _VETO_FIELDS:
-        if field in result and _is_nonempty(result[field]):
-            return _normal("wrapper_veto", required)
-    if _is_nonempty(result.get("error")):
-        return _normal("status_error", required)
 
     answers = result.get("answers")
     if not isinstance(answers, dict):
         return _normal("answers_invalid", required)
 
+    # Build every available decision before applying top-level vetoes. A normal
+    # route must still show what the provider said for each required decision.
     decisions: dict[str, dict] = {}
+    failure: str | None = None
     for question_id in required:
         if question_id not in answers:
-            return _normal("missing_required_decision", required, decisions)
+            failure = failure or "missing_required_decision"
+            continue
         try:
             decision, error = _decision(answers[question_id])
         except (TypeError, ValueError) as exc:
-            return _normal(str(exc), required, decisions)
+            failure = failure or str(exc)
+            continue
         decisions[question_id] = decision
         if error is not None:
-            return _normal(error, required, decisions)
+            failure = failure or error
+
+    for field in _VETO_FIELDS:
+        if field in result and _is_nonempty(result[field]):
+            return _normal("wrapper_veto", required, decisions)
+    if _is_nonempty(result.get("error")):
+        return _normal("status_error", required, decisions)
+    if failure is not None:
+        return _normal(failure, required, decisions)
 
     return {
         "route": "jev",
@@ -431,3 +441,70 @@ def route(result: Any, required_ids: Any) -> dict:
         "required_ids": list(required),
         "decisions": decisions,
     }
+
+
+def delivery_route(report: Any) -> dict:
+    """Route an existing delivery-review report without granting acceptance.
+
+    The report must be the reviewed shape with an ``assessments`` list and a
+    ``scope_assessment``. Every assessment and the scope are required decisions.
+    A missing, malformed or unproven scope forces ``"normal"`` even when every
+    criterion is decisive. A decisive scope and decisive, agreeing assessments
+    route to ``"jev"``; ``supported`` and ``contradicted`` are both accepted.
+    Wrapper downgrades and top-level limitations keep their veto. The result is
+    advisory only and never accepts, integrates, releases or executes anything.
+    """
+    if not isinstance(report, dict):
+        return _normal("result_invalid", [])
+
+    status = report.get("status")
+    if status != "reviewed":
+        reason = _STATUS_REASONS.get(status, "status_not_reviewed") if isinstance(status, str) else ""
+        return _normal(reason or "status_not_reviewed", [])
+
+    assessments = report.get("assessments")
+    if not isinstance(assessments, list):
+        return _normal("assessments_invalid", [])
+
+    answers: dict[str, dict] = {}
+    required: list[str] = []
+    for item in assessments:
+        if not isinstance(item, dict):
+            return _normal("assessments_invalid", required)
+        question_id = item.get("id")
+        if not isinstance(question_id, str) or not question_id or question_id in answers:
+            return _normal("assessments_invalid", required)
+        if not isinstance(item.get("assessment"), str) or not isinstance(item.get("provider_choice"), str):
+            return _normal("assessments_invalid", required + [question_id])
+        answers[question_id] = item
+        required.append(question_id)
+
+    scope = report.get("scope_assessment")
+    scope_id = "scope"
+    if isinstance(scope, dict):
+        candidate = scope.get("id", "scope")
+        if isinstance(candidate, str) and candidate:
+            scope_id = candidate
+
+    scope_added = False
+    if scope_id not in answers:
+        required.append(scope_id)
+        if isinstance(scope, dict):
+            answers[scope_id] = scope
+            scope_added = True
+
+    scope_proven = (
+        scope_added
+        and isinstance(scope.get("assessment"), str)
+        and scope["assessment"] in DECISIVE
+        and isinstance(scope.get("provider_choice"), str)
+        and scope["provider_choice"] in DECISIVE
+        and scope["assessment"] == scope["provider_choice"]
+    )
+
+    routed = route({**report, "status": "reviewed", "answers": answers}, required)
+    if not scope_proven:
+        routed["route"] = "normal"
+        routed["reason"] = "scope_unproven"
+        routed["reasons"] = ["scope_unproven"]
+    return routed

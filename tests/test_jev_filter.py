@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from subtask.jev_filter import InvalidAnswer, route, validate_answers
+from subtask.jev_filter import InvalidAnswer, delivery_route, route, validate_answers
 
 QUESTIONS = {
     "C1": {
@@ -438,3 +438,267 @@ def test_route_is_deterministic_json_safe_and_does_not_mutate_input():
     assert result == before
     assert "provider" not in first
     assert "command" not in first
+
+
+# --- delivery_route --------------------------------------------------------
+
+_MISSING = object()
+
+
+def review_item(
+    question_id: str = "C1",
+    *,
+    assessment: str = "supported",
+    provider_choice: str | None = None,
+    probabilities: dict[str, object] | None = None,
+    evidence_ref: str = "verification",
+    **extra: object,
+) -> dict:
+    if provider_choice is None:
+        provider_choice = assessment
+    if probabilities is None:
+        probabilities = {
+            "supported": float(provider_choice == "supported"),
+            "contradicted": float(provider_choice == "contradicted"),
+            "unproven": float(provider_choice == "unproven"),
+        }
+    return {
+        "id": question_id,
+        "assessment": assessment,
+        "provider_choice": provider_choice,
+        "probabilities": probabilities,
+        "evidence_ref": evidence_ref,
+        **extra,
+    }
+
+
+def delivery_report(
+    *assessments: dict,
+    scope: object = _MISSING,
+    status: object = "reviewed",
+    limitations: object = _MISSING,
+) -> dict:
+    report = {"status": status, "assessments": list(assessments)}
+    if scope is _MISSING:
+        scope = review_item("scope")
+    if scope is not None:
+        report["scope_assessment"] = scope
+    if limitations is not _MISSING:
+        report["limitations"] = limitations
+    return report
+
+
+def test_delivery_route_accepts_supported_and_contradicted_when_all_proven():
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        review_item("C2", assessment="contradicted"),
+        scope=review_item("scope", assessment="contradicted"),
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "jev"
+    assert routed["advisory_only"] is True
+    assert routed["acceptance"] is False
+    assert routed["integration"] is False
+    assert routed["accepted"] is False
+    assert routed["integrated"] is False
+    assert routed["required_ids"] == ["C1", "C2", "scope"]
+    assert routed["decisions"]["C1"]["provider_choice"] == "supported"
+    assert routed["decisions"]["C2"]["provider_choice"] == "contradicted"
+    assert routed["decisions"]["scope"]["provider_choice"] == "contradicted"
+    assert routed["decisions"]["C1"]["evidence_ref"] == "verification"
+
+
+def test_delivery_route_scope_only_is_allowed_when_scope_is_proven():
+    routed = delivery_route(delivery_report(scope=review_item("scope", assessment="supported")))
+    assert routed["route"] == "jev"
+    assert routed["required_ids"] == ["scope"]
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        None,
+        {},
+        {"id": "scope", "assessment": "unproven", "provider_choice": "supported"},
+        {"id": "scope", "assessment": "supported", "provider_choice": "unproven"},
+        {"id": "scope", "assessment": "supported", "provider_choice": "contradicted"},
+    ],
+)
+def test_delivery_route_missing_or_unproven_scope_forces_normal(scope):
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        review_item("C2", assessment="contradicted"),
+        scope=scope,
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "scope_unproven"
+    assert routed["reasons"] == ["scope_unproven"]
+    assert routed["required_ids"] == ["C1", "C2", "scope"]
+    assert {"C1", "C2"} <= set(routed["decisions"])
+
+
+def test_delivery_route_missing_scope_forces_normal_even_if_present_is_supported():
+    report = delivery_report(review_item("C1", assessment="supported"), scope=None)
+    assert "scope_assessment" not in report
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "scope_unproven"
+    assert routed["decisions"]["C1"]["provider_choice"] == "supported"
+
+
+def test_delivery_route_scope_downgrade_preserves_provider_choice():
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        scope={
+            "id": "scope",
+            "assessment": "unproven",
+            "provider_choice": "supported",
+            "probabilities": {"supported": 1, "contradicted": 0, "unproven": 0},
+        },
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "scope_unproven"
+    assert routed["decisions"]["scope"]["provider_choice"] == "supported"
+    assert routed["decisions"]["scope"]["assessment"] == "unproven"
+
+
+def test_delivery_route_criterion_unproven_forces_normal_and_keeps_scope_decision():
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        review_item("C2", assessment="unproven"),
+        scope=review_item("scope", assessment="supported"),
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "not_decisive"
+    assert routed["required_ids"] == ["C1", "C2", "scope"]
+    assert set(routed["decisions"]) == {"C1", "C2", "scope"}
+    assert routed["decisions"]["C2"]["provider_choice"] == "unproven"
+
+
+def test_delivery_route_wrapper_downgrade_preserves_provider_choice():
+    report = delivery_report(
+        review_item("C1", assessment="unproven", provider_choice="supported"),
+        scope=review_item("scope", assessment="supported"),
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "wrapper_veto"
+    assert routed["decisions"]["C1"]["provider_choice"] == "supported"
+    assert routed["decisions"]["C1"]["assessment"] == "unproven"
+    assert routed["decisions"]["C1"]["evidence_ref"] == "verification"
+
+
+def test_delivery_route_limitations_veto_even_when_all_answers_are_decisive():
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        scope=review_item("scope", assessment="supported"),
+        limitations=["verification_not_run"],
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "wrapper_veto"
+    assert set(routed["decisions"]) == {"C1", "scope"}
+
+    report["limitations"] = []
+    assert delivery_route(report)["route"] == "jev"
+
+
+@pytest.mark.parametrize("status", ["unknown", "invalid", "error", "prepared", None])
+def test_delivery_route_non_reviewed_status_forces_normal(status):
+    report = delivery_report(review_item("C1"), status=status)
+    assert delivery_route(report)["route"] == "normal"
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {},
+        {"status": "reviewed"},
+        {"status": "reviewed", "assessments": "not-a-list", "scope_assessment": review_item("scope")},
+        {
+            "status": "reviewed",
+            "assessments": ["not-a-dict"],
+            "scope_assessment": review_item("scope"),
+        },
+        {
+            "status": "reviewed",
+            "assessments": [{"assessment": "supported", "provider_choice": "supported"}],
+            "scope_assessment": review_item("scope"),
+        },
+        {
+            "status": "reviewed",
+            "assessments": [
+                review_item("C1"),
+                review_item("C1", assessment="contradicted", provider_choice="contradicted"),
+            ],
+            "scope_assessment": review_item("scope"),
+        },
+        {
+            "status": "reviewed",
+            "assessments": [{"id": "C1", "provider_choice": "supported"}],
+            "scope_assessment": review_item("scope"),
+        },
+        {
+            "status": "reviewed",
+            "assessments": [{"id": "C1", "assessment": "supported"}],
+            "scope_assessment": review_item("scope"),
+        },
+    ],
+)
+def test_delivery_route_malformed_reports_force_normal(report):
+    assert delivery_route(report)["route"] == "normal"
+
+
+def test_delivery_route_invalid_probabilities_force_normal():
+    report = delivery_report(
+        review_item(
+            "C1",
+            probabilities={"supported": 0.8, "contradicted": 0.1, "unproven": 0.09},
+        )
+    )
+    assert delivery_route(report)["route"] == "normal"
+
+
+def test_delivery_route_duplicate_scope_id_forces_normal():
+    report = delivery_report(
+        review_item("scope", assessment="supported"),
+        scope=review_item("scope", assessment="supported"),
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "normal"
+    assert routed["reason"] == "scope_unproven"
+
+
+def test_delivery_route_defaults_missing_scope_id_to_scope():
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        scope={"assessment": "supported", "provider_choice": "supported"},
+    )
+    routed = delivery_route(report)
+    assert routed["route"] == "jev"
+    assert routed["required_ids"] == ["C1", "scope"]
+
+
+def test_delivery_route_is_offline_json_safe_and_does_not_mutate_or_execute(tmp_path):
+    target = tmp_path / "created"
+    report = delivery_report(
+        review_item("C1", assessment="supported"),
+        scope=review_item("scope", assessment="supported"),
+    )
+    report.update(
+        command=f"touch {target}",
+        code="open('created', 'w').write('x')",
+        shell=f"touch {target}",
+        provider="attacker",
+    )
+    before = json.loads(json.dumps(report))
+    routed = delivery_route(report)
+    assert routed["route"] == "jev"
+    assert not target.exists()
+    assert json.loads(json.dumps(routed)) == routed
+    assert report == before
+    assert "command" not in routed
+    assert "provider" not in routed
