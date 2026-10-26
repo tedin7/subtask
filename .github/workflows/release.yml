@@ -46,7 +46,6 @@ jobs:
         with:
           name: dist
           path: dist/
-          retention-days: 7
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   github-release:
@@ -60,7 +59,6 @@ jobs:
         with:
           name: dist
           path: dist/
-          retention-days: 7
       - name: Release with the changelog section
         env:
           GH_TOKEN: ${{ github.token }}
