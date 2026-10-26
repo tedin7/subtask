@@ -374,6 +374,19 @@ def _packet(
     request = (
         original_request if original_request is not None else spec.get("task", "").split(WORKTREE_NOTE, 1)[0]
     )
+    from . import contracts
+
+    contract = contracts.current_contract(spec, status)
+    registered = False
+    if original_request is None and isinstance(contract, dict):
+        supplied_digest = contract.get("sha256")
+        unsigned = {k: v for k, v in contract.items() if k != "sha256"}
+        if supplied_digest == contracts.digest(unsigned) and contract.get("source") == "coordinator_start":
+            # The immutable registration is separate from the worker-visible expanded task.
+            request = contract["request"]
+            if contract.get("delta"):
+                request += "\nCoordinator continuation:\n" + contract["delta"]
+            registered = True
     verification = status.get("verification")
     raw_report = _read_bytes(folder / "result.md")
     candidate = {
@@ -385,14 +398,25 @@ def _packet(
     }
     materials = {
         "request": {
-            "level": "caller_supplied" if original_request is not None else "unverified_job_metadata",
+            "level": "caller_supplied"
+            if original_request is not None
+            else "coordinator_recorded"
+            if registered
+            else "unverified_job_metadata",
+            "provenance": {
+                "contract_sha256": (contract or {}).get("sha256"),
+                "identity_authenticated": False,
+            },
             "text": request,
         },
         "worker_report": {"level": "worker_reported", "text": raw_report.decode("utf-8", errors="replace")},
     }
     limitations = []
     if original_request is None:
+        # Registration provenance is useful, but a local hash does not authenticate coordinator identity.
         limitations.append("request_origin_unverified")
+        if registered:
+            limitations.append("coordinator_registration_unattested")
     if status.get("state") != "done":
         limitations.append("worker_not_done")
     if verification and not isinstance(verification, dict):
@@ -458,6 +482,9 @@ def _packet(
         if "GIT binary patch" in patch or "Subproject commit" in patch or LFS_POINTER.search(patch):
             limitations.append("patch_content_not_inspected")
         candidate.update(base=base, head=head, patch_sha256=hashlib.sha256(patch.encode()).hexdigest())
+        if registered:
+            binding_validation = contracts.receipt_state(spec, status, head, contract)
+            limitations.extend(binding_validation.get("missing", []))
         materials["patch"] = {"level": "runner_observed", "text": patch}
         # Judge the committed branch snapshot, never live worktree contents.
         # Even `git status` may execute candidate-configured clean filters.
@@ -501,6 +528,13 @@ def _packet(
             "job": job_id,
             "criteria": criteria,
             "candidate": candidate,
+            "contract": {key: contract.get(key) for key in ("sha256", "revision", "source", "limitations")}
+            if isinstance(contract, dict)
+            else None,
+            "evidence_index": {
+                key: {"id": key, "source": value["level"], "sha256": _digest(value)}
+                for key, value in materials.items()
+            },
             "materials": materials,
             "limitations": limitations,
         },
@@ -519,7 +553,10 @@ def _packet(
         {
             "packet": packet,
             "spec": spec,
-            "status": {key: status.get(key) for key in ("state", "attempt", "verification", "retry_pending")},
+            "status": {
+                key: status.get(key)
+                for key in ("state", "attempt", "verification", "retry_pending", "contract")
+            },
         }
     )
     if len(_bytes(packet)) > MAX_BYTES:
@@ -613,6 +650,10 @@ def _assess(packet: dict, body: dict, criteria: list[str], limitations: list[str
                 "provider_choice": value["choice"],
                 "probabilities": value["probabilities"],
                 "evidence_ref": reference,
+                "evidence_ids": [reference] if reference in packet["state"]["materials"] else [],
+                "missing_evidence": sorted(blockers),
+                "next_action": next_proof(blockers, reference),
+                "next_action_source": "deterministic_wrapper",
             }
         )
     return assessments
@@ -713,10 +754,87 @@ def review(
             )
         except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as exc:
             # No raw exception/body: transport errors can contain credentials or private text.
-            report.update(status="unknown", reason=type(exc).__name__)
+            report.update(status="unknown", reason=diagnostic_code(exc))
             if isinstance(exc, urllib.error.HTTPError):
                 report["http_status"] = exc.code
         report = _clean(report)
         _save(receipt, report)
         ledger.close(reservation, reserve, "settle")
     return report
+
+
+def diagnostic_code(exc):
+    """Only controlled categories escape; no arbitrary exception text or response data."""
+    if isinstance(exc, (OSError, urllib.error.URLError, TimeoutError)):
+        return "transport_error"
+    text = str(exc) if isinstance(exc, (ValueError, TypeError)) else ""
+    if text == "candidate_changed_during_review":
+        return "candidate_changed"
+    if "probabilit" in text or text == "invalid provider choice":
+        return "invalid_probabilities"
+    if text in (
+        "provider answers do not match the request",
+        "invalid provider answer",
+        "invalid provider model",
+        "provider usage unavailable",
+        "invalid provider model does not match the requested revision",
+    ):
+        return "response_incomplete"
+    if "too large" in text or "exceeds" in text:
+        return "material_too_large"
+    return "response_invalid"
+
+
+def next_proof(blockers, reference=None):
+    missing = set(blockers)
+    if missing & {
+        "verification_candidate_mismatch",
+        "candidate_changed",
+        "attempt_changed",
+        "contract_changed",
+    }:
+        return "Repeat the authorized check on this candidate and contract; no command is executed automatically."
+    if any(x.startswith(("verification", "check_")) for x in missing):
+        return "Collect the missing runner receipt on this candidate."
+    if reference in {"none", "request", "worker_report"}:
+        return "Supply an independent observation for this claim."
+    return (
+        "Local evidence does not prove release: collect service version and public observation when required."
+    )
+
+
+def prepare_packets(job_id, criteria, original_request=None):
+    """Offline, one complete packet per claim. Oversized full patches block locally, never truncate."""
+    prepared = []
+    for i, criterion in enumerate(criteria):
+        try:
+            packet, candidate, limits = _packet(job_id, [criterion], original_request)
+            folder = jobs.job_dir(job_id) / "packet-plans"
+            _reject_symlinks(folder)
+            folder.mkdir(mode=0o700, exist_ok=True)
+            filename = folder / (_digest(packet) + ".json")
+            _save(filename, packet)
+            prepared.append(
+                {
+                    "id": "claim-" + str(i + 1),
+                    "status": "prepared",
+                    "packet_ref": str(filename),
+                    "packet_sha256": _digest(packet),
+                    "packet_bytes": len(_bytes(packet)),
+                    "candidate": candidate,
+                    "limitations": limits,
+                    "coverage": "one_claim_full_snapshot",
+                    "submit": False,
+                }
+            )
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+            prepared.append(
+                {
+                    "id": "claim-" + str(i + 1),
+                    "status": "blocked",
+                    "reason": diagnostic_code(exc),
+                    "coverage": "none",
+                    "submit": False,
+                }
+            )
+    return prepared

@@ -34,6 +34,10 @@ class _Parser(argparse.ArgumentParser):
 def main() -> int:
     p = _Parser(prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
+    pl = sub.add_parser("plan", help="preview JSON tasks, then launch immutable plan once")
+    pl.add_argument("--tasks-file", help="JSON task list; - reads stdin")
+    pl.add_argument("--id", dest="plan_id")
+    pl.add_argument("--launch", action="store_true")
     s = sub.add_parser("start")
     s.add_argument("task", help="brief, or - to read it from stdin")
     s.add_argument("--engine", default="auto")
@@ -50,6 +54,7 @@ def main() -> int:
     s.add_argument("--file", action="append", dest="files", help="path the agent reads first")
     s.add_argument("--policy", choices=["worktree", "sandbox", "isolated", "untrusted"])
     s.add_argument("--untrusted", action="store_true")
+    s.add_argument("--contract-file", help="coordinator contract JSON")
     s.add_argument("--verify", help="command subtask runs itself on the result (exit 0 = verified)")
     w = sub.add_parser("wait")
     w.add_argument("ids", nargs="+")
@@ -66,6 +71,7 @@ def main() -> int:
     r.add_argument("--evidence", action="store_true", help="JSON envelope with sources")
     rv = sub.add_parser("review", help="advisory Jev review of a finished delivery")
     rv.add_argument("id")
+    rv.add_argument("--packets", action="store_true", help="prepare separate offline claim packet manifests")
     rv.add_argument("--criterion", action="append", required=True, dest="criteria")
     rv.add_argument(
         "--submit", action="store_true", help="send one provider request; default prepares offline"
@@ -137,7 +143,15 @@ def main() -> int:
     if a.cmd in ("install", "uninstall") or (a.cmd == "doctor" and a.client):
         return install_commands.run(a)
 
-    if a.cmd == "start":
+    if a.cmd == "plan":
+        import json
+        from pathlib import Path
+
+        tasks = None
+        if a.tasks_file:
+            tasks = json.loads(sys.stdin.read() if a.tasks_file == "-" else Path(a.tasks_file).read_text())
+        out = core.plan(tasks, a.plan_id, a.launch)
+    elif a.cmd == "start":
         task = sys.stdin.read() if a.task == "-" else a.task
         out = core.start(
             task,
@@ -156,6 +170,9 @@ def main() -> int:
             policy=a.policy,
             verify=a.verify,
             untrusted=a.untrusted,
+            contract=__import__("json").loads(__import__("pathlib").Path(a.contract_file).read_text())
+            if a.contract_file
+            else None,
         )
     elif a.cmd == "wait":
         out = core.wait(a.ids, a.timeout, a.any, not a.no_results, since=a.since, mode=a.mode)
@@ -170,7 +187,14 @@ def main() -> int:
         from .delivery_review import _read, review
 
         original = _read(Path(a.request_file)) if a.request_file else a.original_request
-        out = json.dumps(review(a.id, a.criteria, a.submit, original), ensure_ascii=False, indent=2)
+        if a.packets:
+            from .delivery_review import prepare_packets
+
+            if a.submit:
+                raise ValueError("targeted packets are offline only")
+            out = json.dumps(prepare_packets(a.id, a.criteria, original), ensure_ascii=False, indent=2)
+        else:
+            out = json.dumps(review(a.id, a.criteria, a.submit, original), ensure_ascii=False, indent=2)
     elif a.cmd == "reply":
         out = core.reply(a.id, a.message)
     elif a.cmd == "stop":

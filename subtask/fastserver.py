@@ -116,6 +116,8 @@ def _wait(
 def _call(name: str, args: dict, call: Call) -> str:
     from . import core
 
+    if name == "plan":
+        return core.plan(**args)
     if name == "wait":
         return _wait(core, call, **args)
     if name == "stop":
@@ -126,7 +128,15 @@ def _call(name: str, args: dict, call: Call) -> str:
     if name == "result":
         return core.result(args["id"], args.get("full", False), args.get("evidence", False))
     if name == "review":
-        from .delivery_review import review
+        from .delivery_review import prepare_packets, review
+
+        if args.get("packets"):
+            if args.get("submit"):
+                raise ValueError("targeted packets are offline only")
+            return json.dumps(
+                prepare_packets(args["id"], args["criteria"], args.get("original_request")),
+                ensure_ascii=False,
+            )
 
         return json.dumps(
             review(args["id"], args["criteria"], args.get("submit", False), args.get("original_request")),

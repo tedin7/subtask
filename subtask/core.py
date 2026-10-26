@@ -116,6 +116,7 @@ def start(
     oracle_cmd: str | None = None,
     _breaker: str | None = None,
     _group: str | None = None,
+    contract: dict | None = None,
 ) -> str:
     budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
     problem = _validate(task, engine, kind, budget, max_turns, base, effort)
@@ -150,6 +151,52 @@ def start(
         repo = _repo_of(str(Path(cwd or os.getcwd()).resolve()))
         if not repo:
             return "isolation worktree needs a git repository"
+    # Capture the coordinator input before worker context/lessons/worktree notes exist.
+    from . import planning
+
+    try:
+        registered_contract = planning.preflight(
+            {
+                "task": task,
+                "engine": engine,
+                "repo": repo,
+                "cwd": cwd,
+                "base": base,
+                "readonly": readonly,
+                "max_usd": max_usd,
+                "max_turns": max_turns,
+                "effort": effort,
+                "model": model,
+                "sandbox": sandbox,
+                "kind": kind,
+                "files": files,
+                "policy": policy,
+                "verify": verify,
+                "untrusted": untrusted,
+                "isolation": isolation,
+                "context_refs": context_refs,
+                "auto_repomap": auto_repomap,
+                "invariants": invariants,
+                "allowed_paths": allowed_paths,
+                "symbol_scope": symbol_scope,
+                "oracle_cmd": oracle_cmd,
+                "contract": contract,
+            }
+        )
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        # Controlled deterministic errors only; never launch the worker after failed preparation.
+        telemetry.record(
+            {
+                "event": "preparation_failed",
+                "source": "deterministic",
+                "reason": "invalid_start_input",
+                "worker_started": False,
+            }
+        )
+        from .contracts import ContextReferenceError
+
+        prefix = "context_refs" if isinstance(exc, ContextReferenceError) else "preparation"
+        return f"{prefix}: {redact(str(exc))}"
     if context_refs or auto_repomap:
         from . import context
 
@@ -269,6 +316,10 @@ def start(
         spec = {
             "v": 1,
             "task": task,
+            "contract": registered_contract,
+            "files": files,
+            "context_refs": context_refs,
+            "auto_repomap": auto_repomap,
             "engine": engine,
             "kind": kind,
             "repo": repo,
@@ -296,9 +347,18 @@ def start(
             "routing": reason or "fixed",
             "created": time.time(),
         }
+        jobs.write_json(folder / "contract-1.json", registered_contract)
         jobs.write_json(folder / "spec.json", spec)
-        attempt = {"n": 1, "kind": "start", "reservation": rid, "created": time.time()}
-        jobs.update_status(job_id, state="queued", attempt=1, attempts=[attempt])
+        attempt = {
+            "n": 1,
+            "kind": "start",
+            "reservation": rid,
+            "created": time.time(),
+            "contract_sha256": registered_contract["sha256"],
+        }
+        jobs.update_status(
+            job_id, state="queued", attempt=1, attempts=[attempt], contract=registered_contract
+        )
         events.emit(job_id, "admission", f"{engine} · level {effective}", state="queued", attempt=1)
         _phase(progress, job_id, "spawn", f"starting {engine}")
         try:
@@ -731,6 +791,27 @@ def _launch_many(tasks: list[dict], progress=None) -> str:
     return "\n".join(out)
 
 
+def plan(
+    tasks: list[dict] | None = None, plan_id: str | None = None, launch: bool = False, progress=None
+) -> str:
+    """Prepare a deterministic plan and advisory opinion; launch its immutable id once."""
+    from . import planning
+
+    try:
+        result = planning.operate(tasks, plan_id=plan_id, launch=launch, progress=progress)
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        telemetry.record(
+            {
+                "event": "preparation_failed",
+                "source": "deterministic",
+                "reason": "invalid_plan_input",
+                "worker_started": False,
+            }
+        )
+        result = {"state": "invalid", "reason": "preparation_failed", "workers_started": False}
+    return json.dumps(result, ensure_ascii=False)
+
+
 def start_many(tasks: list[dict], progress=None) -> str:
     """Launch the requested jobs unchanged, then return advisory dependency information."""
     outcome = _launch_many(tasks, progress)
@@ -803,6 +884,15 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
             head += f"\nbreaker {b.get('job')}: " + (
                 "tests applied" if b.get("applied") else b.get("why", "")
             )
+    from . import evidence as ev
+    from . import workflow_output
+
+    structured = ev.envelope(job_id)
+    head += "\n" + workflow_output.format_delivery_state(structured["delivery"])
+    binding = structured["receipt_validation"]
+    head += "\nreceipt: " + binding["status"] + " · deployment: unproven"
+    if binding.get("missing"):
+        head += " · " + ", ".join(binding["missing"])
     body = text if full else summary_of(text)
     return f"{head}\n{body}"
 
@@ -874,12 +964,24 @@ def reply(job_id: str, message: str) -> str:
         reply_file = jobs.job_dir(job_id) / f"reply-{n}.md"
         try:
             reply_file.write_text(message)
+            from . import contracts
+
+            updated_contract = contracts.revision(contracts.current_contract(sp, st), message, n)
+            if updated_contract:
+                jobs.write_json(jobs.job_dir(job_id) / f"contract-{n}.json", updated_contract)
             attempts = list(st.get("attempts") or []) + [
-                {"n": n, "kind": "reply", "reservation": rid, "created": time.time()}
+                {
+                    "n": n,
+                    "kind": "reply",
+                    "reservation": rid,
+                    "created": time.time(),
+                    "contract_sha256": (updated_contract or {}).get("sha256"),
+                }
             ]
             jobs.update_status(
                 job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False,
                 stop_requested=False, jev_review=None, feedback_advice=advice, locked=True,
+                contract=updated_contract,
             )  # fmt: skip
         except BaseException:
             _undo_reply(job_id, rid, st, locked=True)
@@ -901,7 +1003,20 @@ def _undo_reply(job_id: str, rid: str | None, previous: dict, locked: bool) -> N
     if rid:
         ledger.close(rid, 0.0, "release")
     admission.release(job_id)
-    keep = {k: previous.get(k) for k in ("state", "attempt", "attempts", "last", "error", "spend_possible")}
+    keep = {
+        k: previous.get(k)
+        for k in (
+            "state",
+            "attempt",
+            "attempts",
+            "last",
+            "error",
+            "spend_possible",
+            "contract",
+            "feedback_advice",
+            "jev_review",
+        )
+    }
     jobs.update_status(job_id, locked=locked, **keep)
 
 

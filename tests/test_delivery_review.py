@@ -476,3 +476,19 @@ def test_fifo_material_is_refused_without_waiting_for_a_writer(home):
     )
     assert result.returncode != 0
     assert b"regular file" in result.stderr
+
+
+def test_offline_claim_packets_store_complete_referenced_material(delivery, monkeypatch):
+    from subtask import delivery_review as review
+
+    monkeypatch.setattr(review, "_request", lambda *a: pytest.fail("offline packet submitted"))
+    manifests = review.prepare_packets("st-delivery", ["Parser fixed", "Public release verified"])
+    assert len(manifests) == 2
+    for manifest in manifests:
+        assert manifest["status"] == "prepared" and manifest["submit"] is False
+        path = delivery / "packet-plans" / (manifest["packet_sha256"] + ".json")
+        packet = json.loads(path.read_text())
+        assert review._digest(packet) == manifest["packet_sha256"]
+        assert len(packet["state"]["criteria"]) == 1
+        assert manifest["packet_bytes"] == len(review._bytes(packet))
+        assert manifest["coverage"] == "one_claim_full_snapshot"

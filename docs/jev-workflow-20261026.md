@@ -201,3 +201,40 @@ connessioni usano il nuovo codice; Codex e OpenCode supportano ricarica remota.
 Per sessioni Claude interattive già aperte il client può richiedere una
 riconnessione dal menu MCP: una nuova connessione verificata non prova
 la sostituzione di tutte quelle vecchie.
+
+## Contratti e piani del coordinatore — 26 ottobre 2026
+
+Risultato candidato: `start` conserva il mandato prima dell'espansione del
+contesto; CLI e i due trasporti MCP espongono `plan` e packet offline per
+singola affermazione. La preview non avvia worker. Il lancio usa un intento
+persistente, ricontrolla input e revisione e non ripete un lancio interrotto.
+I task dipendenti ricontrollano i materiali già disponibili; gli output dei
+predecessori si risolvono alla partenza e questo limite resta esplicito.
+
+Le ricevute collegano requisito, candidato, tentativo, ambiente e log.
+Un candidato cambiato invalida la ricevuta. Il delta autore/revisore conserva
+rilievi aperti e richiede requisiti, input e ambiente compatibili per il riuso.
+Il riuso non accetta un nuovo commit. I job storici restano utilizzabili e
+mostrano contratto mancante. Il verdetto JSON `subtask_review.verdict` resta
+una dichiarazione del worker separata dallo stato del processo.
+
+Repository `/root/subtask`, worktree `/root/wt/subtask-workflow-20261026`.
+Ambiente editable vincolato, Python 3.14.7. Configurazione Jev e chiavi isolate
+nelle fixture; provider finto, nessun nuovo invio a pagamento. I dati privati
+dell'audit restano fuori dal repository. Nessuna policy, provider o tetto
+modificati. Installazione, integrazione e controllo dei client spettano al
+coordinatore dopo la revisione indipendente.
+
+| Revisione / input | Comando nel worktree | Esito e log | Invalidazione |
+|---|---|---|---|
+| Candidato su `cd68bfd`, diff contratti | `build-a-turno .venv/bin/python -m pytest -q tests/test_contract_workflow.py tests/test_workflow_hooks.py tests/test_worktree_verify.py tests/test_delivery_review*.py tests/test_auto_review.py tests/test_subtask.py tests/test_context_dag.py tests/test_schema.py` | 224 passati, un errore nel nuovo controllo schema: import aggiunto durante la raccolta; `/tmp/subtask-implementation-targeted.log` | Test schema corretto |
+| Stesso candidato, test schema corretto | `build-a-turno .venv/bin/python -m pytest -q tests/test_subtask.py::test_fast_server_speaks_json_rpc` | 1 passato; `/tmp/subtask-implementation-transport.log` | Cambi schema o trasporto |
+| Stesso candidato, packet referenziato | `build-a-turno .venv/bin/python -m pytest -q tests/test_delivery_review.py::test_offline_claim_packets_store_complete_referenced_material` | 1 passato; `/tmp/subtask-implementation-packets.log` | Cambi packet o riferimenti |
+| Candidato completo | `.venv/bin/ruff check subtask tests`; `.venv/bin/ruff format --check subtask tests`; dump schema server confrontato con `tools.json` | Verdi | Codice o schema cambiati |
+| Candidato completo | `build-a-turno env -u SUBTASK_MONTHLY_CAP_USD -u SUBTASK_MAX_RUNNING .venv/bin/python -m pytest -q -p no:cacheprovider` | In corso; `/tmp/subtask-implementation-full.log` | Attendere risultato prima di integrare |
+
+Limiti: la provenienza del coordinatore non è autenticata; materiali e ricevute
+locali sono modificabili dallo stesso utente. Test e build locali non provano
+rilascio pubblico né risoluzione di cause storiche. Il tempo fino alla decisione
+del coordinatore resta ignoto senza una decisione osservata; i costi mancanti
+restano mancanti. Non è stata misurata una riduzione dei tempi del workflow.

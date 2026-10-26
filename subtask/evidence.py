@@ -60,8 +60,25 @@ def envelope(job_id: str) -> dict:
         "billing": adapter.capabilities.cost if adapter else "unknown",
         "note": "charged = observed, or the whole reservation when the real cost is unknown",
     }
+    from . import contracts, workflow_output
+
+    contract = contracts.current_contract(sp, st)
+    validation = contracts.receipt_state(sp, st, git.get("head"), contract)
+    delivery = workflow_output.delivery_state(
+        st, text, kind=sp.get("kind"), candidate=git.get("head"), verification_required=bool(sp.get("verify"))
+    )
+    delivery["receipt_validation"] = validation
+    if validation["status"] != "valid":
+        delivery["runner_verification"]["binding"] = "unproven"
+    if validation["status"] != "valid":
+        delivery["limits"].extend(validation.get("missing", []))
     return {
         "v": VERSION,
+        "contract": contract or {"status": "missing_legacy"},
+        "receipt_validation": validation,
+        "review_delta": contracts.review_delta(sp, contract, git.get("head")),
+        "delivery": delivery,
+        "workflow_metrics": contracts.metrics(sp, st, validation),
         "id": job_id,
         "engine": sp.get("engine"),
         "model": sp.get("model") or (adapter.model if adapter else None),

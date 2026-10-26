@@ -205,8 +205,8 @@ def perform(job_id: str, attempt: int) -> None:
         if jev_config.load().get("mode") != "auto":
             _record(job_id, attempt, state="skipped", reason="disabled", finished=time.time())
             return
-        # No original_request is invented from worker-visible metadata. Full scope
-        # stays unproven; the caller may supply it explicitly in a manual review.
+        # Registered coordinator contracts are resolved by delivery_review. Legacy jobs
+        # retain unverified metadata; no original request is invented from worker text.
         report = delivery_review.review(job_id, CRITERIA, submit=True)
         _record(job_id, attempt, state=report["status"], report=report, finished=time.time())
         events.emit(job_id, "jev", line(jobs.read_json(jobs.job_dir(job_id) / "status.json")))

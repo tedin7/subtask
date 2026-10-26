@@ -47,6 +47,15 @@ mcp = FastMCP(
 
 
 @mcp.tool(structured_output=False)
+def plan(tasks: list[dict] | None = None, plan_id: str | None = None, launch: bool = False) -> str:
+    """Preview tasks before workers start. Read deterministic facts and advisory Jev contradictions, then
+    launch=True with plan_id to start the unchanged plan once. Changed inputs require a new preview.
+    This is a coordinator decision within the authorized task, not a new operator permission.
+    Legacy start/start_many remain available. Read dependencies must be explicit in depends_on."""
+    return core.plan(tasks, plan_id, launch)
+
+
+@mcp.tool(structured_output=False)
 def start(
     task: str,
     kind: str = "code",
@@ -71,6 +80,7 @@ def start(
     allowed_paths: list[str] | None = None,
     symbol_scope: list[str] | None = None,
     oracle_cmd: str | None = None,
+    contract: dict | None = None,
 ) -> str:
     """Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).
     verify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.
@@ -85,6 +95,7 @@ def start(
         isolation=isolation, max_retries=max_retries, adversarial=adversarial,
         context_refs=context_refs, auto_repomap=auto_repomap, tier=tier,
         invariants=invariants, allowed_paths=allowed_paths, symbol_scope=symbol_scope, oracle_cmd=oracle_cmd,
+        contract=contract,
     )  # fmt: skip
 
 
@@ -195,17 +206,30 @@ def jev(action: str = "status") -> str:
 
 @mcp.tool(structured_output=False)
 async def review(
-    id: str, criteria: list[str], submit: bool = False, original_request: str | None = None
+    id: str,
+    criteria: list[str],
+    submit: bool = False,
+    original_request: str | None = None,
+    packets: bool = False,
 ) -> str:
     """Advisory Jev review of a terminal delivery against the parent's criteria (1-12). Read the
     automatic outcome in wait()/result first; do not resubmit the same delivery. Default prepares a
-    local evidence packet without network; submit=True sends one request (unknown sends are never
+    local evidence packet without network; packets=True prepares separate claim packets and manifests
+    offline (never submits). submit=True sends one request (unknown sends are never
     retried). Supply original_request from the coordinator to judge full scope; without it
     scope_assessment is unproven, which is neither a pass nor a contradiction. supported is advice,
     not acceptance. provider_choice is the raw answer; assessment includes local vetoes (missing,
     failed or mismatched evidence), which are not findings by the model. Jev never accepts, merges,
     deploys or retries the worker; local checks remain necessary. Key/budget errors are final for the
     call: keys only from `subtask jev setup`, never a tool argument."""
+    if packets:
+        from .delivery_review import prepare_packets
+
+        if submit:
+            raise ValueError("targeted packets are offline only; choose a criterion before submission")
+        return json.dumps(
+            await asyncio.to_thread(prepare_packets, id, criteria, original_request), ensure_ascii=False
+        )
     from .delivery_review import review as review_delivery
 
     report = await asyncio.to_thread(review_delivery, id, criteria, submit, original_request)

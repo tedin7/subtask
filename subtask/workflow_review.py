@@ -35,6 +35,7 @@ def _base(phase: str) -> dict:
         "next_action": "Continue the normal workflow with its existing checks.",
         "budget_charged_usd": 0.0,
         "cost_usd": None,
+        "next_action_source": "deterministic_wrapper",
     }
 
 
@@ -155,8 +156,8 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
                     "contradicted": "Riesamina la proposta rispetto alle dipendenze o alle prove; nessuna modifica automatica.",
                     "unproven": "Chiarisci le dipendenze o raccogli la prova mancante prima di decidere.",
                 }[report["assessment"]]
-            except (OSError, ValueError, TypeError, KeyError):
-                report.update(status="unknown", reason="provider_response_unavailable_or_invalid")
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                report.update(status="unknown", reason=delivery.diagnostic_code(exc))
             report = delivery._clean(report)
             delivery._save(receipt, report)
             ledger.close(reservation, allowance, "settle")

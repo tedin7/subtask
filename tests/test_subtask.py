@@ -276,6 +276,8 @@ def test_fast_server_publishes_what_fastmcp_would():
 
 
 def test_fast_server_speaks_json_rpc(st, tmp_path):
+    from subtask import fastserver
+
     msgs = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -295,7 +297,8 @@ def test_fast_server_speaks_json_rpc(st, tmp_path):
     )
     out = {r.get("id"): r for r in map(json.loads, proc.stdout.splitlines())}
     assert out[1]["result"]["protocolVersion"] == "2025-06-18"
-    assert len(out[2]["result"]["tools"]) == 17
+    assert out[2]["result"]["tools"] == fastserver.SPEC["tools"]
+    assert "plan" in {tool["name"] for tool in out[2]["result"]["tools"]}
     assert out[4]["result"]["isError"] is True
     assert out[5]["error"]["code"] == -32601
     assert out[None]["error"]["code"] == -32700

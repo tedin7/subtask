@@ -246,3 +246,32 @@ wait(["st-1a2b3c", "st-4d5e6f"])
 
 CLI equivalent: `subtask start "..." --kind read --readonly --cwd .`,
 `subtask wait ID ID`, `subtask result ID --evidence`.
+
+
+## Coordinator plans and receipts
+
+Use `plan(tasks=[...])` for a preview before workers start. Read deterministic facts and advisory
+contradictions, then call `plan(plan_id="plan-...", launch=True)` once. The coordinator decides within
+the authorized task; this is not a new operator approval. A changed HEAD, declared file, context or
+contract makes the plan stale. An interrupted launch stays unknown and must not be retried.
+Legacy `start`/`start_many` keep their launch behavior and post-launch advice.
+
+Pass a `contract` object on start or inside batch tasks: `canonical_repo`, `coordinator_ref`,
+`requirements=[{"id":"R1","text":"observable behavior"}]`, `inputs`, `environment_ref` and optional
+`review_of={"job":"st-author","commit":"SHA","open_findings":["F1"]}`. Files/context references and
+their hashes are retained before expanding the worker prompt. Replies create explicit contract
+revisions. Older jobs show missing contracts and continue to work.
+
+`result(evidence=True)` separates process status, reported review verdict, runner receipt validation,
+scope, limitations and next proofs. A receipt on A does not verify B; local tests prove neither release
+nor historical-cause resolution. Commands in reports are never executed automatically. Review delta
+reuse also needs matching requirements, inputs and environment; it never accepts a new candidate.
+
+`review(id, criteria=[...], packets=True)` (CLI `review --packets`) prepares offline packet manifests
+per claim with references and hashes. It never submits; oversized complete material blocks locally
+instead of silently truncating the patch. Select a narrower criterion for an authorized submission.
+Provider choice and deterministic wrapper assessment/next_action have separate provenance.
+
+A reviewer may return an entire JSON report as
+`{"subtask_review":{"verdict":"approved"}}` (also `rejected` or `changes_requested`).
+This remains a worker-declared verdict, separate from process exit and runner receipts.

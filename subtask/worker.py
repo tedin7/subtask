@@ -59,6 +59,7 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
     """Run the parent's verify command in the worktree, on the head the worker left."""
     cwd = spec["cwd"]
     head = _git(cwd, "rev-parse", "HEAD")
+    dirty_before = bool(_git(cwd, "status", "--porcelain"))
     argv, env = wrap(["sh", "-c", spec["verify"]], runners.minimal_env(extra))
     t0 = time.monotonic()
     try:
@@ -79,6 +80,7 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
         "command": spec["verify"],
         "exit_code": code,
         "head": head,
+        "dirty_before": dirty_before,
         "dirty_after": bool(_git(cwd, "status", "--porcelain")),
         "seconds": round(time.monotonic() - t0, 1),
         "output_tail": _redact.redact(out),
@@ -261,6 +263,12 @@ def main() -> int:
                 )
             except Exception as exc:  # the oracle is a report, never a failure
                 verification["oracle"] = {"command": spec["oracle_cmd"], "error": str(exc)[:200]}
+        from . import contracts
+
+        active_contract = contracts.current_contract(spec, previous)
+        verification = contracts.receipt(
+            spec, verification, attempt, active_contract, log_ref=str(folder / "worker.log")
+        )
         failed_check = bool(verification) and verification.get("exit_code") != 0 and not stopped
         if outcome and outcome.quota_exhausted:
             from .engines.codex import parse_reset
@@ -281,6 +289,7 @@ def main() -> int:
             "tokens": outcome.tokens if outcome else {},
             "commands": (outcome.commands if outcome else [])[-50:],
             "verification": verification,
+            "contract_sha256": (active_contract or {}).get("sha256"),
         }
         attempts = attempts[:-1] + [{**(attempts[-1] if attempts else {}), **record}]
         review_state = auto_review.prepare(
@@ -371,6 +380,10 @@ def _telemetry(
                 "run_s": round(record["ended"] - record["started"], 2),
                 "outcome": record["outcome"],
                 "verified": None if not verification else verification.get("exit_code") == 0,
+                "contract_sha256": (record.get("verification") or {}).get("contract_sha256"),
+                "receipt_bound": (record.get("verification") or {}).get("receipt_version") == 1,
+                "review_round": record.get("n"),
+                "jev_reason": (previous.get("jev_review") or {}).get("reason"),
                 "cost_observed": record["cost_observed"],
                 "cost_charged": record["cost_charged"],
                 "cost_reserved": spec.get("max_usd") if record["reservation"] else None,

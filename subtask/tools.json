@@ -2,6 +2,29 @@
  "instructions": "Delegate long work to cheap engines; do small edits yourself (small tasks cost 2-3x).\nPattern: ONE start_many([...]) for every job, ONE wait(ids) (blocking; ends with batch or first\n  job, mode='any'). Never poll status(). Codex 0.164.0 cannot wake an idle turn from MCP\n  notifications: keep wait(ids, mode='any', timeout=60, since='') open, drop ended ids and pass\n  back cursor=. Never sleep 600 and check later.\nresult(id, full/evidence) or inspect(id, tail, grep) only if the summary is not enough.\nContext: never paste files/diffs into task; use context_refs=['file:p.py:10-80','git:diff',\n  'subtask:<id>:summary'] and auto_repomap=True; files=[...] for paths.\nWrites: isolation='worktree' (or repo=) plus verify='pytest -q ...'; invariants on\n  (no deleted/skipped tests, no new noqa/type: ignore), allowed_paths=[...] reverts the rest.\n  Several jobs on one Python file: symbol_scope=['f.py::func'].\nReview: integrate(ids, action='diff') before action='apply'; apply is all or nothing.\nJev: jev() reads policy; only the operator changes auto/manual/off. Read the automatic outcome in\n  wait() before any manual review; do not submit it again. supported is advice, not acceptance;\n  scope unproven is not a pass. Local checks stay mandatory. review(id, criteria,\n  original_request=...) judges full scope; submit=True spends the budget. Keys only via\n  `subtask jev setup`; key/budget errors and unknown sends are never retried.\nPick the tool:\n  steps that depend on each other -> start_many with id + depends_on; foreach=<id> fans out over\n    .subtask/fanout.json (max 8); after='any' joins on the first success.\n  the same edit over many files -> map_reduce, not many start calls.\n  a regression somewhere in git history -> bisect(good_ref, bad_ref, test_cmd).\n  check behavior or speed -> oracle_cmd on start.\n  a critical bug or design doubt -> consensus(prompt, engines) or wait(mode='first_success').\n  a job stalled or going wrong -> steer(id, 'hint'|'abort'|'retry', instruction).",
  "tools": [
   {
+   "name": "plan",
+   "description": "Preview tasks before workers start. Read deterministic facts and advisory Jev contradictions, then\nlaunch=True with plan_id to start the unchanged plan once. Changed inputs require a new preview.\nThis is a coordinator decision within the authorized task, not a new operator permission.\nLegacy start/start_many remain available. Read dependencies must be explicit in depends_on.",
+   "inputSchema": {
+    "properties": {
+     "tasks": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "plan_id": {
+      "type": "string"
+     },
+     "launch": {
+      "default": false,
+      "type": "boolean"
+     }
+    },
+    "type": "object"
+   }
+  },
+  {
    "name": "start",
    "description": "Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).\nverify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.\ninvariants: default ['no_test_deletion','no_suppression'] fail verify on deleted/skipped tests or new noqa; [] = off.\nallowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.\noracle_cmd: after verify passes, run on base and result; reports output_match and speedup_pct.\nadversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff\ninstead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only.",
    "inputSchema": {
@@ -100,6 +123,10 @@
      },
      "oracle_cmd": {
       "type": "string"
+     },
+     "contract": {
+      "additionalProperties": true,
+      "type": "object"
      }
     },
     "required": [
@@ -268,7 +295,7 @@
   },
   {
    "name": "review",
-   "description": "Advisory Jev review of a terminal delivery against the parent's criteria (1-12). Read the\nautomatic outcome in wait()/result first; do not resubmit the same delivery. Default prepares a\nlocal evidence packet without network; submit=True sends one request (unknown sends are never\nretried). Supply original_request from the coordinator to judge full scope; without it\nscope_assessment is unproven, which is neither a pass nor a contradiction. supported is advice,\nnot acceptance. provider_choice is the raw answer; assessment includes local vetoes (missing,\nfailed or mismatched evidence), which are not findings by the model. Jev never accepts, merges,\ndeploys or retries the worker; local checks remain necessary. Key/budget errors are final for the\ncall: keys only from `subtask jev setup`, never a tool argument.",
+   "description": "Advisory Jev review of a terminal delivery against the parent's criteria (1-12). Read the\nautomatic outcome in wait()/result first; do not resubmit the same delivery. Default prepares a\nlocal evidence packet without network; packets=True prepares separate claim packets and manifests\noffline (never submits). submit=True sends one request (unknown sends are never\nretried). Supply original_request from the coordinator to judge full scope; without it\nscope_assessment is unproven, which is neither a pass nor a contradiction. supported is advice,\nnot acceptance. provider_choice is the raw answer; assessment includes local vetoes (missing,\nfailed or mismatched evidence), which are not findings by the model. Jev never accepts, merges,\ndeploys or retries the worker; local checks remain necessary. Key/budget errors are final for the\ncall: keys only from `subtask jev setup`, never a tool argument.",
    "inputSchema": {
     "properties": {
      "id": {
@@ -286,6 +313,10 @@
      },
      "original_request": {
       "type": "string"
+     },
+     "packets": {
+      "default": false,
+      "type": "boolean"
      }
     },
     "required": [

@@ -191,7 +191,17 @@ def advance(group_id: str) -> None:
             if not ended or active >= limit:
                 continue
             args = {k: _substitute(v, ids) for k, v in row["args"].items()}
-            args["task"] = str(args.get("task", "")) + note
+            # Register the coordinator mandate before appending group instructions.
+
+            original = str(args.get("task", ""))
+            group_contract = dict(args.get("contract") or {})
+            group_contract.setdefault("coordinator_request", original)
+            group_contract.setdefault("requirements", [{"id": "R1", "text": original}])
+            group_contract["inputs"] = list(group_contract.get("inputs") or []) + [
+                {"job": ids[d], "alias": d} for d in deps if d in ids
+            ]
+            args["contract"] = group_contract
+            args["task"] = original + note
             try:
                 out = core.start(**args, _group=group_id)
             except TypeError as exc:
