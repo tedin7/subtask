@@ -186,6 +186,7 @@ def test_supplied_limitations_veto_unattested_dependency_claim(setup):
 def test_missing_configuration_and_invalid_phase_do_not_leak(setup, monkeypatch):
     def unavailable():
         raise OSError("secret-key-123456")
+
     monkeypatch.setattr(review.jev_config, "load", unavailable)
     assert review.evaluate("risk", {})["reason"] == "configuration_unavailable"
     result = review.evaluate("secret-key-123456", {})
