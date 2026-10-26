@@ -40,7 +40,7 @@ def _base(phase: str) -> dict:
 
 def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
     """Request one opinion only in auto mode; immutable intents prevent replay."""
-    report = _base(phase if isinstance(phase, str) else "invalid")
+    report = _base(phase if isinstance(phase, str) and phase in CLAIMS else "invalid")
     if (
         not isinstance(phase, str)
         or phase not in CLAIMS
@@ -48,7 +48,10 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
         or not isinstance(material, dict)
     ):
         return {**report, "reason": "invalid_input"}
-    policy = jev_config.load()
+    try:
+        policy = jev_config.load()
+    except (OSError, ValueError, TypeError):
+        return {**report, "reason": "configuration_unavailable"}
     if policy.get("mode") != "auto" or not policy.get("valid", True):
         return {**report, "status": "skipped", "reason": "policy_not_auto"}
     try:
