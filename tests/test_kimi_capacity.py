@@ -86,6 +86,32 @@ def test_current_kimi_home_authentication(tmp_path, monkeypatch):
     assert kimi.Kimi().auth_state() == "present"
 
 
+@pytest.mark.parametrize("seconds_remaining", [-100, 5])
+def test_expired_token_needs_cli_refresh_without_http_or_auth_mutation(
+    tmp_path, monkeypatch, seconds_remaining
+):
+    home = account(tmp_path, monkeypatch)
+    path = home / "credentials/account.json"
+    path.write_text(
+        json.dumps(
+            {
+                "access_token": "private-test-token",
+                "refresh_token": "private-refresh-token",
+                "expires_at": kimi.time.time() + seconds_remaining,
+            }
+        )
+    )
+    before = path.read_bytes()
+    monkeypatch.setattr(kimi.urllib.request, "build_opener", lambda *a: pytest.fail("expired token sent"))
+    assert kimi.Kimi().auth_state() == "present"
+    reading = kimi.Kimi().capacity()
+    assert reading.value is None and reading.confidence == "none"
+    assert "refresh" in reading.note and "401" not in reading.note
+    assert "private-test-token" not in reading.note
+    assert "private-refresh-token" not in reading.note
+    assert path.read_bytes() == before
+
+
 @pytest.mark.parametrize(
     "base,key",
     [

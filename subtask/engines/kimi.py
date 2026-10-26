@@ -23,7 +23,11 @@ def kimi_home() -> Path:
     return Path(os.environ.get("KIMI_CODE_HOME") or Path.home() / ".kimi-code")
 
 
-def _managed_account() -> tuple[str, str]:
+class _ManagedTokenNeedsRefresh(ValueError):
+    """The CLI owns OAuth renewal; a read-only quota probe must not trigger it."""
+
+
+def _managed_account(*, require_fresh: bool = False) -> tuple[str, str]:
     """Read only the configured managed account; never send its token to a custom host."""
     home = kimi_home()
     settings = tomllib.loads((home / "config.toml").read_text())
@@ -54,6 +58,12 @@ def _managed_account() -> tuple[str, str]:
     token = credentials.get("access_token")
     if not isinstance(token, str) or not token:
         raise ValueError("managed Kimi authentication missing")
+    expires = credentials.get("expires_at")
+    if require_fresh and expires is not None:
+        if type(expires) not in (int, float) or not math.isfinite(expires) or expires < 0:
+            raise ValueError("invalid managed Kimi token expiry")
+        if expires and expires <= time.time() + 10:
+            raise _ManagedTokenNeedsRefresh
     return base, token
 
 
@@ -153,7 +163,7 @@ class Kimi(CliAdapter):
 
     def capacity(self) -> Capacity:
         try:
-            base, token = _managed_account()
+            base, token = _managed_account(require_fresh=True)
             request = urllib.request.Request(
                 base + "/usages",
                 headers={
@@ -171,6 +181,8 @@ class Kimi(CliAdapter):
             if not isinstance(payload, dict):
                 raise TypeError("invalid Kimi quota response")
             return parse_capacity(payload)
+        except _ManagedTokenNeedsRefresh:
+            note = "Kimi quota unavailable: CLI token refresh needed; the next Kimi run renews it"
         except urllib.error.HTTPError as exc:
             note = f"Kimi quota HTTP {exc.code}; authentication or service unavailable"
         except (OSError, ValueError, TypeError, KeyError):
