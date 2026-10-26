@@ -297,7 +297,10 @@ def metrics(spec, status, validation):
     return {
         "contract_present": bool(spec.get("contract")),
         "receipt_complete": validation.get("status") == "valid",
-        "author_reviewer_rounds": len(attempts),
+        "attempts_observed": len(attempts),
+        "author_reviewer_rounds": None,
+        "author_reviewer_rounds_reason": "linked_review_cycle_not_observed",
+        "author_reviewer_rounds_source": "missing",
         "elapsed_seconds": (attempts[-1].get("ended", 0) - attempts[0].get("started", 0))
         if attempts and attempts[-1].get("ended") and attempts[0].get("started")
         else None,

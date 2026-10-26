@@ -64,9 +64,27 @@ def envelope(job_id: str) -> dict:
 
     contract = contracts.current_contract(sp, st)
     validation = contracts.receipt_state(sp, st, git.get("head"), contract)
+    attempt = st.get("attempt")
+    report_attempt = attempt if type(attempt) is int and attempt > 0 else None
+    attempt_file = folder / f"result-{report_attempt}.md" if report_attempt else None
+    if attempt_file is not None and attempt_file.is_file():
+        current_report = attempt_file.read_text()
+        report_ref, report_binding = str(attempt_file), "current_attempt"
+    elif attempt in (None, 1) and (folder / "result.md").is_file():
+        current_report = text
+        report_attempt = None
+        report_ref, report_binding = str(folder / "result.md"), "legacy_fallback_unbound"
+    else:
+        current_report = ""
+        report_ref, report_binding = None, "missing_current_report"
     delivery = workflow_output.delivery_state(
-        st, text, kind=sp.get("kind"), candidate=git.get("head"), verification_required=bool(sp.get("verify"))
+        st,
+        current_report,
+        kind=sp.get("kind"),
+        candidate=git.get("head"),
+        verification_required=bool(sp.get("verify")),
     )
+    delivery["reviewer_verdict"].update(attempt=report_attempt, report_ref=report_ref, binding=report_binding)
     delivery["receipt_validation"] = validation
     if validation["status"] != "valid":
         delivery["runner_verification"]["binding"] = "unproven"

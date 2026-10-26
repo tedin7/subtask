@@ -275,3 +275,33 @@ e tetti del servizio restano invariati.
 
 Le ricevute del primo gate restano utili alla diagnosi; il gate offline definitivo
 va eseguito sul delta corretto. Integrazione e disponibilità restano da verificare.
+
+### Verdetto della continuazione e limiti delle metriche
+
+Il gate completo del delta `5b96837` è verde: 752 passati, quattro live esclusi,
+317,93 secondi, log `/tmp/subtask-implementation-full-final.log`.
+La riproduzione indipendente del coordinatore dimostra anche il cambio
+`launched` con zero job → `refused`, zero worker e nessun identificativo.
+Ricevute private `independent-launch-state-{before,after}.json` in
+`/root/.local/state/subtask-workflow-20261026-release/`.
+
+La successiva regressione reale usa solo il motore fake: review APPROVATO
+al primo tentativo, poi RESPINTO con exit 1 nella continuazione.
+Il campo strutturato ora legge `result-2.md` e indica tentativo, riferimento
+e binding. Il sommario legacy può conservare `result.md`; non fornisce il
+verdetto dell'ultimo tentativo fallito. Se manca il rapporto corrente il
+verdetto resta unknown. Solo il primo rapporto storico può usare il fallback
+legacy, dichiarato non vincolato a un tentativo autenticato.
+
+I tentativi osservati non vengono più presentati come cicli autore/revisore.
+`attempts_observed` e `attempt_number` contano ciò che è registrato;
+`author_reviewer_rounds` e `review_round` restano null con ragione esplicita
+finché manca un ciclo collegato osservabile.
+
+| Input | Prova | Esito |
+|---|---|---|
+| `5b96837`, nuove regressioni | `build-a-turno .venv/bin/python -m pytest -q tests/test_contract_followup.py` | Tre fallimenti attesi, `/tmp/subtask-implementation-followup-before.log`: verdetto precedente promosso e provenienza/misure mancanti |
+| Delta verdetto e metriche | Stesso comando, stessa fixture fake | Tre passati, `/tmp/subtask-implementation-followup-after.log` |
+
+Ruff resta verde. Il nuovo delta richiede il gate conclusivo dopo la revisione
+indipendente; il risultato del gate precedente resta riferito a `5b96837`.
