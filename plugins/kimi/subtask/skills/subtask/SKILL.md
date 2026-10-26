@@ -115,11 +115,31 @@ subtask@subtask`) brings the same skill. Verify with `codex mcp list` and
 
 Jev is advisory: it never accepts, merges or retries work, and it does not run
 the tests. Launch work with `verify` and judge the runner's evidence, never the
-worker's own claim, before reading any Jev advice.
+worker's own claim, before reading any Jev advice. These workflow instructions
+describe the upcoming release, not proof that an installed runtime is current.
 
-- Automatic: with policy `auto`, every final delivery gets one check, already
-  included in `wait` and `result`. Read it before asking for anything else.
-  Do not call a manual review just to repeat the same check.
+- Automatic: with policy `auto`, workflow advice runs automatically at the
+  relevant calls: routing in `start_many`, feedback in `reply`, and evidence
+  consistency plus risk triage at final `wait` / `result`. Read the appended
+  advice after the existing baseline output before deciding the next step.
+  These are separate advisory questions, not proof of the whole delivery.
+  Repeated identical content is deduplicated; do not submit it manually again.
+- `start_many` routing checks proposed dependencies. Disjoint writes can still
+  share reads: a reviewer reading a file being changed may need a dependency.
+  Read the proposed action, then check actual checkout, commit and read/write
+  sets. Advice does not delay authorized work or rewrite worker instructions.
+- `reply` feedback checks the next instruction. If deployment proof is missing,
+  ask for that proof rather than declaring deployment complete. Advice is
+  returned after the baseline reply output; it does not rewrite the message or
+  prevent the authorized continuation.
+- Final evidence consistency compares claims with receipts. For example, failed
+  verification blocks `supported` even when the raw provider answer supports
+  the claim. Risk triage can distinguish routine text work from a credential
+  migration; it cannot waive the independent review required for complex code.
+- Policy `manual` prepares advice only on explicit request; `off` blocks new
+  submissions. Respect both policies: do not switch to `auto` for convenience.
+  Additional Jev calls use the existing shared cap; they add no budget or
+  automatic fallback to another model.
 - Manual: `review(id, criteria=[...], original_request="...")` prepares a local
   packet from the request, report, committed diff and recorded checks;
   `submit=True` sends one paid request. Use it for criteria the automatic check
@@ -135,12 +155,16 @@ worker's own claim, before reading any Jev advice.
   `unproven` when the verification is missing, failed or tied to another commit:
   that veto is a local limit, not a finding by the model. Do not present it as
   the model detecting a bug, and do not read a downgraded answer as a pass.
-- A missing key, exhausted budget, provider error or `unknown` submission stops
+- Make `skipped`, `blocked` and `unknown` states explicit; none is a pass.
+  A missing key, exhausted budget, provider error or `unknown` submission stops
   the check and leaves the worker delivery unchanged. Report the message and do
   not retry: an unknown send may already be charged, and the invoice stays
-  unknown. Keys are entered only in a terminal with `subtask jev setup` (hidden
-  input), never in chat, argv or a tool argument. Changing the policy
-  (`auto`/`manual`/`off`) is the operator's decision, not a way to force a check.
+  unknown. Keys are entered only with `subtask jev setup` (hidden terminal
+  input) or explicit stdin, never in chat, argv or a tool argument. Changing
+  the policy (`auto`/`manual`/`off`) is the operator's decision, not a way to force a check.
+- A suggested next action is advisory: it grants no permission, runs no
+  recovery and substitutes for no verification. Do not start a model fallback
+  automatically. Routing and feedback never authorize extra scope.
 - Records are mutable by the same OS user: this is advice, not attestation.
   Read `docs/delivery-review.md` for the limits.
 - The delivery details also show the advisory filter route. A normal review
@@ -150,7 +174,9 @@ worker's own claim, before reading any Jev advice.
 - Do not infer full-delivery coverage from a successful single-criterion check.
   Test-plan and recovery classifiers are experimental; use explicit criteria,
   compare them with the normal model, and do not execute their proposed actions.
-  See `docs/jev-cascade-20261025.md` for the live comparison and its limits.
+  See `docs/jev-cascade-20261025.md` and `docs/jev-workflow-20261026.md` for
+  the measured comparisons and their limits. The twelve workflow cases do not
+  establish general accuracy, savings or production availability.
 
 ## After the job
 
