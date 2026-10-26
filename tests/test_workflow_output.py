@@ -1,5 +1,7 @@
 """Declared conclusions must never become process or verification evidence."""
 
+import json
+
 import pytest
 
 from subtask.workflow_output import delivery_state, format_delivery_state, reviewer_verdict
@@ -41,6 +43,29 @@ def test_explicit_leading_declaration_is_worker_reported(report, verdict):
 def test_structured_verdict_is_not_overridden_by_prose_and_is_still_a_claim():
     result = reviewer_verdict("An old example says RESPINTO.", {"verdict": "approved"})
     assert result == {"verdict": "approved", "source": "worker_structured", "reason": None}
+
+
+def test_complete_structured_json_report_is_a_public_path_without_markdown_heading():
+    report = json.dumps({"subtask_review": {"verdict": "rejected"}, "findings": ["F1"]})
+    result = delivery_state({"state": "done"}, report, kind="review")
+    assert result["reviewer_verdict"] == {
+        "verdict": "rejected",
+        "source": "worker_structured",
+        "reason": None,
+    }
+    assert result["scope"]["assessment"] == "unproven"
+
+
+@pytest.mark.parametrize("value", [None, True, "approved", {"verdict": "typo"}])
+def test_invalid_structured_json_is_explicitly_missing_a_valid_verdict(value):
+    result = reviewer_verdict(json.dumps({"subtask_review": value}))
+    assert result["verdict"] == "unknown"
+    assert result["source"] == "worker_structured"
+    assert result["reason"] == "invalid_structured_verdict"
+
+
+def test_quoted_structured_json_example_is_not_a_declared_report():
+    assert reviewer_verdict('Example:\n{"subtask_review":{"verdict":"rejected"}}')["verdict"] == "unknown"
 
 
 @pytest.mark.parametrize("value", [True, ["approved"], "nonsense", None])
