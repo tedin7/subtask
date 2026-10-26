@@ -45,20 +45,32 @@ subtask install --client all --yes    # applies it: MCP server + skill
 subtask doctor --client all           # checks app, config entry and a real handshake
 ```
 
-Jev can check deliveries automatically, or only when requested:
+Jev provides advisory workflow checks automatically, or only when requested:
 
 ```sh
 subtask jev                 # policy, key availability and the current process's budget limits
 subtask jev setup           # guided setup; key input is hidden
-subtask jev auto            # advisory check after every final delivery
+subtask jev auto            # automatic routing, feedback and final delivery advice
 subtask jev manual          # explicit review submissions only
 subtask jev off             # block new Jev submissions
 ```
 
 New installations start in manual mode. The policy and private key are shared by
-the configured clients; no key goes in a chat or command argument. `wait` and
-`result` include automatic advice when enabled. Advice never accepts, merges or
-retries work. See [Jev setup and limits](docs/delivery-review.md#configurazione).
+the configured clients. Enter keys through hidden `subtask jev setup` input or
+explicit stdin, never chat, argv or tool arguments. In `auto`, `start_many`
+appends routing advice, `reply` appends feedback advice, and final `wait` / `result`
+include evidence consistency and risk triage. Read this advice after the existing
+baseline output. Routing and feedback preserve authorized work and worker
+instructions. `manual` requires explicit submissions; `off` blocks new ones.
+
+These extra checks share the existing cap and deduplicate identical content.
+`skipped`, `blocked` and `unknown` are not passes; never retry an unknown send.
+Distinguish raw `provider_choice` from filtered `assessment`: a failed verification
+can veto `supported` deterministically, without being a Jev finding. Suggested
+next actions grant no authority, replace no checks, and trigger no automatic model
+fallback, merge, retry or release. See [Jev setup and limits](docs/delivery-review.md#configurazione)
+and the [workflow study and its limits](docs/jev-workflow-20261026.md). These
+instructions describe the upcoming release; they do not certify a live install.
 
 Claude Code plugin: `claude plugin marketplace add tedin7/subtask` then
 `claude plugin install subtask@subtask`. Codex: `codex plugin marketplace add tedin7/subtask`.
