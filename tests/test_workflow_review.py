@@ -181,3 +181,13 @@ def test_supplied_limitations_veto_unattested_dependency_claim(setup):
     assert result["route"] == "normal"
     assert result["scores"]["source"] == "provider"
     assert result["wrapper"]["source"] == "deterministic"
+
+
+def test_missing_configuration_and_invalid_phase_do_not_leak(setup, monkeypatch):
+    def unavailable():
+        raise OSError("secret-key-123456")
+    monkeypatch.setattr(review.jev_config, "load", unavailable)
+    assert review.evaluate("risk", {})["reason"] == "configuration_unavailable"
+    result = review.evaluate("secret-key-123456", {})
+    assert result["phase"] == "invalid"
+    assert "secret-key" not in str(result)
