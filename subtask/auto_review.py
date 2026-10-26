@@ -19,6 +19,15 @@ CRITERIA = [
     "The delivery addresses the subtask request recorded in the supplied material.",
     "The worker's claims are supported by the supplied changes and recorded verification.",
     "The report makes unfinished requirements and limits of the available evidence explicit.",
+    (
+        "The supplied evidence establishes the claimed outcome at the claimed revision and environment, "
+        "without treating passing tests, submission, deployment, or present health as proof of broader outcomes."
+    ),
+    (
+        "The supplied evidence establishes a routine, narrow, low-risk change that does not require "
+        "enhanced review for security, permissions, persistent data, migrations, payments, concurrency, "
+        "shared logic, or already-broken components. Missing scope or evidence does not establish low risk."
+    ),
 ]
 
 
@@ -230,11 +239,11 @@ def line(status: dict) -> str:
         }
         return (
             f"Jev: {counts['supported']} supportati, {counts['contradicted']} contraddetti, "
-            f"{counts['unproven']} non provati (consultivo)"
+            f"{counts['unproven']} non provati (consultivo); " + _next_action(entry)
         )
     if state == "skipped":
-        return "Jev: non eseguito"
-    return "Jev: non completato; dettagli nel risultato"
+        return "Jev: non eseguito; serve revisione normale"
+    return f"Jev: {state}; non completato, serve revisione normale; dettagli nel risultato"
 
 
 def details(status: dict) -> str:
@@ -258,8 +267,17 @@ def details(status: dict) -> str:
         out += (
             "\nFiltro Jev: giudizio disponibile sui criteri; controlli e accettazione restano al coordinatore"
         )
+    phases = {"C1": "delivery", "C2": "delivery", "C3": "delivery", "C4": "evidence", "C5": "risk"}
     for item in _assessments(entry):
-        out += f"\n- {item.get('criterion')}: {item.get('assessment')} ({item.get('evidence_ref')})"
+        phase = phases.get(item.get("id"), "delivery")
+        out += _decision_line(phase, item)
+    scope = report.get("scope_assessment")
+    if isinstance(scope, dict):
+        out += _decision_line("scope", scope)
+    else:
+        out += "\n[scope] assessment=unproven; richiesta originale non dimostrata"
+    out += "\nProssima azione: " + _next_action(entry)
+    out += "\nIl filtro non autorizza integrazione, rilascio o esoneri dalla revisione; nessun comando viene eseguito."
     limits = report.get("limitations")
     if isinstance(limits, list):
         out += "\nLimiti Jev: " + ", ".join(str(x)[:100] for x in limits[:20])
@@ -267,6 +285,35 @@ def details(status: dict) -> str:
     if _finite(budget):
         out += f"\nAccantonamento Jev: {budget:.2f} USD; costo fatturato sconosciuto"
     return redact.redact(out[:8000])
+
+
+def _decision_line(phase: str, item: dict) -> str:
+    provider = item.get("provider_choice", "unknown")
+    assessment = item.get("assessment", "unproven")
+    veto = "; veto del wrapper, non scoperta del modello" if provider != assessment else ""
+    return (
+        f"\n[{phase}] {item.get('id', phase)}: provider_choice={provider}; "
+        f"assessment={assessment}; evidence_ref={item.get('evidence_ref', 'none')}{veto}"
+        f"\n- {item.get('criterion', '')}"
+    )
+
+
+def _next_action(entry: dict) -> str:
+    """Conservative human handoff; unknown scope does not erase criterion findings."""
+    items = {item.get("id"): item for item in _assessments(entry)}
+    risk = items.get("C5", {})
+    if risk.get("assessment") != "supported" or risk.get("provider_choice") != "supported":
+        return "valutare rischi e prove mancanti con revisione normale; nessun esonero automatico"
+    if set(items) != {"C1", "C2", "C3", "C4", "C5"} or any(
+        item.get("assessment") != "supported" or item.get("provider_choice") != "supported"
+        for item in items.values()
+    ):
+        return "risolvere rilievi o prove mancanti prima dell'accettazione del coordinatore"
+    report = entry.get("report")
+    scope = report.get("scope_assessment") if isinstance(report, dict) else None
+    if not isinstance(scope, dict) or scope.get("assessment") != "supported":
+        return "verificare la richiesta originale; giudizi sui singoli criteri conservati"
+    return "controlli e accettazione al coordinatore; triage consultivo senza esoneri automatici"
 
 
 def _assessments(entry: dict) -> list[dict]:
