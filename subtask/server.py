@@ -92,6 +92,7 @@ def start(
 def start_many(tasks: list[dict]) -> str:
     """Start several jobs in one call. Items take start()'s arguments. With id + depends_on they form a group (grp-…)
     run as a DAG; subtask:<id>:summary in task/context_refs is replaced by the real job id.
+    With Jev auto, the response includes advisory dependency checks; read them without treating them as permission.
     foreach=<parent id>: one copy per item of the JSON list the parent writes to .subtask/fanout.json ({{item}} in
     task), max 8; dependents wait for every copy. after='any': start when one parent succeeded."""
     return core.start_many(tasks)
@@ -156,7 +157,7 @@ def result(id: str, full: bool = False, evidence: bool = False) -> str:
 
 @mcp.tool(structured_output=False)
 def reply(id: str, message: str) -> str:
-    """Continue a finished job."""
+    """Jev auto adds advisory feedback checks; read the output. Continue a finished job."""
     return core.reply(id, message)
 
 

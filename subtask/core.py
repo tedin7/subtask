@@ -701,7 +701,7 @@ def consensus(
     return groups.create(rounds + [synth], label="consensus")
 
 
-def start_many(tasks: list[dict], progress=None) -> str:
+def _launch_many(tasks: list[dict], progress=None) -> str:
     """Start several jobs in one call; each dict takes start()'s arguments.
 
     Partial success is normal: the reply lists every started id and every
@@ -731,6 +731,14 @@ def start_many(tasks: list[dict], progress=None) -> str:
     return "\n".join(out)
 
 
+def start_many(tasks: list[dict], progress=None) -> str:
+    """Launch the requested jobs unchanged, then return advisory dependency information."""
+    outcome = _launch_many(tasks, progress)
+    from . import workflow_hooks
+
+    return workflow_hooks.batch(tasks, outcome)
+
+
 def summary_of(text: str) -> str:
     marker = text.rfind("## Summary")
     lines = [line for line in text[max(marker, 0) :].splitlines() if line.strip()]
@@ -756,6 +764,11 @@ def result(job_id: str, full: bool = False, evidence: bool = False, _count: bool
     text = (folder / "result.md").read_text() if (folder / "result.md").is_file() else ""
     head = _line(job_id)
 
+    from . import workflow_hooks
+
+    workflow = workflow_hooks.delivery_details(st)
+    if workflow:
+        head += "\n" + workflow
     jev = auto_review.details(st)
     if jev:
         head += "\n" + jev
@@ -813,6 +826,16 @@ def reply(job_id: str, message: str) -> str:
     auto_review.current(job_id, jobs.status(job_id))  # settle/reconcile before taking the lock
     sp = jobs.spec(job_id)
     adapter = registry.get(sp.get("engine", ""))
+    from . import workflow_hooks
+
+    observed = jobs.status(job_id)
+    advice = None
+    if (
+        observed.get("state") in jobs.FINAL
+        and not auto_review.is_pending(observed)
+        and observed.get("session_id")
+    ):
+        advice = workflow_hooks.feedback(job_id, message, sp, observed)
     with jobs.job_lock(job_id):  # two replies at once must not both start a worker
         st = jobs.read_json(jobs.job_dir(job_id) / "status.json")
         if st.get("state") not in jobs.FINAL:
@@ -822,6 +845,8 @@ def reply(job_id: str, message: str) -> str:
             return f"{job_id}: Jev review is still running; use wait() before replying"
         if not st.get("session_id"):
             return f"{job_id} has no session to resume"
+        if st.get("attempt", 1) != observed.get("attempt", 1):
+            return f"{job_id}: delivery changed; read result() before replying"
         n = int(st.get("attempt") or 1) + 1
         # a fresh rid per try: a failed reply never blocks the next one
         rid = f"{job_id}#{n}-{secrets.token_hex(3)}" if adapter and adapter.capabilities.paid else None
@@ -854,7 +879,7 @@ def reply(job_id: str, message: str) -> str:
             ]
             jobs.update_status(
                 job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False,
-                stop_requested=False, jev_review=None, locked=True,
+                stop_requested=False, jev_review=None, feedback_advice=advice, locked=True,
             )  # fmt: skip
         except BaseException:
             _undo_reply(job_id, rid, st, locked=True)
@@ -867,7 +892,8 @@ def reply(job_id: str, message: str) -> str:
         return f"{job_id} failed to resume: {exc}"
     jobs.update_status(job_id, proc=ident, liveness=procid.ALIVE)
     admission.running(job_id, ident)
-    return f"{job_id} resumed"
+    note = workflow_hooks.render(advice)
+    return (note + "\n" if note else "") + f"{job_id} resumed"
 
 
 def _undo_reply(job_id: str, rid: str | None, previous: dict, locked: bool) -> None:

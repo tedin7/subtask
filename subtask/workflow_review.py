@@ -13,7 +13,7 @@ POLICY = "subtask-workflow-advice-v1"
 MAX_MATERIAL_BYTES = 24 * 1024
 CLAIMS = {
     "routing": "The proposed batch respects recorded dependencies, read/write boundaries and delegation constraints.",
-    "feedback": "The proposed reply follows the current user instruction and accurately distinguishes prior receipts from new evidence.",
+    "feedback": "The proposed reply gives a concrete next step consistent with the recorded task and prior receipts, without treating worker claims as independent evidence.",
     "evidence": "The supplied evidence exercises every stated requirement and justifies the stated conclusion.",
     "risk": "The proposed action respects the recorded authorization, budget and operational constraints.",
 }
@@ -86,7 +86,9 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
         folder = config.HOME / "workflow-reviews"
         delivery._reject_symlinks(folder)
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-        fd = os.open(folder / ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        fd = os.open(
+            folder / ("." + binding + ".lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600
+        )
         with os.fdopen(fd, "a") as lock:
             if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
                 return {**report, "reason": "invalid_storage"}
@@ -136,10 +138,19 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
                     route=routed["route"],
                     reason=veto or routed["reason"],
                     scores={"source": "provider", "probabilities": answer["probabilities"]},
-                    wrapper={"source": "deterministic", "route": routed["route"], "reason": routed["reason"]},
+                    wrapper={
+                        "source": "deterministic",
+                        "route": routed["route"],
+                        "reason": veto or routed["reason"],
+                    },
                 )
                 if routed["route"] != "jev":
                     report["assessment"] = "unproven"
+                report["next_action"] = {
+                    "supported": "Il parere supporta questa proposta: verifica i vincoli e decidi tu.",
+                    "contradicted": "Riesamina la proposta rispetto alle dipendenze o alle prove; nessuna modifica automatica.",
+                    "unproven": "Chiarisci le dipendenze o raccogli la prova mancante prima di decidere.",
+                }[report["assessment"]]
             except (OSError, ValueError, TypeError, KeyError):
                 report.update(status="unknown", reason="provider_response_unavailable_or_invalid")
             report = delivery._clean(report)
@@ -156,5 +167,7 @@ def format_report(report: dict) -> str:
     return (
         f"Jev {safe.get('phase')}: {safe.get('status')} · "
         f"provider={safe.get('provider_choice')} · assessment={safe.get('assessment')} · "
-        f"route={safe.get('route')} · {safe.get('reason')}. Solo parere; nessuna autorizzazione."
+        f"route={safe.get('route')} · {safe.get('reason')}. Solo parere; nessuna autorizzazione.\n"
+        f"Oggetto: {CLAIMS.get(safe.get('phase'), 'controllo del workflow')}\n"
+        f"Prossimo passo: {safe.get('next_action', 'Leggi le prove originali e decidi tu.')}"
     )

@@ -17,8 +17,18 @@ from .test_delivery_review import answer
 
 @pytest.fixture
 def delivery(home, monkeypatch):
-    from subtask import auto_review, jev_config, jobs
+    from subtask import auto_review, jev_config, jobs, workflow_review
 
+    # These tests isolate delivery checks; workflow feedback has its own integration tests.
+    monkeypatch.setattr(
+        workflow_review,
+        "evaluate",
+        lambda *a, **kw: {
+            "phase": "feedback",
+            "status": "skipped",
+            "reason": "delivery_fixture",
+        },
+    )
     monkeypatch.setenv("TYPESAFE_API_KEY", "fake-jev-auto-secret-for-tests")
     jev_config.configure(mode="auto")
     folder = jobs.job_dir("st-auto-review")

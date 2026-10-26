@@ -150,3 +150,16 @@ formato verdi. Log conservato nel percorso privato della campagna.
 
 Il diff riguarda benchmark, test e documentazione; nessun cambiamento al
 runtime `subtask/`. Non occorrono installazione del pacchetto o riavvio MCP.
+
+## Attivazione nel servizio
+
+Contratto 26 ottobre: pubblicare i quattro pareri consultivi nel percorso MCP e
+CLI condiviso. Repository canonica `/root/subtask`; sviluppo e verifiche in
+`/root/wt/subtask-jev-prod-20261026`. Routing in `start_many`, feedback in
+`reply`, prove e rischio nello stesso controllo finale già esistente.
+
+Vincoli: policy automatica e tetto condiviso invariati; nessuna accettazione,
+integrazione, esecuzione di comandi suggeriti o cambio provider automatici.
+Le nuove richieste routing/feedback usano il cap esistente; gli invii ignoti
+non vengono ripetuti. Prova: test di regressione degli output reali MCP/CLI,
+caso minimo live, suite completa, CI finale e handshake client installati.

@@ -68,6 +68,8 @@ def envelope(job_id: str) -> dict:
         "kind": sp.get("kind"),
         "state": st.get("state"),
         "jev_review": st.get("jev_review"),
+        "routing_advice": st.get("routing_advice"),
+        "feedback_advice": st.get("feedback_advice"),
         "detail": st.get("detail"),
         "policy": sp.get("policy"),
         "verification": verification
