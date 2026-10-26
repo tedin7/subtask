@@ -412,6 +412,16 @@ def _coordinator_history(folder, contract, initial):
         if record.get("revision", 1) > 1 and isinstance(record.get("delta"), str):
             text += "\nCoordinator continuation:\n" + record["delta"]
     if not complete:
+        if isinstance(contract.get("delta"), str) and not any(
+            record.get("sha256") == contract["sha256"] for record in accepted
+        ):
+            history["unattested_current_delta"] = {
+                "contract_sha256": contract["sha256"],
+                "text_sha256": contracts.digest(contract["delta"]),
+                "ref": "status.json#contract" if contract != initial else "spec.json#contract",
+                "chain_attested": False,
+            }
+            text += "\nCoordinator continuation (current contract; chain unattested):\n" + contract["delta"]
         text += "\nCoordinator continuation history is incomplete; full request coverage is unproven."
     return text, history
 

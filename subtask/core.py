@@ -200,6 +200,7 @@ def start(
         if isinstance(exc, RepositoryPreparationError):
             prefix = "worktree not created"
         return f"{prefix}: {redact(str(exc))}"
+    base = registered_contract.get("base_sha") or base
     if context_refs or auto_repomap:
         from . import context
 
@@ -246,7 +247,12 @@ def start(
             k: v
             for k, v in (contract or {}).items()
             if k
-            not in {"expected_preparation_sha256", "expected_material_sha256", "expected_static_material"}
+            not in {
+                "expected_preparation_sha256",
+                "expected_material_sha256",
+                "expected_static_material",
+                "expected_repomap_sha256",
+            }
         }
         child_contract.update(
             coordinator_request=registered_contract["request"],
@@ -274,13 +280,22 @@ def start(
         if "already running" in built:  # no slot now: a group starts the Builder when one frees
             from . import groups
 
+            scheduling = {
+                "items": [],
+                "groups": [],
+                "pending_tasks": 0,
+                "refused_tasks": 0,
+                "unknown_tasks": 0,
+            }
+            if _launch_receipt is not None:
+                _launch_receipt["scheduled_receipt"] = scheduling
             queued = groups.create([{
                 "task": task, "engine": engine, "repo": repo, "base": base, "max_usd": max_usd,
                 "max_turns": max_turns, "effort": effort, "model": model, "kind": kind, "files": files,
                 "policy": policy, "verify": verify, "untrusted": untrusted, "max_retries": max_retries,
                 "invariants": invariants, "allowed_paths": allowed_paths, "symbol_scope": symbol_scope,
                 "oracle_cmd": oracle_cmd, "_breaker": breaker, "contract": child_contract,
-            }])  # fmt: skip
+            }], _launch_receipt=scheduling if _launch_receipt is not None else None)  # fmt: skip
             return f"breaker {broke}\nbuilder queued in {queued.split()[0]}"
         if " started " not in built:
             stop(breaker)
@@ -844,6 +859,13 @@ def _launch_many(tasks: list[dict], progress=None, receipt=None, checkpoint=None
                 out.append(f"bad task {str(spec.get('task', ''))[:40]!r}: {type(exc).__name__}: {exc}")
         if receipt is not None:
             receipt["items"].append(item)
+            scheduling = item.get("scheduled_receipt", {})
+            if scheduling:
+                receipt["groups"].extend(scheduling.get("groups", []))
+                receipt["pending_tasks"] += scheduling.get("pending_tasks", 0)
+                item.setdefault("children", []).extend(scheduling.get("items", []))
+                receipt["refused_tasks"] += scheduling.get("refused_tasks", 0)
+                receipt["unknown_tasks"] += scheduling.get("unknown_tasks", 0)
             receipt["unknown_tasks"] += bool(item.get("unknown"))
             receipt["refused_tasks"] += not item["accepted"] and not item.get("unknown")
             if checkpoint:

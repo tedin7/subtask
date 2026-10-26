@@ -295,3 +295,143 @@ def test_receipt_state_rejects_malformed_verification(home):
     result = contracts.receipt_state({}, {"attempt": 1, "verification": "corrupt"}, "abc", None)
     assert isinstance(result, dict)
     assert result["status"] == "unproven"
+
+
+def test_worktree_base_is_the_prepared_contract_base(home, monkeypatch):
+    from functools import wraps
+
+    from subtask import core, jobs, planning
+
+    repo = _repo(home / "repo")
+    (repo / "a.py").write_text("OLD\n")
+    subprocess.run(["git", "-C", str(repo), "add", "a.py"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "old"],
+        check=True,
+    )
+    old = _git(repo, "rev-parse", "HEAD").strip()
+    original = planning.preflight
+    raced = []
+
+    @wraps(original)
+    def committed_after_prepare(task, **kwargs):
+        prepared = original(task, **kwargs)
+        if not raced:
+            raced.append(True)
+            (repo / "a.py").write_text("NEW\n")
+            subprocess.run(["git", "-C", str(repo), "add", "a.py"], check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "new"],
+                check=True,
+            )
+        return prepared
+
+    monkeypatch.setattr(planning, "preflight", committed_after_prepare)
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", f"echo x > f.txt; {GIT} add f.txt; {GIT} commit -qm f; {SAY}")
+    out = core.start("x", engine="fake", repo=str(repo), files=["a.py"], verify="true")
+    job = out.split()[0]
+    core.wait([job], timeout=60)
+    spec = jobs.spec(job)
+    receipt = spec["contract"]["resolved_material"][0]
+    worker_bytes = subprocess.run(
+        ["git", "-C", str(repo), "show", f"{spec['base']}:a.py"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert old != _git(repo, "rev-parse", "HEAD").strip()
+    assert spec["base"] == spec["contract"]["base_sha"]
+    assert receipt["sha256"] == hashlib.sha256(worker_bytes.encode()).hexdigest()
+
+
+def test_packet_keeps_latest_available_delta_on_incomplete_chain(home):
+    from subtask import delivery_review, jobs
+
+    first = contracts.prepare("BASE_REQUIREMENT", cwd=str(home))
+    second = contracts.revision(first, "LATEST_AVAILABLE_REQUIREMENT", 2)
+    folder = jobs.job_dir("st-history-gap")
+    folder.mkdir(parents=True)
+    jobs.write_json(folder / "spec.json", {"task": "BASE_REQUIREMENT", "cwd": str(home), "contract": first})
+    jobs.write_json(folder / "status.json", {"state": "failed", "attempt": 2, "contract": second})
+    jobs.write_json(folder / "contract-1.json", first)
+    # No contract-2.json: the current contract is the only copy of the latest delta.
+    packet, _, limits = delivery_review._packet("st-history-gap", ["criterion"])
+    text = packet["state"]["materials"]["request"]["text"]
+    assert "coordinator_history_incomplete" in limits
+    assert "LATEST_AVAILABLE_REQUIREMENT" in text
+    history = packet["state"]["materials"]["request"]["provenance"]["history"]
+    assert history["unattested_current_delta"]["chain_attested"] is False
+    assert history["unattested_current_delta"]["text_sha256"] == contracts.digest(second["delta"])
+
+
+def test_adversarial_fallback_plan_records_queued_builder(home, monkeypatch):
+    from functools import wraps
+
+    from subtask import core, groups
+
+    repo = _repo(home / "repo")
+    original = core.start
+
+    @wraps(original)
+    def refuse_direct_builder(*args, **kwargs):
+        if kwargs.get("_breaker") and not kwargs.get("_group"):
+            return "already running: forced direct builder admission refusal"
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(core, "start", refuse_direct_builder)
+    task = {
+        "task": "implement",
+        "repo": str(repo),
+        "engine": "fake",
+        "verify": "true",
+        "adversarial": True,
+        "contract": {"coordinator_request": "REQ", "requirements": [{"id": "R1", "text": "REQ"}]},
+    }
+    plan = json.loads(core.plan([task]))
+    out = json.loads(core.plan(plan_id=plan["id"], launch=True))
+    assert out["state"] == "unknown"
+    match = re.search(r"builder queued in (grp-[0-9a-f]+)", out["outcome"])
+    assert match, out
+    gid = match.group(1)
+    core.wait([gid], timeout=60)
+    receipt = out["launch_receipt"]
+    assert gid in receipt["groups"]
+    builder = groups.read(gid)["tasks"][0]["job"]
+    assert receipt["pending_tasks"] >= 1 or builder in receipt["job_ids"]
+
+
+def test_declared_base_symlink_binds_the_worker_view(home):
+    repo = _repo(home / "repo")
+    (repo / "real.py").write_text("REAL_CONTENT\n")
+    (repo / "link.py").symlink_to("real.py")
+    subprocess.run(["git", "-C", str(repo), "add", "real.py", "link.py"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "link"],
+        check=True,
+    )
+    (repo / "link.py").unlink()
+    try:
+        prepared = contracts.prepare("x", repo=str(repo), files=["link.py"])
+    except ValueError:
+        return  # refusing a non-regular base entry is an acceptable fix
+    receipt = prepared["resolved_material"][0]
+    worker_bytes = subprocess.run(
+        ["git", "-C", str(repo), "cat-file", "blob", "HEAD:real.py"], capture_output=True, check=True
+    ).stdout
+    assert receipt.get("sha256") == hashlib.sha256(worker_bytes).hexdigest()
+
+
+def test_declared_base_directory_is_not_a_missing_file(home):
+    repo = _repo(home / "repo")
+    (repo / "pkg").mkdir()
+    (repo / "pkg" / "a.py").write_text("x")
+    subprocess.run(["git", "-C", str(repo), "add", "pkg"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-qm", "pkg"],
+        check=True,
+    )
+    try:
+        prepared = contracts.prepare("x", repo=str(repo), files=["pkg"])
+    except ValueError:
+        return  # refusing a directory is an acceptable fix
+    assert prepared["resolved_material"][0].get("status") != "missing_hint"

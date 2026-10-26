@@ -108,6 +108,16 @@ def facts(tasks):
     return [preflight(t, dependency_ids=[d for d in t.get("depends_on", [])]) for t in tasks]
 
 
+def _launch_observation(plan):
+    """A missing legacy receipt proves neither zero workers nor a successful spawn."""
+    receipt = plan.get("launch_receipt")
+    if isinstance(receipt, dict) and type(receipt.get("worker_count")) is int:
+        return bool(receipt["worker_count"]), []
+    if plan.get("state") == "prepared":
+        return False, []
+    return None, ["legacy_launch_receipt_missing"]
+
+
 def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
     from . import core, workflow_hooks
 
@@ -157,13 +167,14 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
                 "state": "unknown",
                 "launch_receipt": jobs.read_json(root / (plan_id + ".launch.json")) or {},
             }
+        workers_started, observation_limits = _launch_observation(plan)
         return {
             "id": plan_id,
             "state": plan["state"],
             "contracts": observed,
             "advice": plan.get("advice"),
-            "limitations": plan["limitations"],
-            "workers_started": bool((plan.get("launch_receipt") or {}).get("worker_count")),
+            "limitations": list(plan["limitations"]) + observation_limits,
+            "workers_started": workers_started,
         }
     if (
         not isinstance(plan_id, str)
@@ -191,9 +202,14 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
                     launch_receipt=observed_launch,
                     workers_started=bool(observed_launch.get("worker_count")),
                 )
+            view["workers_started"], extra_limits = _launch_observation(view)
+            view["limitations"] = list(view.get("limitations", [])) + extra_limits
             return view
         if plan["state"] in {"launched", "scheduled", "refused", "partial", "unknown"}:
-            return {**{k: v for k, v in plan.items() if k not in {"tasks", "facts"}}, "reused": True}
+            view = {**{k: v for k, v in plan.items() if k not in {"tasks", "facts"}}, "reused": True}
+            view["workers_started"], extra_limits = _launch_observation(view)
+            view["limitations"] = list(view.get("limitations", [])) + extra_limits
+            return view
         if plan["state"] != "prepared":
             observed_launch = jobs.read_json(root / (plan_id + ".launch.json")) or {}
             return {
@@ -201,7 +217,9 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
                 "state": "unknown",
                 "reason": "launch_unresolved_no_retry",
                 "launch_receipt": observed_launch,
-                "workers_started": bool(observed_launch.get("worker_count")),
+                "workers_started": _launch_observation(
+                    {"state": "unknown", "launch_receipt": observed_launch}
+                )[0],
             }
         observed = facts(plan["tasks"])
         if contracts.digest({"tasks": plan["tasks"], "facts": observed}) != plan["binding"]:
@@ -257,6 +275,10 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
                             if receipt.get("status") != "dependency_pending"
                         ],
                     }
+                if observed_contract.get("auto_repomap"):
+                    frozen.setdefault("contract", {})["expected_repomap_sha256"] = observed_contract[
+                        "repomap_sha256"
+                    ]
                 frozen_tasks.append(frozen)
             outcome = core._launch_many(frozen_tasks, progress, receipt=receipt, checkpoint=checkpoint)
             checkpoint()

@@ -78,8 +78,24 @@ def prepare(
         if repo and not readonly and not Path(name).is_absolute():
             if root not in path.parents or (root / name).is_symlink():
                 raise ValueError("declared_relative_file_needs_explicit_absolute_reference")
+            relative = Path(os.path.normpath(name))
+            for index in range(1, len(relative.parts) + 1):
+                prefix = Path(*relative.parts[:index]).as_posix()
+                entry = subprocess.run(
+                    ["git", "--literal-pathspecs", "-C", str(root), "ls-tree", "-z", head, "--", prefix],
+                    capture_output=True,
+                    timeout=30,
+                    check=False,
+                )
+                if entry.returncode:
+                    raise ValueError("declared_file_base_entry_unavailable")
+                if entry.stdout:
+                    mode = entry.stdout.split(b" ", 1)[0]
+                    allowed = {b"100644", b"100755"} if index == len(relative.parts) else {b"040000"}
+                    if mode not in allowed:
+                        raise ValueError("declared_file_base_entry_not_regular")
             blob = subprocess.run(
-                ["git", "-C", str(root), "cat-file", "blob", f"{head}:{name}"],
+                ["git", "-C", str(root), "cat-file", "blob", f"{head}:{relative.as_posix()}"],
                 capture_output=True,
                 timeout=30,
                 check=False,
@@ -171,7 +187,12 @@ def prepare(
             k: v
             for k, v in supplied.items()
             if k
-            not in {"expected_preparation_sha256", "expected_material_sha256", "expected_static_material"}
+            not in {
+                "expected_preparation_sha256",
+                "expected_material_sha256",
+                "expected_static_material",
+                "expected_repomap_sha256",
+            }
         }
     )
     from .delivery_review import _clean
@@ -186,6 +207,10 @@ def prepare(
     if supplied.get("expected_material_sha256") and supplied["expected_material_sha256"] != digest(
         result["resolved_material"]
     ):
+        raise ValueError("plan_inputs_changed")
+    if supplied.get("expected_repomap_sha256") is not None and supplied[
+        "expected_repomap_sha256"
+    ] != result.get("repomap_sha256"):
         raise ValueError("plan_inputs_changed")
     for expected in supplied.get("expected_static_material", []):
         if expected not in result["resolved_material"]:

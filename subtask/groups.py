@@ -128,6 +128,7 @@ def create(
     blackboard(group_id).touch()
     if _launch_receipt is not None:
         _launch_receipt["groups"].append(group_id)
+        _launch_receipt["pending_tasks"] = len(rows)
     advance(group_id, _launch_receipt=_launch_receipt)
     group = read(group_id)
     if _launch_receipt is not None:

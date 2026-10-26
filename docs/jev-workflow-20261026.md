@@ -388,3 +388,46 @@ La prova del fallback adversarial richiedeva un wrapper di test con firma
 preservata per il preflight; corretto solo il test con `functools.wraps`, il
 percorso reale è verde: un passato in 1,39 s,
 `/tmp/subtask-review-fallback-final.log`. Nessun provider reale è stato usato.
+
+## Chiusura della seconda revisione del delta
+
+Base di questo intervento: `7174386`, con guard OAuth Kimi invariato.
+Il coordinatore ha verificato quella base con 793 passati e quattro live
+esclusi; il risultato non certifica le correzioni successive. Nessuna modifica
+a modello, profilo, policy, provider, budget o installazione.
+
+Il rapporto `REVIEW-DELTA-20261026.md` e le cinque nuove riproduzioni del
+revisore sono stati letti per intero. Le 17 regressioni precedenti restano
+intatte. Le cinque nuove sono state aggiunte come test normali, senza xfail.
+
+| Requisito / rilievo | Correzione e percorso verificato |
+|---|---|
+| Base preparata = base consegnata | Anche start normale fissa `base` allo SHA del contratto. Un commit iniettato dopo preflight non cambia il worktree né il blob dichiarato. |
+| Storia incompleta conserva l'ultima istruzione disponibile | Se manca la revisione immutabile corrente, il packet mantiene il delta del contratto corrente, con riferimento, digest del testo e `chain_attested=false`. Il limite storia incompleta resta; il packet non dichiara copertura totale. |
+| Fallback adversarial osservabile | Il gruppo riceve una ricevuta interna; gruppi, job osservati e task pendenti confluiscono nella ricevuta del piano. Se Builder parte subito, pending=0 è corretto e il suo job deve comparire. Se resta pendente, il conteggio lo mostra. Lo stato unknown impedisce il replay. |
+| Entry Git non regolari | Il preflight controlla il modo Git della entry e degli antenati. Symlink, directory usate come file e gitlink vengono rifiutati in modo controllato; non ricevono hash di una vista diversa né un falso missing_hint. |
+| Mappa di un dipendente | Il piano congela `expected_repomap_sha256`; il confine start del task differito la ricontrolla. Una mappa cambiata dopo la preview rifiuta la partenza prima dello spawn. Il valore atteso non modifica il digest della metadata originaria. |
+| Piani legacy senza ricevuta | Preview, lettura per ID e riuso restituiscono workers_started=null con limite esplicito, anziché dedurre zero o successo dal vecchio stato. Una ricevuta osservata con zero worker continua a riportare false. |
+
+La nuova aspettativa del revisore sul fallback richiedeva pending positivo
+anche quando `groups.create` avviava già Builder. È stata corretta solo quella
+nuova aspettativa: verifica il gruppo persistito e il job Builder osservato,
+oppure il conteggio pendente. Il testo «queued» non è usato come prova di spawn.
+
+| Revisione / input | Comando / ambiente | Esito e log |
+|---|---|---|
+| `7174386`, cinque nuove regressioni prima del fix | `build-a-turno .venv/bin/python -m pytest -q tests/test_review_findings_20261026.py -k 'prepared_contract_base or latest_available_delta or fallback_plan or declared_base_'` | Cinque rossi, 17 precedenti esclusi; `/tmp/subtask-delta2-before.log` |
+| Stessa base, sospetti limitati al rapporto | `build-a-turno .venv/bin/python -m pytest -q tests/test_review_binding_boundaries.py -k 'deferred_dag or legacy_launched'` | Due rossi; `/tmp/subtask-delta2-suspects-before.log` |
+| Delta corretto, Python 3.14.7 editable vincolato | `build-a-turno .venv/bin/python -m pytest -q tests/test_review_findings_20261026.py tests/test_review_binding_boundaries.py tests/test_contract_workflow.py tests/test_contract_history_packets.py` | 66 passati in 22,40 s; `/tmp/subtask-delta2-after.log` |
+| Provenienza corrente e piani legacy nei tre percorsi | Selettori dei due test interessati, stesso ambiente | Tre passati; `/tmp/subtask-delta2-final-fields.log` |
+| Gruppo/Builder realmente osservati | Selettore del nuovo fallback adversarial | Un passato; `/tmp/subtask-delta2-fallback-final.log` |
+
+Ruff e formato sono verdi. Le prove sono offline, con motore fake e
+configurazione Jev isolata; nessuna nuova richiesta a provider. Il commit
+cumulativo richiede il gate completo e la revisione di chiusura sullo stesso
+SHA. Push, installazione e verifica del servizio restano al coordinatore.
+
+Restano i limiti già dichiarati: identità del coordinatore non autenticata,
+record locali modificabili dallo stesso utente, verifica locale distinta dal
+rilascio. La cache repomap non viene resa fresca da questo intervento: si
+vincola il contenuto effettivamente consegnato. Nessun nuovo audit eseguito.

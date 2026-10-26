@@ -162,3 +162,49 @@ def test_adversarial_fallback_group_retains_coordinator_contract(home, monkeypat
     contract = jobs.spec(row["job"])["contract"]
     assert contract["request"] == "COORDINATOR_REQUEST" and contract["environment_ref"] == "ENV_FALLBACK"
     assert contract["requirements"] == [{"id": "F1", "text": "preserve fallback requirement"}]
+
+
+def test_deferred_dag_task_rechecks_preview_repomap(home, monkeypatch):
+    from subtask import context, core
+
+    repo = _repo(home / "repo")
+    monkeypatch.setattr(context, "repomap", lambda root: "MAP_PREVIEW")
+    tasks = [
+        {"id": "author", "task": "author", "engine": "fake", "repo": str(repo)},
+        {
+            "id": "dependent",
+            "depends_on": ["author"],
+            "task": "dependent",
+            "engine": "fake",
+            "repo": str(repo),
+            "auto_repomap": True,
+        },
+    ]
+    p = json.loads(core.plan(tasks))
+    frozen = []
+    monkeypatch.setattr(core, "_launch_many", lambda tasks, *a, **kw: frozen.extend(tasks) or "captured")
+    core.plan(plan_id=p["id"], launch=True)
+    monkeypatch.setattr(context, "repomap", lambda root: "MAP_CHANGED_BEFORE_DEPENDENT_START")
+    spawned = []
+    monkeypatch.setattr(core, "_spawn", lambda *a: spawned.append(a))
+    args = {k: v for k, v in frozen[1].items() if k not in {"id", "depends_on"}}
+    out = core.start(**args)
+    assert "plan_inputs_changed" in out and not spawned
+
+
+@pytest.mark.parametrize("legacy_state", ["launched", "launching"])
+def test_legacy_launched_plan_does_not_claim_zero_observed_workers(home, legacy_state):
+    from subtask import config, core, jobs
+
+    tasks = [{"task": "legacy plan", "cwd": str(home), "engine": "fake"}]
+    p = json.loads(core.plan(tasks))
+    path = config.HOME / "plans" / (p["id"] + ".json")
+    legacy = jobs.read_json(path)
+    legacy.update(state=legacy_state, outcome="legacy launch without structured receipt")
+    legacy.pop("launch_receipt", None)
+    jobs.write_json(path, legacy)
+    viewed = json.loads(core.plan(tasks))
+    assert viewed["workers_started"] is None
+    assert "legacy_launch_receipt_missing" in viewed["limitations"]
+    assert json.loads(core.plan(plan_id=p["id"]))["workers_started"] is None
+    assert json.loads(core.plan(plan_id=p["id"], launch=True))["workers_started"] is None
