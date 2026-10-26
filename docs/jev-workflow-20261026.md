@@ -163,3 +163,41 @@ integrazione, esecuzione di comandi suggeriti o cambio provider automatici.
 Le nuove richieste routing/feedback usano il cap esistente; gli invii ignoti
 non vengono ripetuti. Prova: test di regressione degli output reali MCP/CLI,
 caso minimo live, suite completa, CI finale e handshake client installati.
+
+### Implementazione e gate di attivazione
+
+Codice `99be022`: `start_many` restituisce il parere sulle dipendenze dopo aver
+avviato i lavori; il parere non modifica il grafo né annulla partenze riuscite.
+`reply` confronta l'istruzione con mandato, rapporto e ricevute precedenti prima
+di riprendere il worker, senza riscrivere il messaggio. Entrambi i pareri
+restano nel risultato testuale e nell'envelope JSON.
+
+La consegna automatica aggiunge C4 (qualità delle prove) e C5 (triage del
+rischio) ai tre criteri precedenti, nello stesso invio. `wait` e `result`
+espongono fase, scelta grezza, assessment, riferimento e prossimo passo.
+L'origine non autenticata del mandato continua a lasciare lo scope non provato.
+
+Ogni nuovo batch o feedback valutabile può richiedere un invio aggiuntivo da
+2 USD prudenziali sul cap attuale. La consegna mantiene il suo unico invio.
+Policy manual/off, chiavi, cap e provider restano sotto il controllo operatore.
+Gli intent persistenti precedono l'HTTP: un invio ignoto non viene ripetuto.
+
+| Revisione | Comando / ambiente | Esito |
+|---|---|---|
+| `99be022` | `env -u SUBTASK_MONTHLY_CAP_USD -u SUBTASK_MAX_RUNNING build-a-turno .venv/bin/python -m pytest -q`, worktree completo, ambiente editable | 693 passati, 4 live esclusi, 377,66 s |
+| `99be022` | Ruff 0.17.0, check e format; schema MCP rigenerato dal server | verde |
+| `99be022` | Regressione output con arricchimento batch disabilitato nel solo processo di prova | fallisce come previsto; implementazione corretta verde |
+| `99be022` | Revisore indipendente del runtime, inclusa conservazione del packet redatto | nessun blocco residuo |
+| `99be022` | Un invio Jev reale sulle dipendenze dei due incarichi di implementazione | provider=contradicted, assessment=contradicted, 0,246 s |
+
+Il caso minimo segnala la dipendenza di lettura dell'interfaccia: scritture
+su file distinti non dimostrano indipendenza. Questa prova non misura
+l'accuratezza generale. Packet, ricevuta, hash del wheel, log del gate e
+backup per il ritorno sono in
+`/root/.local/state/subtask-jev-prod-20261026/`.
+
+Il rilascio aggiorna il pacchetto locale e le skill distribuite. Le nuove
+connessioni usano il nuovo codice; Codex e OpenCode supportano ricarica remota.
+Per sessioni Claude interattive già aperte il client può richiedere una
+riconnessione dal menu MCP: una nuova connessione verificata non prova
+la sostituzione di tutte quelle vecchie.
