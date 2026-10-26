@@ -238,3 +238,40 @@ locali sono modificabili dallo stesso utente. Test e build locali non provano
 rilascio pubblico né risoluzione di cause storiche. Il tempo fino alla decisione
 del coordinatore resta ignoto senza una decisione osservata; i costi mancanti
 restano mancanti. Non è stata misurata una riduzione dei tempi del workflow.
+
+### Correzioni emerse dal primo gate del candidato
+
+Il gate di `ca39eb5` ha concluso con 745 passati, quattro live esclusi e tre
+regressioni: prefisso dell'errore repository, hint `files` inesistente e
+conteggio rigido dei tool nel trasporto moderno. Il delta conserva il prefisso
+`worktree not created`, registra gli hint mancanti senza hash né falsa lettura
+e confronta il manifest completo. I `context_refs` restano letture obbligatorie.
+La transizione hint mancante → presente invalida la preview.
+
+Il coordinatore ha riprodotto un falso `launched` dopo un rifiuto al confine di
+avvio. Ora una ricevuta interna osserva lo spawn e separa job, worker partiti,
+task ancora pendenti, rifiuti ed esiti ignoti. La risposta testuale legacy resta.
+Gli esiti `refused`, `partial`, `scheduled` e `unknown` non autorizzano replay.
+Un file laterale conserva gli identificativi osservati anche quando manca la
+scrittura conclusiva del piano. La ricezione della richiesta non prova
+l'accettazione del risultato. I piani adversarial restano `unknown` quando non
+è provato l'intero avvio composto; gli identificativi osservati sono conservati.
+
+Durante il primo gate, il test preesistente della sintesi consensus ometteva
+`synth_engine` e ha avviato il motore Claude reale con una chiave fixture.
+Questo tentativo non era offline; il costo reale resta UNKNOWN, non zero.
+Il worker `st-cdf9283cb6`, PID 3121131, figlio Claude 3121158, è stato fermato
+tramite `subtask.cli stop` nel solo HOME della fixture. Entrambi i processi
+sono poi risultati assenti. Il costo osservato era null; 0,5 USD nel registro
+della fixture era un accantonamento prudenziale, non una fattura.
+Il test ora passa esplicitamente `synth_engine="fake"`; provider, configurazione
+e tetti del servizio restano invariati.
+
+| Input | Comando / ambiente | Esito e log |
+|---|---|---|
+| Delta dopo `ca39eb5` | Mirati contratti, compatibilità, consensus e protocollo, `build-a-turno .venv/bin/python -m pytest -q` con selettori registrati | 27 passati, `/tmp/subtask-implementation-delta.log` |
+| Delta dopo `ca39eb5` | DAG schedulato e test stop/adversarial | 8 passati, `/tmp/subtask-implementation-launch-extra.log` |
+| `ca39eb5` | CLI e i due server MCP, preview stessa richiesta in HOME isolato | Stesso piano prepared, nessun worker, `/tmp/subtask-implementation-transports.log` |
+
+Le ricevute del primo gate restano utili alla diagnosi; il gate offline definitivo
+va eseguito sul delta corretto. Integrazione e disponibilità restano da verificare.

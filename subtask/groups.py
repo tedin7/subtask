@@ -103,7 +103,13 @@ def _validate(tasks: list[dict]) -> str | None:
     return None
 
 
-def create(tasks: list[dict], concurrency: int | None = None, kind: str = "dag", label: str = "") -> str:
+def create(
+    tasks: list[dict],
+    concurrency: int | None = None,
+    kind: str = "dag",
+    label: str = "",
+    _launch_receipt=None,
+) -> str:
     """Create a group, start what can start, spawn the runner if anything waits. Returns the reply."""
     problem = _validate(tasks)
     if problem:
@@ -120,8 +126,12 @@ def create(tasks: list[dict], concurrency: int | None = None, kind: str = "dag",
              "tasks": rows, "created": time.time(), "runner": None}  # fmt: skip
     jobs.write_json(_path(group_id), group)
     blackboard(group_id).touch()
-    advance(group_id)
+    if _launch_receipt is not None:
+        _launch_receipt["groups"].append(group_id)
+    advance(group_id, _launch_receipt=_launch_receipt)
     group = read(group_id)
+    if _launch_receipt is not None:
+        _launch_receipt["pending_tasks"] = sum(r["state"] == "pending" for r in group["tasks"])
     if any(r["state"] == "pending" for r in group["tasks"]):
         _spawn_runner(group_id)
     return f"{group_id} · {summary(group_id)}\n" + "\n".join(_row_line(r) for r in read(group_id)["tasks"])
@@ -162,7 +172,7 @@ def _ok(job_id: str) -> bool | None:
     return st.get("state") == "done" and (not v or v.get("exit_code") == 0)
 
 
-def advance(group_id: str) -> None:
+def advance(group_id: str, _launch_receipt=None) -> None:
     """One pass: skip what cannot run, start what can, within the concurrency limit."""
     from . import core
 
@@ -202,10 +212,17 @@ def advance(group_id: str) -> None:
             ]
             args["contract"] = group_contract
             args["task"] = original + note
+            item = {"alias": alias, "accepted": False, "worker_started": False}
+            if _launch_receipt is not None:
+                _launch_receipt["items"].append(item)
             try:
-                out = core.start(**args, _group=group_id)
+                private = {"_launch_receipt": item} if _launch_receipt is not None else {}
+                out = core.start(**args, _group=group_id, **private)
             except TypeError as exc:
                 out = f"bad task: {exc}"
+            if _launch_receipt is not None:
+                _launch_receipt["refused_tasks"] += not item["accepted"] and BUSY not in out
+                _launch_receipt["unknown_tasks"] += bool(item.get("unknown"))
             if BUSY in out:
                 break  # no slot: try again next pass
             if "\nbuilder queued in " in out:

@@ -117,6 +117,7 @@ def start(
     _breaker: str | None = None,
     _group: str | None = None,
     contract: dict | None = None,
+    _launch_receipt: dict | None = None,
 ) -> str:
     budget = config.DEFAULT_MAX_USD if max_usd is None else max_usd
     problem = _validate(task, engine, kind, budget, max_turns, base, effort)
@@ -193,9 +194,11 @@ def start(
                 "worker_started": False,
             }
         )
-        from .contracts import ContextReferenceError
+        from .contracts import ContextReferenceError, RepositoryPreparationError
 
         prefix = "context_refs" if isinstance(exc, ContextReferenceError) else "preparation"
+        if isinstance(exc, RepositoryPreparationError):
+            prefix = "worktree not created"
         return f"{prefix}: {redact(str(exc))}"
     if context_refs or auto_repomap:
         from . import context
@@ -213,9 +216,16 @@ def start(
             return "adversarial needs a repo (worktree) and verify"
         from .verifier import BREAKER_TASK
 
+        if _launch_receipt is not None:
+            _launch_receipt["unknown"] = True
+        breaker_receipt = {}
+        builder_receipt = {}
+        if _launch_receipt is not None:
+            _launch_receipt["children"] = [breaker_receipt, builder_receipt]
         broke = start(
             BREAKER_TASK + task, engine, repo, None, base, False, max_usd, max_turns, effort, model,
             sandbox, kind="code", policy=policy, untrusted=untrusted, progress=progress, _group=_group,
+            _launch_receipt=breaker_receipt if _launch_receipt is not None else None,
         )  # fmt: skip
         if " started " not in broke:
             return f"breaker not started: {broke}"
@@ -224,7 +234,7 @@ def start(
             task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
             files, policy, verify, untrusted, progress, max_retries=max_retries, invariants=invariants,
             allowed_paths=allowed_paths, symbol_scope=symbol_scope, oracle_cmd=oracle_cmd, _breaker=breaker,
-            _group=_group,
+            _group=_group, _launch_receipt=builder_receipt if _launch_receipt is not None else None,
         )  # fmt: skip
         if "already running" in built:  # no slot now: a group starts the Builder when one frees
             from . import groups
@@ -366,6 +376,8 @@ def start(
         except OSError as exc:
             raise _Compensate(f"worker not started: {exc}") from exc
         spawned = True  # from here on the worker owns the slot and the money: never compensate
+        if _launch_receipt is not None:
+            _launch_receipt.update(job_id=job_id, worker_started=True, accepted=True)
         jobs.update_status(job_id, proc=ident, liveness=procid.ALIVE)
         admission.running(job_id, ident)
     except _Compensate as exc:
@@ -761,12 +773,10 @@ def consensus(
     return groups.create(rounds + [synth], label="consensus")
 
 
-def _launch_many(tasks: list[dict], progress=None) -> str:
-    """Start several jobs in one call; each dict takes start()'s arguments.
-
-    Partial success is normal: the reply lists every started id and every
-    refused item, in order. Nothing already started is rolled back.
-    """
+def _launch_many(tasks: list[dict], progress=None, receipt=None, checkpoint=None) -> str:
+    """Preserve legacy text and optionally record launches from the spawn boundary."""
+    if receipt is not None:
+        receipt.update(items=[], groups=[], pending_tasks=0, refused_tasks=0, unknown_tasks=0)
     if not isinstance(tasks, list):
         return "tasks must be a list"
     if any(isinstance(t, dict) and ("id" in t or "depends_on" in t) for t in tasks):
@@ -774,20 +784,35 @@ def _launch_many(tasks: list[dict], progress=None) -> str:
             return "bad task: every item must be an object"
         from . import groups
 
-        return groups.create(tasks)
+        outcome = (
+            groups.create(tasks, _launch_receipt=receipt) if receipt is not None else groups.create(tasks)
+        )
+        if checkpoint:
+            checkpoint()
+        return outcome
     out = []
     for i, spec in enumerate(tasks, 1):
+        item = {"index": i, "accepted": False, "worker_started": False}
         if not isinstance(spec, dict):
             out.append(f"bad task: expected an object, got {type(spec).__name__}")
-            continue
-        if progress is not None:
-            progress.phase(f"starting {i}/{len(tasks)}")
-        try:
-            out.append(start(**spec, progress=progress))
-        except TypeError as exc:
-            out.append(f"bad task {str(spec.get('task', ''))[:40]!r}: {exc}")
-        except Exception as exc:  # noqa: BLE001 - report it and keep the ids already started
-            out.append(f"bad task {str(spec.get('task', ''))[:40]!r}: {type(exc).__name__}: {exc}")
+        else:
+            if progress is not None:
+                progress.phase(f"starting {i}/{len(tasks)}")
+            try:
+                private = {"_launch_receipt": item} if receipt is not None else {}
+                out.append(start(**spec, progress=progress, **private))
+            except TypeError as exc:
+                item["unknown"] = True
+                out.append(f"bad task {str(spec.get('task', ''))[:40]!r}: {exc}")
+            except Exception as exc:  # noqa: BLE001 - keep observed ids even after a later error
+                item["unknown"] = True
+                out.append(f"bad task {str(spec.get('task', ''))[:40]!r}: {type(exc).__name__}: {exc}")
+        if receipt is not None:
+            receipt["items"].append(item)
+            receipt["unknown_tasks"] += bool(item.get("unknown"))
+            receipt["refused_tasks"] += not item["accepted"] and not item.get("unknown")
+            if checkpoint:
+                checkpoint()
     return "\n".join(out)
 
 

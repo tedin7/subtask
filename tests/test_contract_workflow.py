@@ -108,15 +108,20 @@ def test_plan_launch_idempotent_and_concurrent(home, monkeypatch):
     repo = _repo(home / "repo")
     p = preview(core, repo)
     starts = []
-    monkeypatch.setattr(
-        core, "_launch_many", lambda tasks, progress: starts.append(tasks) or "st-fixture started"
-    )
+    original = core._launch_many
+
+    def observe(tasks, progress, **kwargs):
+        starts.append(tasks)
+        return original(tasks, progress, **kwargs)
+
+    monkeypatch.setattr(core, "_launch_many", observe)
     with ThreadPoolExecutor(max_workers=2) as pool:
         responses = list(pool.map(lambda _: json.loads(core.plan(plan_id=p["id"], launch=True)), range(2)))
     assert len(starts) == 1 and all(r["state"] == "launched" for r in responses)
     assert starts[0][0]["base"] == _git(repo, "rev-parse", "HEAD").strip()
     assert starts[0][0]["contract"]["expected_preparation_sha256"]
     assert preview(core, repo)["workers_started"] is True
+    core.wait(responses[0]["launch_receipt"]["job_ids"], timeout=30)
 
 
 def test_plan_late_input_change_is_checked_at_start_boundary(home, monkeypatch):
@@ -128,14 +133,18 @@ def test_plan_late_input_change_is_checked_at_start_boundary(home, monkeypatch):
     p = preview(core, repo, files=["source.py"])
     original = core._launch_many
 
-    def late_change(tasks, progress):
+    def late_change(tasks, progress, **kwargs):
         file.write_text("two")
-        return original(tasks, progress)
+        return original(tasks, progress, **kwargs)
 
     monkeypatch.setattr(core, "_launch_many", late_change)
     out = json.loads(core.plan(plan_id=p["id"], launch=True))
     assert "plan_inputs_changed" in out["outcome"]
     assert " started " not in out["outcome"]
+    assert out["state"] == "refused" and out["workers_started"] is False
+    assert out["launch_receipt"]["worker_count"] == 0 and not out["launch_receipt"]["job_ids"]
+    again = json.loads(core.plan(plan_id=p["id"], launch=True))
+    assert again["state"] == "refused" and again["reused"] is True
 
 
 def test_interrupted_launch_intent_never_replayed(home, monkeypatch):
@@ -145,7 +154,7 @@ def test_interrupted_launch_intent_never_replayed(home, monkeypatch):
     p = preview(core, repo)
     calls = []
 
-    def interrupted(*args):
+    def interrupted(*args, **kwargs):
         calls.append(args)
         raise OSError("transport interrupted")
 
@@ -303,7 +312,9 @@ def test_dependent_launch_rechecks_static_material_but_resolves_new_outputs(home
     source.write_text("old interface")
     task = {"task": "review dependent interface", "repo": str(repo), "engine": "fake", "files": ["source.py"]}
     launches = []
-    monkeypatch.setattr(core, "_launch_many", lambda tasks, progress: launches.extend(tasks) or "queued")
+    monkeypatch.setattr(
+        core, "_launch_many", lambda tasks, progress, **kwargs: launches.extend(tasks) or "queued"
+    )
     plan = json.loads(
         core.plan(
             [
@@ -312,7 +323,7 @@ def test_dependent_launch_rechecks_static_material_but_resolves_new_outputs(home
             ]
         )
     )
-    assert json.loads(core.plan(plan_id=plan["id"], launch=True))["state"] == "launched"
+    assert json.loads(core.plan(plan_id=plan["id"], launch=True))["state"] == "unknown"
     observed = planning.preflight(task)
     assert launches[1]["contract"]["expected_static_material"] == observed["resolved_material"]
     task["contract"] = {"expected_static_material": observed["resolved_material"]}
@@ -320,3 +331,84 @@ def test_dependent_launch_rechecks_static_material_but_resolves_new_outputs(home
     source.write_text("changed outside the prepared plan")
     with pytest.raises(ValueError, match="plan_inputs_changed"):
         planning.preflight(task)
+
+
+def test_file_hints_are_explicit_and_missing_to_present_invalidates_plan(home):
+    from subtask import core
+
+    repo = _repo(home / "repo")
+    p = preview(core, repo, files=["new.py"])
+    assert p["contracts"][0]["resolved_material"] == [{"reference": "file:new.py", "status": "missing_hint"}]
+    assert "declared_file_hint_unavailable" in p["contracts"][0]["limitations"]
+    (repo / "new.py").write_text("new content")
+    assert json.loads(core.plan(plan_id=p["id"], launch=True))["state"] == "stale"
+
+
+def test_partial_plan_records_real_workers_and_never_replays_refusals(home, monkeypatch):
+    from subtask import core
+
+    repo = _repo(home / "repo")
+    source = repo / "source.py"
+    source.write_text("one")
+    tasks = [
+        {"task": "valid", "repo": str(repo), "engine": "fake"},
+        {"task": "stale", "repo": str(repo), "engine": "fake", "files": ["source.py"]},
+    ]
+    p = json.loads(core.plan(tasks))
+    original = core._launch_many
+
+    def late_change(tasks, progress, **kwargs):
+        source.write_text("two")
+        return original(tasks, progress, **kwargs)
+
+    monkeypatch.setattr(core, "_launch_many", late_change)
+    out = json.loads(core.plan(plan_id=p["id"], launch=True))
+    assert out["state"] == "partial" and out["workers_started"] is True
+    assert out["launch_receipt"]["worker_count"] == 1
+    assert out["launch_receipt"]["refused_tasks"] == 1
+    assert json.loads(core.plan(plan_id=p["id"], launch=True))["launch_receipt"] == out["launch_receipt"]
+    core.wait(out["launch_receipt"]["job_ids"], timeout=30)
+
+
+def test_postlaunch_storage_failure_returns_unknown_with_observed_ids(home, monkeypatch):
+    from subtask import core, jobs
+
+    repo = _repo(home / "repo")
+    p = preview(core, repo)
+    original = jobs.write_json
+
+    def fail_final(path, value):
+        if path.name == p["id"] + ".json" and value.get("state") == "launched":
+            raise OSError("storage unavailable")
+        return original(path, value)
+
+    monkeypatch.setattr(jobs, "write_json", fail_final)
+    out = json.loads(core.plan(plan_id=p["id"], launch=True))
+    assert out["state"] == "unknown" and out["workers_started"] is True
+    assert out["launch_receipt"]["worker_count"] == 1
+    inspected = json.loads(core.plan(plan_id=p["id"]))
+    assert inspected["state"] == "unknown" and inspected["workers_started"] is True
+    assert preview(core, repo)["state"] == "unknown" and preview(core, repo)["workers_started"] is True
+    again = json.loads(core.plan(plan_id=p["id"], launch=True))
+    assert (
+        again["state"] == "unknown" and again["launch_receipt"]["job_ids"] == out["launch_receipt"]["job_ids"]
+    )
+    core.wait(out["launch_receipt"]["job_ids"], timeout=30)
+
+
+def test_dag_scheduled_tasks_are_separate_from_started_workers(home, monkeypatch):
+    from subtask import core
+
+    repo = _repo(home / "repo")
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", "sleep 1; " + SAY)
+    tasks = [
+        {"id": "author", "task": "author", "repo": str(repo), "engine": "fake"},
+        {"id": "reviewer", "task": "review", "repo": str(repo), "engine": "fake", "depends_on": ["author"]},
+    ]
+    p = json.loads(core.plan(tasks))
+    out = json.loads(core.plan(plan_id=p["id"], launch=True))
+    assert out["state"] == "scheduled" and out["workers_started"] is True
+    assert out["launch_receipt"]["worker_count"] == 1
+    assert out["launch_receipt"]["pending_tasks"] == 1
+    assert len(out["launch_receipt"]["groups"]) == 1
+    assert "still running" not in core.wait(out["launch_receipt"]["groups"], timeout=30)

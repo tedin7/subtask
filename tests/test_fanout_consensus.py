@@ -161,7 +161,9 @@ def test_consensus_runs_blind_rounds_then_one_synthesis_with_their_diffs(home, m
     monkeypatch.setattr(
         core.registry, "get", lambda e, _g=core.registry.get: _g("fake") if e in ("a", "b") else _g(e)
     )
-    out = core.consensus("make it faster", ["fake", "a"], verify_cmd="true", repo=str(repo), max_usd=0.5)
+    out = core.consensus(
+        "make it faster", ["fake", "a"], verify_cmd="true", repo=str(repo), max_usd=0.5, synth_engine="fake"
+    )
     assert out.startswith("grp-") and "synthesis queued (depends on r1, r2)" in out, out
     gid = out.split()[0]
     core.wait([gid], timeout=90)

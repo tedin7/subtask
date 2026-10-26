@@ -12,6 +12,10 @@ from pathlib import Path
 from . import context, redact
 
 
+class RepositoryPreparationError(ValueError):
+    """A repository which cannot provide the requested worktree."""
+
+
 class ContextReferenceError(ValueError):
     """A rejected context reference, preserving the legacy start error prefix."""
 
@@ -50,7 +54,8 @@ def prepare(
         raise TypeError("contract must be an object")
     root = Path(repo or cwd or os.getcwd()).resolve()
     if not root.is_dir():
-        raise ValueError("working folder does not exist: " + str(root))
+        exc_type = RepositoryPreparationError if repo else ValueError
+        raise exc_type("working folder does not exist: " + str(root))
     canonical = supplied.get("canonical_repo")
     if canonical and Path(canonical).resolve() != root:
         raise ValueError("contract_repository_mismatch")
@@ -58,9 +63,9 @@ def prepare(
     try:
         head = git(root, "rev-parse", "--verify", "--end-of-options", base + "^{commit}")
         canonical_root = git(root, "rev-parse", "--show-toplevel")
-    except ValueError:
+    except ValueError as exc:
         if repo:
-            raise
+            raise RepositoryPreparationError(str(exc)) from exc
         canonical_root = str(root)
     if files is not None and (not isinstance(files, list) or any(not isinstance(p, str) for p in files)):
         raise ValueError("files must be a list of strings")
@@ -68,7 +73,8 @@ def prepare(
     for name in files or []:
         path = (root / name).resolve()
         if not path.is_file():
-            raise ValueError("declared_file_unavailable")
+            receipts.append({"reference": "file:" + name, "status": "missing_hint"})
+            continue
         receipts.append(
             {"reference": "file:" + name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         )
@@ -126,6 +132,8 @@ def prepare(
         "checks": [{"id": "verify", "command": verify, "kind": "local"}] if verify else [],
         "limitations": ["coordinator_identity_not_authenticated", "read_dependencies_not_attested"],
     }
+    if any(r.get("status") == "missing_hint" for r in receipts):
+        result["limitations"].append("declared_file_hint_unavailable")
     if auto_repomap:
         # The map cache is keyed by HEAD. HEAD is enough to invalidate its provenance.
         result["repomap_snapshot"] = head

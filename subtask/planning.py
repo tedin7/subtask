@@ -17,7 +17,13 @@ def preflight(task, *, dependency_ids=()):
 
     if not isinstance(task, dict):
         raise TypeError("task must be an object")
-    keys = set(inspect.signature(core.start).parameters) - {"progress", "_breaker", "_group", "_prepared"}
+    keys = set(inspect.signature(core.start).parameters) - {
+        "progress",
+        "_breaker",
+        "_group",
+        "_prepared",
+        "_launch_receipt",
+    }
     unexpected = set(task) - keys - {"id", "depends_on", "after", "foreach"}
     if unexpected:
         raise ValueError("unknown task parameters: " + ", ".join(sorted(unexpected)))
@@ -137,13 +143,19 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
                     ],
                 }
                 jobs.write_json(path, plan)
+        if plan["state"] == "launching":
+            plan = {
+                **plan,
+                "state": "unknown",
+                "launch_receipt": jobs.read_json(root / (plan_id + ".launch.json")) or {},
+            }
         return {
             "id": plan_id,
             "state": plan["state"],
             "contracts": observed,
             "advice": plan.get("advice"),
             "limitations": plan["limitations"],
-            "workers_started": plan["state"] in {"launched", "launching"},
+            "workers_started": bool((plan.get("launch_receipt") or {}).get("worker_count")),
         }
     if (
         not isinstance(plan_id, str)
@@ -153,7 +165,7 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
     ):
         raise ValueError("invalid plan_id")
     path = root / (plan_id + ".json")
-    _reject_symlinks(path, root / (plan_id + ".lock"))
+    _reject_symlinks(path, root / (plan_id + ".lock"), root / (plan_id + ".launch.json"))
     with (root / (plan_id + ".lock")).open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         plan = jobs.read_json(path)
@@ -162,11 +174,27 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
         if tasks is not None:
             raise ValueError("a stored plan cannot be replaced; prepare a new preview")
         if not launch:
-            return {k: v for k, v in plan.items() if k != "tasks"}
-        if plan["state"] == "launched":
-            return {"id": plan_id, "state": "launched", "outcome": plan["outcome"], "reused": True}
+            view = {k: v for k, v in plan.items() if k != "tasks"}
+            if plan["state"] == "launching":
+                observed_launch = jobs.read_json(root / (plan_id + ".launch.json")) or {}
+                view.update(
+                    state="unknown",
+                    reason="launch_unresolved_no_retry",
+                    launch_receipt=observed_launch,
+                    workers_started=bool(observed_launch.get("worker_count")),
+                )
+            return view
+        if plan["state"] in {"launched", "scheduled", "refused", "partial", "unknown"}:
+            return {**{k: v for k, v in plan.items() if k not in {"tasks", "facts"}}, "reused": True}
         if plan["state"] != "prepared":
-            return {"id": plan_id, "state": "unknown", "reason": "launch_unresolved_no_retry"}
+            observed_launch = jobs.read_json(root / (plan_id + ".launch.json")) or {}
+            return {
+                "id": plan_id,
+                "state": "unknown",
+                "reason": "launch_unresolved_no_retry",
+                "launch_receipt": observed_launch,
+                "workers_started": bool(observed_launch.get("worker_count")),
+            }
         observed = facts(plan["tasks"])
         if contracts.digest({"tasks": plan["tasks"], "facts": observed}) != plan["binding"]:
             return {
@@ -177,6 +205,23 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
             }
         plan["state"] = "launching"
         jobs.write_json(path, plan)  # Durable intent: never replay an interrupted launch.
+        receipt = {}
+
+        def checkpoint():
+            def observed_items(items):
+                for item in items:
+                    yield item
+                    yield from observed_items(item.get("children", []))
+
+            observed = list(observed_items(receipt.get("items", [])))
+            receipt["job_ids"] = list(
+                dict.fromkeys(item["job_id"] for item in observed if item.get("job_id"))
+            )
+            receipt["worker_count"] = len(
+                {item["job_id"] for item in observed if item.get("job_id") and item.get("worker_started")}
+            )
+            jobs.write_json(root / (plan_id + ".launch.json"), receipt)
+
         try:
             frozen_tasks = []
             for task, observed_contract in zip(plan["tasks"], observed):
@@ -205,15 +250,54 @@ def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
                         ],
                     }
                 frozen_tasks.append(frozen)
-            outcome = core._launch_many(frozen_tasks, progress)
+            outcome = core._launch_many(frozen_tasks, progress, receipt=receipt, checkpoint=checkpoint)
+            checkpoint()
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, subprocess.SubprocessError):
-            return {"id": plan_id, "state": "unknown", "reason": "launch_unresolved_no_retry"}
-        plan.update(state="launched", outcome=outcome)
-        jobs.write_json(path, plan)
+            # The durable intent remains unresolved; preserve observed IDs if storage still works.
+            try:
+                checkpoint()
+            except OSError:
+                pass
+            return {
+                "id": plan_id,
+                "state": "unknown",
+                "reason": "launch_unresolved_no_retry",
+                "launch_receipt": receipt,
+                "workers_started": bool(receipt.get("worker_count")),
+            }
+        accepted = sum(bool(item.get("accepted")) for item in receipt.get("items", []))
+        if receipt.get("unknown_tasks") or not receipt.get("items") and not receipt.get("groups"):
+            state = "unknown"
+        elif receipt.get("refused_tasks"):
+            state = "partial" if accepted or receipt.get("pending_tasks") else "refused"
+        elif receipt.get("pending_tasks"):
+            state = "scheduled"
+        else:
+            state = "launched"
+        plan.update(
+            state=state,
+            outcome=outcome,
+            launch_receipt=receipt,
+            workers_started=bool(receipt.get("worker_count")),
+        )
+        if state == "unknown":
+            plan["reason"] = "launch_unresolved_no_retry"
+        try:
+            jobs.write_json(path, plan)
+        except OSError:
+            return {
+                "id": plan_id,
+                "state": "unknown",
+                "reason": "launch_unresolved_no_retry",
+                "launch_receipt": receipt,
+                "workers_started": bool(receipt.get("worker_count")),
+            }
         return {
             "id": plan_id,
-            "state": "launched",
+            "state": state,
             "outcome": outcome,
+            "launch_receipt": receipt,
+            "workers_started": plan["workers_started"],
             "advice": plan.get("advice"),
             "reused": False,
         }
