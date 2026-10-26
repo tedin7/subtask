@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 _VERDICTS = {
@@ -26,6 +27,16 @@ def _plain_heading(line: str) -> str:
     return line.strip()
 
 
+def _structured_verdict(declared: object) -> dict:
+    value = declared.get("verdict") if isinstance(declared, dict) else None
+    verdict = _VERDICTS.get(value.casefold()) if isinstance(value, str) else None
+    return {
+        "verdict": verdict or "unknown",
+        "source": "worker_structured",
+        "reason": None if verdict else "invalid_structured_verdict",
+    }
+
+
 def reviewer_verdict(report: str, declared: dict | None = None) -> dict:
     """Only explicit leading declarations or structured values declare a verdict.
 
@@ -33,13 +44,14 @@ def reviewer_verdict(report: str, declared: dict | None = None) -> dict:
     mentions, quotes and examples elsewhere in a report carry no authority.
     """
     if declared is not None:
-        value = declared.get("verdict") if isinstance(declared, dict) else None
-        verdict = _VERDICTS.get(value.casefold()) if isinstance(value, str) else None
-        return {
-            "verdict": verdict or "unknown",
-            "source": "worker_structured",
-            "reason": None if verdict else "invalid_structured_verdict",
-        }
+        return _structured_verdict(declared)
+    if report.lstrip().startswith("{"):
+        try:
+            document = json.loads(report)
+        except json.JSONDecodeError:
+            document = None
+        if isinstance(document, dict) and "subtask_review" in document:
+            return _structured_verdict(document["subtask_review"])
     lines = [line.strip() for line in report.splitlines() if line.strip()]
     if lines:
         first = _plain_heading(lines[0])
