@@ -20,6 +20,7 @@ def test_failed_review_continuation_uses_latest_report_not_legacy_summary(home, 
     core.wait([job], timeout=30)
     second = json.loads(core.result(job, evidence=True))
     assert second["state"] == "failed"
+    assert second["delivery"]["process"]["exit_code"] == 1
     verdict = second["delivery"]["reviewer_verdict"]
     assert verdict["verdict"] == "rejected"
     assert verdict["attempt"] == 2 and verdict["report_ref"].endswith("result-2.md")
@@ -49,3 +50,21 @@ def test_job_attempts_do_not_measure_author_reviewer_cycles():
     assert metrics["attempts_observed"] == 2
     assert metrics["author_reviewer_rounds"] is None
     assert metrics["author_reviewer_rounds_reason"] == "linked_review_cycle_not_observed"
+
+
+def test_runner_receipt_log_reference_contains_its_captured_output(home):
+    from pathlib import Path
+
+    from subtask import core
+
+    from .test_worktree_verify import _repo
+
+    repo = _repo(home / "repo")
+    marker = "RUNNER_RECEIPT_LOG_MARKER"
+    job = core.start(
+        "exercise runner receipt", engine="fake", repo=str(repo), verify=f"echo {marker}"
+    ).split()[0]
+    core.wait([job], timeout=30)
+    receipt = json.loads(core.result(job, evidence=True))["verification"]
+    assert marker in Path(receipt["log_ref"]).read_text()
+    assert receipt["log_scope"] == "captured_output_tail_only"

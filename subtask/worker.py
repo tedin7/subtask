@@ -266,8 +266,17 @@ def main() -> int:
         from . import contracts
 
         active_contract = contracts.current_contract(spec, previous)
+        verification_log = None
+        if verification:
+            verification["log_scope"] = "captured_output_tail_only"
+            try:
+                log_path = folder / f"verify-{attempt}.log"
+                log_path.write_text(_redact.redact(str(verification.get("output_tail") or "")))
+                verification_log = str(log_path)
+            except OSError:
+                verification["log_status"] = "unavailable"
         verification = contracts.receipt(
-            spec, verification, attempt, active_contract, log_ref=str(folder / "worker.log")
+            spec, verification, attempt, active_contract, log_ref=verification_log
         )
         failed_check = bool(verification) and verification.get("exit_code") != 0 and not stopped
         if outcome and outcome.quota_exhausted:
@@ -284,6 +293,7 @@ def main() -> int:
             "ended": time.time(),
             "outcome": state,
             "detail": detail,
+            "exit_code": getattr(outcome, "exit_code", None) if outcome else None,
             "cost_observed": reported,
             "cost_charged": round(charged, 6),
             "tokens": outcome.tokens if outcome else {},
@@ -298,6 +308,7 @@ def main() -> int:
         jobs.update_status(
             job_id,
             state=state,
+            exit_code=getattr(outcome, "exit_code", None) if outcome else None,
             cost_usd=round(before + charged, 4),
             session_id=(outcome.session_id if outcome else None) or previous.get("session_id"),
             turns=outcome.turns if outcome else None,

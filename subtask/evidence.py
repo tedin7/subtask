@@ -49,6 +49,14 @@ def envelope(job_id: str) -> dict:
             changed_files=[n for n in names.splitlines() if n][:200],
             uncommitted=bool(_git(sp["cwd"], "status", "--porcelain")) if sp.get("cwd") else None,
         )
+    elif sp.get("cwd"):
+        head = _git(sp["cwd"], "rev-parse", "HEAD")
+        if head:
+            git.update(
+                head=head,
+                shared_working_tree=True,
+                uncommitted=bool(_git(sp["cwd"], "status", "--porcelain")),
+            )
     commands = [c for a in attempts for c in a.get("commands") or []]
     tests = [c for c in commands if _is_test(c.get("command", ""))]
     verification = st.get("verification")
@@ -63,20 +71,9 @@ def envelope(job_id: str) -> dict:
     from . import contracts, workflow_output
 
     contract = contracts.current_contract(sp, st)
-    validation = contracts.receipt_state(sp, st, git.get("head"), contract)
-    attempt = st.get("attempt")
-    report_attempt = attempt if type(attempt) is int and attempt > 0 else None
-    attempt_file = folder / f"result-{report_attempt}.md" if report_attempt else None
-    if attempt_file is not None and attempt_file.is_file():
-        current_report = attempt_file.read_text()
-        report_ref, report_binding = str(attempt_file), "current_attempt"
-    elif attempt in (None, 1) and (folder / "result.md").is_file():
-        current_report = text
-        report_attempt = None
-        report_ref, report_binding = str(folder / "result.md"), "legacy_fallback_unbound"
-    else:
-        current_report = ""
-        report_ref, report_binding = None, "missing_current_report"
+    validation = contracts.receipt_state(sp, st, git.get("head"), contract, dirty_now=git.get("uncommitted"))
+    report_path, report_provenance = jobs.report_reference(folder, st)
+    current_report = report_path.read_text() if report_path is not None else ""
     delivery = workflow_output.delivery_state(
         st,
         current_report,
@@ -84,7 +81,7 @@ def envelope(job_id: str) -> dict:
         candidate=git.get("head"),
         verification_required=bool(sp.get("verify")),
     )
-    delivery["reviewer_verdict"].update(attempt=report_attempt, report_ref=report_ref, binding=report_binding)
+    delivery["reviewer_verdict"].update(report_provenance)
     delivery["receipt_validation"] = validation
     if validation["status"] != "valid":
         delivery["runner_verification"]["binding"] = "unproven"

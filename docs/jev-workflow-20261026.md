@@ -311,3 +311,80 @@ del workflow e della consegna li etichettano come wrapper deterministico.
 Per ogni affermazione vengono mostrate le prove mancanti e l'azione circoscritta
 già calcolate dal filtro. Questi testi non sono attribuiti a Jev e non vengono
 eseguiti come comandi. I report storici senza questi campi restano leggibili.
+
+## Delta dopo la revisione indipendente di `ca39eb5`
+
+Repository e worktree restano quelli del candidato. Ambiente delle prove:
+Python 3.14.7, Ruff 0.17.0, installazione editable vincolata. Il coordinatore
+ha inoltre verificato `94f9b15` con 755 passati, quattro live esclusi e 290,12 s;
+quel gate precede questo delta e non lo certifica.
+
+Il rapporto OpenCode è stato letto per intero, insieme ai 17 probe.
+Il suo commit `ad99132` non è stato integrato: i marker xfail mascheravano i
+fallimenti attesi. I probe utili sono diventati regressioni ordinarie,
+senza xfail o skip. Le aspettative superate sono state corrette senza
+indebolire il comportamento richiesto: un lancio interrotto si mostra unknown;
+la storia viene verificata tramite riferimenti, non duplicando tutti i delta
+nel contratto corrente; la provenienza dello scope resta separata dai blocchi
+dei singoli criteri.
+
+| Rilievo | Stato prima / correzione verificata nel delta |
+|---|---|
+| 1 | Il server MCP veloce ora accetta `contract`, come lo schema; prova anche JSON-RPC con worker fake reale. |
+| 2 | Solo i criteri non-scope basati su materiale del runner possono ignorare i due limiti di identità non autenticata. Scope, richieste e claim del worker li conservano; nessuna autorizzazione deriva dal verdetto. |
+| 3 | Breaker, Builder e gruppo di fallback ricevono richiesta, requisiti e ambiente del coordinatore. |
+| 4 | Il requisito R1 del gruppo usa `coordinator_request`, non le note operative del task. |
+| 5 | Il packet ricostruisce tutti i delta della catena `contract-N.json`, verificando digest, revisioni, riferimenti e ancoraggio al contratto iniziale. Storia mancante/manomessa produce un limite esplicito; materiale troppo grande viene bloccato senza troncamento. |
+| 6 | Hash, lunghezza e riferimento del manifest identificano i byte redatti effettivamente salvati. |
+| 7 | Stati falsi già corretti in `5b96837`; qui si aggiunge il preflight per adversarial senza verify e oracle non valido. |
+| 8 | Gli elementi non stringa di `context_refs` producono un errore controllato, prima del worker. |
+| 9 | I job Git con `cwd` condiviso osservano HEAD e albero corrente; la ricevuta non viene dichiarata stale solo perché manca un branch isolato. Nessun isolamento viene inventato. |
+| 10 | Il runner CLI registra il codice di uscita realmente osservato in Outcome, tentativo e stato. API e uscite non osservabili restano null; il caso RESPINTO/exit 1 usa il processo fake reale. |
+| 11 | `.txt` non implica più report-only; l'idoneità al riuso riguarda nomi/percorsi di rapporto circoscritti, con binding e invalidazioni invariati. |
+| 12 | Prima delle altre correzioni, i riferimenti Git sono stati validati e fissati a SHA con `--end-of-options`; diff usa SHA e separatore opzioni. Il probe che creava PWN ora non crea alcun file. |
+| 13 | I file relativi di un nuovo worktree hanno hash del blob della base Git. Eventuali byte diversi nel checkout del coordinatore sono un'osservazione separata. Assoluti e job condivisi conservano il materiale realmente letto; file assenti dalla base restano hint espliciti. |
+| 14 | Il contratto vincola il contenuto effettivo della repo map. Se la seconda risoluzione di ref/map differisce dal digest preparato, start rifiuta prima dello spawn; il registro non duplica il contesto. |
+| 15 | `launch=True` senza plan_id restituisce invalid; la CLI segnala `--launch needs --id`. |
+| 16 | Una ricevuta malformata produce unproven esplicito anche attraverso `result(evidence=True)`. |
+
+Il difetto del rapporto obsoleto era stato corretto in `0c057e5` per evidence;
+ora `jobs.report_reference` è la selezione canonica condivisa anche dal packet.
+Il packet dichiara tentativo, riferimento e binding. Una continuazione senza
+rapporto corrente non eredita `result.md`; il fallback legacy resta solo al
+primo tentativo e si dichiara non vincolato.
+
+Il tail del controllo runner viene persistito in `verify-N.log`, redatto e
+marcato `captured_output_tail_only`: non è un log completo. La ricevuta non
+punta più a worker.log, che poteva essere vuoto. Se il salvataggio fallisce,
+il limite runner_log_unavailable impedisce una ricevuta completa.
+
+| Input / percorso | Prova e log | Risultato |
+|---|---|---|
+| Packet reale, storia e rapporto prima delle correzioni | `/tmp/subtask-contract-history-before.log` | Cinque fallimenti attesi |
+| Storia incompleta / JSON malformato / limite dimensione | `/tmp/subtask-contract-history-complete.log`, `/tmp/subtask-contract-history-size.log`, `/tmp/subtask-contract-history-malformed-before.log` | Sette verdi dopo; JSON malformato aveva una prova rossa distinta |
+| Riferimento log del runner, verify stampa un marker | `/tmp/subtask-verification-log-before.log`, `/tmp/subtask-verification-log-after.log` | Rosso: worker.log vuoto; verde: marker nel log referenziato |
+| Opzione Git avversaria, fixture temporanea | `/tmp/subtask-review-git-option-before.log`, `/tmp/subtask-review-git-option-after.log` | Rosso: PWN creato; verde: nessuna scrittura e unproven controllato |
+| Probe indipendenti adottati, prima delle relative correzioni | `/tmp/subtask-review-adopted-before.log` | 14 rossi, tre già verdi per correzioni precedenti / storia / protezione Git |
+| Ref e repo map cambiano tra hash e prompt | `/tmp/subtask-review-boundary-before.log`, `/tmp/subtask-review-boundary-after.log` | Due rossi prima; 66 mirati verdi dopo |
+| Insieme finale dei percorsi interessati | `build-a-turno .venv/bin/python -m pytest -q tests/test_review_binding_boundaries.py tests/test_review_findings_20261026.py tests/test_contract_history_packets.py tests/test_contract_followup.py tests/test_contract_workflow.py tests/test_worktree_verify.py tests/test_delivery_review*.py tests/test_schema.py tests/test_subtask.py tests/test_workflow_hooks.py` | 233 passati in 39,44 s, `/tmp/subtask-review-final-targeted.log` |
+
+Ruff e confronto del dump schema del server con `tools.json` sono verdi.
+Il coordinatore avvierà la revisione del commit cumulativo e completerà
+integrazione, installazione e verifica dei client. Provider, policy e tetti
+non sono cambiati; queste prove usano fixture e motori fake, senza nuovi invii.
+Il revisore dichiara separatamente un tentativo auto terminato per chiave
+ANTHROPIC mancante, ledger della fixture vuoto e nessuna richiesta pagata;
+questa dichiarazione non è una fattura né una misura generale dei costi.
+
+### Trovato strada facendo
+
+- `subtask/core.py:509`, funzione `_line`: crash preesistente con verification non-dict nel risultato semplice; gravità media, fuori da questo delta. Il percorso evidence è protetto.
+- `subtask/context.py:123`, funzione `repomap`: cache preesistente basata solo su HEAD; gravità bassa. Il nuovo binding descrive il contenuto effettivamente consegnato e non dichiara la cache fresca.
+
+Copertura aggiuntiva: JSON-RPC `start` del server veloce con contratto arriva
+al worker fake; il manifest con segreto identifica esattamente hash e lunghezza
+dei byte su disco (due passati in `/tmp/subtask-review-transport-fallback.log`).
+La prova del fallback adversarial richiedeva un wrapper di test con firma
+preservata per il preflight; corretto solo il test con `functools.wraps`, il
+percorso reale è verde: un passato in 1,39 s,
+`/tmp/subtask-review-fallback-final.log`. Nessun provider reale è stato usato.

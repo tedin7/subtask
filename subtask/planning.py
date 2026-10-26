@@ -55,6 +55,11 @@ def preflight(task, *, dependency_ids=()):
         repo = core._repo_of(str(Path(task.get("cwd") or os.getcwd()).resolve()))
         if not repo:
             raise ValueError("isolation worktree needs a git repository")
+    oracle = task.get("oracle_cmd")
+    if oracle is not None and (not isinstance(oracle, str) or not oracle.strip()):
+        raise ValueError("oracle_cmd must be a non-empty command")
+    if task.get("adversarial") and (not repo or not task.get("verify") or task.get("readonly")):
+        raise ValueError("adversarial needs a writable repo and verify")
     if (task.get("allowed_paths") or task.get("symbol_scope") or task.get("oracle_cmd")) and (
         not repo or task.get("readonly")
     ):
@@ -82,6 +87,7 @@ def preflight(task, *, dependency_ids=()):
         allowed_paths=task.get("allowed_paths"),
         symbol_scope=task.get("symbol_scope"),
         dependencies=list(dependency_ids),
+        readonly=task.get("readonly", False),
     )
 
 
@@ -105,6 +111,8 @@ def facts(tasks):
 def operate(tasks=None, *, plan_id=None, launch=False, progress=None):
     from . import core, workflow_hooks
 
+    if launch and plan_id is None:
+        raise ValueError("launch requires plan_id")
     root = config.HOME / "plans"
     from .delivery_review import _reject_symlinks
 

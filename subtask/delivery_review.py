@@ -345,6 +345,77 @@ def _reclean_stored(folder: Path) -> None:
         _save(path, cleaned)
 
 
+def _coordinator_history(folder, contract, initial):
+    """Read the hash-linked coordinator revisions without copying expanded worker context."""
+    from . import contracts
+
+    def valid(record):
+        return (
+            isinstance(record, dict)
+            and record.get("source") == "coordinator_start"
+            and record.get("sha256") == contracts.digest({k: v for k, v in record.items() if k != "sha256"})
+            and isinstance(record.get("request"), str)
+        )
+
+    history = {"status": "incomplete", "revisions": [], "identity_authenticated": False}
+    if not valid(contract):
+        return None, history
+    revision = contract.get("revision")
+    if type(revision) is not int or revision < 1:
+        return None, history
+    if revision > MAX_BYTES // 64:
+        raise ValueError("review request too large; coordinator history exceeds packet limit")
+    expected = contract["sha256"]
+    accepted = []
+    material_bytes = len(contract["request"].encode())
+    complete = True
+    for index in range(revision, 0, -1):
+        path = folder / f"contract-{index}.json"
+        try:
+            record = _record(path)
+        except OSError:
+            complete = False
+            break
+        ref = str(path)
+        if not record and revision == index == 1 and not path.exists():
+            # A first-revision legacy registration may exist only in spec/status.
+            record, ref = contract, "spec.json#contract"
+        if (
+            not valid(record)
+            or record.get("sha256") != expected
+            or record.get("revision") != index
+            or record.get("request") != contract["request"]
+            or record.get("request_sha256") != contract.get("request_sha256")
+        ):
+            complete = False
+            break
+        reference = {"revision": index, "sha256": expected, "ref": ref}
+        material_bytes += len(_bytes(reference)) + len(str(record.get("delta", "")).encode())
+        if material_bytes > MAX_BYTES:
+            raise ValueError("review request too large; coordinator history exceeds packet limit")
+        history["revisions"].append(reference)
+        accepted.append({k: record.get(k) for k in ("sha256", "revision", "delta")})
+        if index > 1:
+            if (
+                not isinstance(record.get("delta"), str)
+                or record.get("previous_ref", f"contract-{index - 1}.json") != f"contract-{index - 1}.json"
+            ):
+                complete = False
+                break
+            expected = record.get("previous_sha256")
+    if not accepted or not valid(initial) or accepted[-1].get("sha256") != initial.get("sha256"):
+        complete = False
+    history["revisions"].reverse()
+    history["status"] = "complete" if complete else "incomplete"
+    text = contract["request"]
+    for record in reversed(accepted):
+        if record.get("revision", 1) > 1 and isinstance(record.get("delta"), str):
+            text += "\nCoordinator continuation:\n" + record["delta"]
+    if not complete:
+        text += "\nCoordinator continuation history is incomplete; full request coverage is unproven."
+    return text, history
+
+
 def _packet(
     job_id: str, criteria: list[str], original_request: str | None = None
 ) -> tuple[dict, dict, list[str]]:
@@ -378,23 +449,23 @@ def _packet(
 
     contract = contracts.current_contract(spec, status)
     registered = False
+    history = None
     if original_request is None and isinstance(contract, dict):
-        supplied_digest = contract.get("sha256")
-        unsigned = {k: v for k, v in contract.items() if k != "sha256"}
-        if supplied_digest == contracts.digest(unsigned) and contract.get("source") == "coordinator_start":
-            # The immutable registration is separate from the worker-visible expanded task.
-            request = contract["request"]
-            if contract.get("delta"):
-                request += "\nCoordinator continuation:\n" + contract["delta"]
-            registered = True
+        recorded_request, history = _coordinator_history(folder, contract, spec.get("contract"))
+        if recorded_request is not None:
+            request, registered = recorded_request, True
     verification = status.get("verification")
-    raw_report = _read_bytes(folder / "result.md")
+    report_path, report_provenance = jobs.report_reference(folder, status)
+    raw_report = _read_bytes(report_path) if report_path is not None else b""
     candidate = {
         "attempt": status.get("attempt"),
         "state": status.get("state"),
         "kind": "committed_snapshot",
         "working_tree_inspected": False,
         "report_sha256": hashlib.sha256(raw_report).hexdigest(),
+        "report_attempt": report_provenance["attempt"],
+        "report_ref": report_provenance["report_ref"],
+        "report_binding": report_provenance["binding"],
     }
     materials = {
         "request": {
@@ -406,12 +477,21 @@ def _packet(
             "provenance": {
                 "contract_sha256": (contract or {}).get("sha256"),
                 "identity_authenticated": False,
+                "history": history,
             },
             "text": request,
         },
-        "worker_report": {"level": "worker_reported", "text": raw_report.decode("utf-8", errors="replace")},
+        "worker_report": {
+            "level": "worker_reported",
+            "text": raw_report.decode("utf-8", errors="replace"),
+            **report_provenance,
+        },
     }
     limitations = []
+    if history is not None and history["status"] != "complete":
+        limitations.append("coordinator_history_incomplete")
+    if report_provenance["binding"] == "missing_current_report":
+        limitations.append("current_attempt_report_missing")
     if original_request is None:
         # Registration provenance is useful, but a local hash does not authenticate coordinator identity.
         limitations.append("request_origin_unverified")
@@ -634,8 +714,14 @@ def _assess(packet: dict, body: dict, criteria: list[str], limitations: list[str
         conclusion = value["choice"]
         # A confident model cannot upgrade missing/failed checks or its own claims.
         blockers = set(limitations)
-        if name != "scope":
+        independent = packet["state"]["materials"].get(reference, {}).get("level") in {
+            "runner_observed",
+            "runner_recorded_unattested",
+            "independently_verified",
+        }
+        if name != "scope" and independent:
             blockers.discard("request_origin_unverified")
+            blockers.discard("coordinator_registration_unattested")
         if (
             (name == "scope" and "request_origin_unverified" in blockers)
             or (conclusion == "supported" and blockers)
@@ -809,18 +895,25 @@ def prepare_packets(job_id, criteria, original_request=None):
     for i, criterion in enumerate(criteria):
         try:
             packet, candidate, limits = _packet(job_id, [criterion], original_request)
+            packet = _clean(packet)
             folder = jobs.job_dir(job_id) / "packet-plans"
             _reject_symlinks(folder)
             folder.mkdir(mode=0o700, exist_ok=True)
             filename = folder / (_digest(packet) + ".json")
             _save(filename, packet)
+            stored = _read_bytes(filename)
+            stored_sha = hashlib.sha256(stored).hexdigest()
+            if filename.stem != stored_sha:
+                actual = folder / (stored_sha + ".json")
+                os.replace(filename, actual)
+                filename = actual
             prepared.append(
                 {
                     "id": "claim-" + str(i + 1),
                     "status": "prepared",
                     "packet_ref": str(filename),
-                    "packet_sha256": _digest(packet),
-                    "packet_bytes": len(_bytes(packet)),
+                    "packet_sha256": stored_sha,
+                    "packet_bytes": len(stored),
                     "candidate": candidate,
                     "limitations": limits,
                     "coverage": "one_claim_full_snapshot",

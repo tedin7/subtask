@@ -48,6 +48,19 @@ def write_json(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+def report_reference(folder: Path, status: dict) -> tuple[Path | None, dict]:
+    """Select the latest attempt report; a continuation never inherits result.md."""
+    attempt = status.get("attempt")
+    current = attempt if type(attempt) is int and attempt > 0 else None
+    path = folder / f"result-{current}.md" if current else None
+    if path is not None and path.is_file():
+        return path, {"attempt": current, "report_ref": str(path), "binding": "current_attempt"}
+    legacy = folder / "result.md"
+    if attempt in (None, 1) and legacy.is_file():
+        return legacy, {"attempt": None, "report_ref": str(legacy), "binding": "legacy_fallback_unbound"}
+    return None, {"attempt": current, "report_ref": None, "binding": "missing_current_report"}
+
+
 def spec(job_id: str) -> dict:
     return read_json(job_dir(job_id) / "spec.json")
 
@@ -137,6 +150,7 @@ def _close_dead(job_id: str, seen: dict, error: str = "worker died before finish
             job_id,
             locked=True,
             state=state,
+            exit_code=None,
             pid=None,
             proc=None,
             liveness=procid.DEAD,

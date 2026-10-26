@@ -47,6 +47,7 @@ def prepare(
     allowed_paths=None,
     symbol_scope=None,
     dependencies=None,
+    readonly=False,
 ):
     """Called before expanding worker context. Preserve references, never duplicate full context."""
     supplied = contract or {}
@@ -72,12 +73,39 @@ def prepare(
     receipts = []
     for name in files or []:
         path = (root / name).resolve()
-        if not path.is_file():
-            receipts.append({"reference": "file:" + name, "status": "missing_hint"})
-            continue
-        receipts.append(
-            {"reference": "file:" + name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-        )
+        current_sha = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        reference = {"reference": "file:" + name}
+        if repo and not readonly and not Path(name).is_absolute():
+            if root not in path.parents or (root / name).is_symlink():
+                raise ValueError("declared_relative_file_needs_explicit_absolute_reference")
+            blob = subprocess.run(
+                ["git", "-C", str(root), "cat-file", "blob", f"{head}:{name}"],
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            if blob.returncode:
+                reference["status"] = "missing_hint"
+                if current_sha:
+                    reference.update(coordinator_observation_sha256=current_sha, worker_view="absent_at_base")
+            else:
+                reference.update(
+                    sha256=hashlib.sha256(blob.stdout).hexdigest(), source="git_base_blob", base_sha=head
+                )
+                if current_sha != reference["sha256"]:
+                    reference.update(coordinator_observation_sha256=current_sha, working_tree_differs=True)
+        elif current_sha is None:
+            reference["status"] = "missing_hint"
+        else:
+            reference.update(
+                sha256=current_sha,
+                source="absolute_file" if Path(name).is_absolute() else "shared_working_tree",
+            )
+        receipts.append(reference)
+    if context_refs is not None and (
+        not isinstance(context_refs, list) or any(not isinstance(ref, str) for ref in context_refs)
+    ):
+        raise ContextReferenceError("context_refs must be a list of strings")
     for ref in context_refs or []:
         if ref.startswith("subtask:") and ref.split(":")[1] in (dependencies or []):
             receipts.append({"reference": ref, "status": "dependency_pending"})
@@ -137,6 +165,7 @@ def prepare(
     if auto_repomap:
         # The map cache is keyed by HEAD. HEAD is enough to invalidate its provenance.
         result["repomap_snapshot"] = head
+        result["repomap_sha256"] = digest(context.repomap(str(root)))
     result["source_metadata_sha256"] = digest(
         {
             k: v
@@ -211,11 +240,14 @@ def receipt(spec, verification, attempt, contract, *, log_ref=None):
     }
 
 
-def receipt_state(spec, status, head, contract):
+def receipt_state(spec, status, head, contract, *, dirty_now=None):
     rec = status.get("verification")
     missing = []
-    if not rec:
+    if rec is None or rec == {}:
         return {"status": "not_run", "missing": ["runner_verification"], "deployment": "unproven"}
+    if not isinstance(rec, dict):
+        return {"status": "unproven", "missing": ["verification_record_invalid"], "deployment": "unproven"}
+    contract = contract if isinstance(contract, dict) else None
     if rec.get("head") != head or not head:
         missing.append("candidate_changed")
     if rec.get("receipt_version") != 1:
@@ -238,8 +270,12 @@ def receipt_state(spec, status, head, contract):
             missing.append("command_changed")
         if rec.get("requirements") != [r["id"] for r in (contract or {}).get("requirements", [])]:
             missing.append("requirements_changed")
+    if rec.get("log_status") == "unavailable":
+        missing.append("runner_log_unavailable")
     if rec.get("exit_code") != 0:
         missing.append("check_not_passed")
+    if dirty_now is True:
+        missing.append("working_tree_changed_since_check")
     if rec.get("dirty_before") is not False or rec.get("dirty_after") is not False:
         missing.append("working_tree_not_proven_clean")
     return {
@@ -260,12 +296,36 @@ def review_delta(spec, contract, candidate):
     previous = link.get("commit")
     root = spec.get("repo") or spec.get("cwd")
     try:
-        if not previous or not candidate:
-            raise ValueError("missing_commit")
-        names = git(root, "diff", "--name-only", previous, candidate).splitlines()
+        from .delivery_review import _git_bytes
+
+        def commit(ref):
+            if not isinstance(ref, str) or not ref or ref.startswith("-"):
+                raise ValueError("invalid_commit_reference")
+            sha = (
+                _git_bytes(root, "rev-parse", "--verify", "--end-of-options", ref + "^{commit}")
+                .decode()
+                .strip()
+            )
+            if len(sha) not in (40, 64) or any(c not in "0123456789abcdef" for c in sha):
+                raise ValueError("invalid_commit_reference")
+            return sha
+
+        previous, candidate = commit(previous), commit(candidate)
+        names = (
+            _git_bytes(
+                root, "diff", "--no-ext-diff", "--no-textconv", "--name-only", previous, candidate, "--"
+            )
+            .decode()
+            .splitlines()
+        )
         shared = (contract or {}).get("shared_contract_paths", [])
         invalidated = [p for p in names if p in shared]
-        docs_only = bool(names) and all(p.endswith((".md", ".rst", ".txt")) for p in names)
+        docs_only = bool(names) and all(
+            p.lower() in {"report.md", "review.md", "report.rst", "review.rst"}
+            or p.startswith(("reports/", "review/"))
+            and p.endswith((".md", ".rst"))
+            for p in names
+        )
         return {
             "status": "prepared",
             "author_job": link.get("job"),

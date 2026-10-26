@@ -33,6 +33,8 @@ def test_contract_repository_mismatch_before_worker(home, monkeypatch):
 def test_contract_original_separate_from_expanded_context_and_metadata_redacted(home):
     repo = _repo(home / "repo")
     (repo / "source.py").write_text("VALUE = 1")
+    _git(repo, "add", "source.py")
+    _git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "declared input")
     secret = "sk-ant-very-private-value00000000"
     c = contracts.prepare(
         "Fix VALUE",

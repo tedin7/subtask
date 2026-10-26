@@ -144,6 +144,8 @@ def main() -> int:
         return install_commands.run(a)
 
     if a.cmd == "plan":
+        if a.launch and not a.plan_id:
+            p.error("--launch needs --id")
         import json
         from pathlib import Path
 

@@ -136,6 +136,7 @@ class Outcome:
     tokens: dict[str, int] = field(default_factory=dict)
     commands: list[dict] = field(default_factory=list)  # runner_observed: {"command", "exit_code"}
     quota_exhausted: bool = False
+    exit_code: int | None = None  # Observed CLI process code; API outcomes remain unknown.
 
 
 class Adapter:
@@ -249,6 +250,7 @@ class CliAdapter(Adapter):
             tokens=state["tokens"],
             commands=state["commands"],
             quota_exhausted=bool(state.get("quota")),
+            exit_code=code,
         )
 
 

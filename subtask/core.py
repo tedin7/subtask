@@ -204,13 +204,37 @@ def start(
         from . import context
 
         root = str(Path(repo or cwd or os.getcwd()).resolve())
+        from . import contracts
+
+        prepared_refs = {
+            item["reference"]: item.get("sha256") for item in registered_contract["resolved_material"]
+        }
+        parts = []
         try:
-            block = context.resolve(list(context_refs or []), root)
+            for ref in context_refs or []:
+                material = context.resolve([ref], root)
+                if contracts.digest(material) != prepared_refs.get(ref):
+                    raise ValueError("material_changed")
+                parts.append(material)
+            if sum(len(part) for part in parts) > context.MAX_TOTAL:
+                raise ValueError("resolved context exceeds delivery limit")
+            block = "\n".join(parts)
+            if auto_repomap:
+                material = context.repomap(root)
+                if contracts.digest(material) != registered_contract.get("repomap_sha256"):
+                    raise ValueError("repomap_material_changed")
+                block += "\n<repo_map>\n" + material + "\n</repo_map>"
         except (ValueError, OSError) as exc:
-            return f"context_refs: {exc}"
-        if auto_repomap:
-            block += "\n<repo_map>\n" + context.repomap(root) + "\n</repo_map>"
-        task += "\n\n" + block.strip()
+            telemetry.record(
+                {
+                    "event": "preparation_failed",
+                    "source": "deterministic",
+                    "reason": "context_material_changed_or_invalid",
+                    "worker_started": False,
+                }
+            )
+            return f"context_refs: {redact(str(exc))}"
+        task += "\n\n" + block
     if adversarial:
         if not (repo and verify) or readonly:
             return "adversarial needs a repo (worktree) and verify"
@@ -218,6 +242,17 @@ def start(
 
         if _launch_receipt is not None:
             _launch_receipt["unknown"] = True
+        child_contract = {
+            k: v
+            for k, v in (contract or {}).items()
+            if k
+            not in {"expected_preparation_sha256", "expected_material_sha256", "expected_static_material"}
+        }
+        child_contract.update(
+            coordinator_request=registered_contract["request"],
+            requirements=registered_contract["requirements"],
+        )
+        base = registered_contract.get("base_sha") or base
         breaker_receipt = {}
         builder_receipt = {}
         if _launch_receipt is not None:
@@ -225,7 +260,7 @@ def start(
         broke = start(
             BREAKER_TASK + task, engine, repo, None, base, False, max_usd, max_turns, effort, model,
             sandbox, kind="code", policy=policy, untrusted=untrusted, progress=progress, _group=_group,
-            _launch_receipt=breaker_receipt if _launch_receipt is not None else None,
+            _launch_receipt=breaker_receipt if _launch_receipt is not None else None, contract=child_contract,
         )  # fmt: skip
         if " started " not in broke:
             return f"breaker not started: {broke}"
@@ -234,7 +269,7 @@ def start(
             task, engine, repo, None, base, False, max_usd, max_turns, effort, model, sandbox, kind,
             files, policy, verify, untrusted, progress, max_retries=max_retries, invariants=invariants,
             allowed_paths=allowed_paths, symbol_scope=symbol_scope, oracle_cmd=oracle_cmd, _breaker=breaker,
-            _group=_group, _launch_receipt=builder_receipt if _launch_receipt is not None else None,
+            _group=_group, _launch_receipt=builder_receipt if _launch_receipt is not None else None, contract=child_contract,
         )  # fmt: skip
         if "already running" in built:  # no slot now: a group starts the Builder when one frees
             from . import groups
@@ -244,7 +279,7 @@ def start(
                 "max_turns": max_turns, "effort": effort, "model": model, "kind": kind, "files": files,
                 "policy": policy, "verify": verify, "untrusted": untrusted, "max_retries": max_retries,
                 "invariants": invariants, "allowed_paths": allowed_paths, "symbol_scope": symbol_scope,
-                "oracle_cmd": oracle_cmd, "_breaker": breaker,
+                "oracle_cmd": oracle_cmd, "_breaker": breaker, "contract": child_contract,
             }])  # fmt: skip
             return f"breaker {broke}\nbuilder queued in {queued.split()[0]}"
         if " started " not in built:
@@ -1007,6 +1042,7 @@ def reply(job_id: str, message: str) -> str:
                 job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False,
                 stop_requested=False, jev_review=None, feedback_advice=advice, locked=True,
                 contract=updated_contract,
+                exit_code=None,
             )  # fmt: skip
         except BaseException:
             _undo_reply(job_id, rid, st, locked=True)
