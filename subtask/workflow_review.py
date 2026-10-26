@@ -174,5 +174,5 @@ def format_report(report: dict) -> str:
         f"provider={safe.get('provider_choice')} · assessment={safe.get('assessment')} · "
         f"route={safe.get('route')} · {safe.get('reason')}. Solo parere; nessuna autorizzazione.\n"
         f"Oggetto: {CLAIMS.get(safe.get('phase'), 'controllo del workflow')}\n"
-        f"Prossimo passo: {safe.get('next_action', 'Leggi le prove originali e decidi tu.')}"
+        f"Prossimo passo (wrapper deterministico): {safe.get('next_action', 'Leggi le prove originali e decidi tu.')}"
     )

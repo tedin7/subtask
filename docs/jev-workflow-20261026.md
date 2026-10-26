@@ -305,3 +305,9 @@ finché manca un ciclo collegato osservabile.
 
 Ruff resta verde. Il nuovo delta richiede il gate conclusivo dopo la revisione
 indipendente; il risultato del gate precedente resta riferito a `5b96837`.
+
+Il rendering testuale distingue anche l'origine dei prossimi passi: i riepiloghi
+del workflow e della consegna li etichettano come wrapper deterministico.
+Per ogni affermazione vengono mostrate le prove mancanti e l'azione circoscritta
+già calcolate dal filtro. Questi testi non sono attribuiti a Jev e non vengono
+eseguiti come comandi. I report storici senza questi campi restano leggibili.

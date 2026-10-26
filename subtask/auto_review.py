@@ -239,7 +239,7 @@ def line(status: dict) -> str:
         }
         return (
             f"Jev: {counts['supported']} supportati, {counts['contradicted']} contraddetti, "
-            f"{counts['unproven']} non provati (consultivo); " + _next_action(entry)
+            f"{counts['unproven']} non provati (consultivo); wrapper deterministico: " + _next_action(entry)
         )
     if state == "skipped":
         return "Jev: non eseguito; serve revisione normale"
@@ -276,7 +276,7 @@ def details(status: dict) -> str:
         out += _decision_line("scope", scope)
     else:
         out += "\n[scope] assessment=unproven; richiesta originale non dimostrata"
-    out += "\nProssima azione: " + _next_action(entry)
+    out += "\nProssima azione (wrapper deterministico): " + _next_action(entry)
     out += "\nIl filtro non autorizza integrazione, rilascio o esoneri dalla revisione; nessun comando viene eseguito."
     limits = report.get("limitations")
     if isinstance(limits, list):
@@ -291,11 +291,18 @@ def _decision_line(phase: str, item: dict) -> str:
     provider = item.get("provider_choice", "unknown")
     assessment = item.get("assessment", "unproven")
     veto = "; veto del wrapper, non scoperta del modello" if provider != assessment else ""
-    return (
+    out = (
         f"\n[{phase}] {item.get('id', phase)}: provider_choice={provider}; "
         f"assessment={assessment}; evidence_ref={item.get('evidence_ref', 'none')}{veto}"
         f"\n- {item.get('criterion', '')}"
     )
+    missing = item.get("missing_evidence")
+    if isinstance(missing, list) and missing:
+        out += "\n- Prove mancanti (wrapper deterministico): " + ", ".join(str(x)[:200] for x in missing[:12])
+    action = item.get("next_action")
+    if isinstance(action, str) and action:
+        out += "\n- Prossimo passo (wrapper deterministico): " + action[:500]
+    return out
 
 
 def _next_action(entry: dict) -> str:
