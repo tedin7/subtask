@@ -120,8 +120,8 @@ describe the upcoming release, not proof that an installed runtime is current.
 
 - Automatic: with policy `auto`, workflow advice runs automatically at the
   relevant calls: routing in `start_many`, feedback in `reply`, and evidence
-  consistency plus risk triage at final `wait` / `result`. Read the appended
-  advice after the existing baseline output before deciding the next step.
+  consistency plus risk triage at final `wait` / `result`. Read the advice together with
+  the baseline output before deciding the next step.
   These are separate advisory questions, not proof of the whole delivery.
   Repeated identical content is deduplicated; do not submit it manually again.
 - `start_many` routing checks proposed dependencies. Disjoint writes can still
@@ -130,7 +130,7 @@ describe the upcoming release, not proof that an installed runtime is current.
   sets. Advice does not delay authorized work or rewrite worker instructions.
 - `reply` feedback checks the next instruction. If deployment proof is missing,
   ask for that proof rather than declaring deployment complete. Advice is
-  returned after the baseline reply output; it does not rewrite the message or
+  returned with the baseline reply output; it does not rewrite the message or
   prevent the authorized continuation.
 - Final evidence consistency compares claims with receipts. For example, failed
   verification blocks `supported` even when the raw provider answer supports

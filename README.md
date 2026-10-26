@@ -58,8 +58,8 @@ subtask jev off             # block new Jev submissions
 New installations start in manual mode. The policy and private key are shared by
 the configured clients. Enter keys through hidden `subtask jev setup` input or
 explicit stdin, never chat, argv or tool arguments. In `auto`, `start_many`
-appends routing advice, `reply` appends feedback advice, and final `wait` / `result`
-include evidence consistency and risk triage. Read this advice after the existing
+appends routing advice, `reply` includes feedback advice, and final `wait` / `result`
+include evidence consistency and risk triage. Read this advice together with the existing
 baseline output. Routing and feedback preserve authorized work and worker
 instructions. `manual` requires explicit submissions; `off` blocks new ones.
 

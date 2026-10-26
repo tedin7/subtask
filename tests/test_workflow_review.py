@@ -43,7 +43,9 @@ def test_concurrent_idempotence(setup):
     assert results[0]["assessment"] == "supported"
     assert len([x for x in calls if isinstance(x, dict)]) == 1
     assert calls.count("reserve") == calls.count("close") == 1
-    assert len(list((folder / "workflow-reviews").glob("*.json"))) == 1
+    records = list((folder / "workflow-reviews").glob("*.json"))
+    assert len(records) == 2
+    assert len([p for p in records if p.name.endswith(".request.json")]) == 1
 
 
 @pytest.mark.parametrize("mode", ["manual", "off"])

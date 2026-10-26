@@ -119,6 +119,7 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
                 budget_charged_usd=allowance,
                 cost_note="Invoice unknown; full allowance charged prudentially.",
             )
+            delivery._save(folder / (binding + ".request.json"), packet)
             delivery._save(receipt, report)
             try:
                 body = delivery._request(packet, key)
