@@ -110,7 +110,7 @@
   },
   {
    "name": "start_many",
-   "description": "Start several jobs in one call. Items take start()'s arguments. With id + depends_on they form a group (grp-…)\nrun as a DAG; subtask:<id>:summary in task/context_refs is replaced by the real job id.\nforeach=<parent id>: one copy per item of the JSON list the parent writes to .subtask/fanout.json ({{item}} in\ntask), max 8; dependents wait for every copy. after='any': start when one parent succeeded.",
+   "description": "Start several jobs in one call. Items take start()'s arguments. With id + depends_on they form a group (grp-…)\nrun as a DAG; subtask:<id>:summary in task/context_refs is replaced by the real job id.\nWith Jev auto, the response includes advisory dependency checks; read them without treating them as permission.\nforeach=<parent id>: one copy per item of the JSON list the parent writes to .subtask/fanout.json ({{item}} in\ntask), max 8; dependents wait for every copy. after='any': start when one parent succeeded.",
    "inputSchema": {
     "properties": {
      "tasks": {
@@ -129,7 +129,7 @@
   },
   {
    "name": "wait",
-   "description": "Block until jobs or groups end and return their summaries. mode: all | any (first to end) |\nfirst_success (first done and verified; the rest are stopped). Returns early on a stalled job.\nsince: cursor for clients without progress; with it, timeout is capped at 60 s. For Codex:\nwait(ids, mode='any', timeout=60, since=''), drop ended ids and pass back cursor=. An idle Codex\n0.164.0 is not woken by ordinary local MCP progress or log notifications. Includes the automatic\nJev advice for a final delivery: read it before a manual review and do not resubmit the same work.",
+   "description": "Block until jobs or groups end and return their summaries. mode: all | any (first to end) |\nfirst_success (first done and verified; the rest are stopped). Returns early on a stalled job.\nsince: cursor for clients without progress; with it, timeout is capped at 60 s. For Codex:\nwait(ids, mode='any', timeout=60, since=''), drop ended ids and pass back cursor=. An idle Codex\n0.164.0 is not woken by ordinary local MCP progress or log notifications. Includes the automatic\nJev delivery/evidence/risk advice, raw provider choice, wrapper assessment and next action:\nread it before a manual review and do not resubmit the same work.",
    "inputSchema": {
     "properties": {
      "ids": {
@@ -199,7 +199,7 @@
   },
   {
    "name": "reply",
-   "description": "Continue a finished job.",
+   "description": "Jev auto adds advisory feedback checks; read the output. Continue a finished job.",
    "inputSchema": {
     "properties": {
      "id": {

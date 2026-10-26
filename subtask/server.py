@@ -113,7 +113,8 @@ async def wait(
     since: cursor for clients without progress; with it, timeout is capped at 60 s. For Codex:
     wait(ids, mode='any', timeout=60, since=''), drop ended ids and pass back cursor=. An idle Codex
     0.164.0 is not woken by ordinary local MCP progress or log notifications. Includes the automatic
-    Jev advice for a final delivery: read it before a manual review and do not resubmit the same work."""
+    Jev delivery/evidence/risk advice, raw provider choice, wrapper assessment and next action:
+    read it before a manual review and do not resubmit the same work."""
     # Poll on the event loop with asyncio.sleep: no thread is held while waiting,
     # so any number of waits never delays stop() or status().
     from .progress import wait_budget
