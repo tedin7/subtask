@@ -431,3 +431,122 @@ Restano i limiti già dichiarati: identità del coordinatore non autenticata,
 record locali modificabili dallo stesso utente, verifica locale distinta dal
 rilascio. La cache repomap non viene resa fresca da questo intervento: si
 vincola il contenuto effettivamente consegnato. Nessun nuovo audit eseguito.
+
+## Consegna verificata dal coordinatore — 2026-10-26
+
+Codice accettato e installato: `06345d4ba0d271423ca0ebcedcb2530dfea87a1b`.
+Include il guard OAuth Kimi `7174386` e i sei gruppi del mandato. Il commit
+successivo di questo rapporto modifica solo la documentazione. Il codice
+proviene dal worktree completo `/root/wt/subtask-workflow-20261026`; Arvos non
+è stato modificato per implementare queste funzionalità.
+
+### Gate e revisione indipendente
+
+- Gate completo sul candidato esatto, Python 3.14.7 editable con dipendenze
+  vincolate: `build-a-turno env -u SUBTASK_MONTHLY_CAP_USD -u SUBTASK_MAX_RUNNING .venv/bin/python -m pytest -q -p no:cacheprovider`.
+  **801 passati, quattro live esclusi, exit 0, 298,34 secondi**.
+  Log: `/tmp/subtask-workflow-delta2-full.log`. Ruff check, formato e dump dello
+  schema confrontato con `tools.json` sono verdi sullo stesso candidato.
+- Primo revisore OpenCode `st-935053fa7f`: 16 rilievi triagiati nel rapporto
+  sopra. Il suo commit con xfail non è stato integrato. Le riproduzioni utili
+  sono state adottate come test normali: 14 rosse prima, tre già verdi.
+- Revisore del delta `st-3362aed5b8`: cinque nuove riproduzioni rosse, più due
+  sospetti poi confermati e corretti. Nessun nuovo invio dello stesso esito
+  Jev sconosciuto è stato fatto.
+- Revisore di chiusura `st-26c6bb22c1`, motore OpenCode Go invariato:
+  **delta idoneo**, cinque casi rossi sulla base e verdi sul candidato,
+  54 test del runner verdi, controlli dei due sospetti e del guard Kimi.
+  Commit del solo rapporto: `20463e0e3`; nessun codice del revisore integrato.
+  Rapporto letto per intero:
+  `/root/wt/subtask-workflow-closure-review-20261026/st-26c6bb22c1/review/REVIEW-CLOSURE-20261026.md`.
+- Jev automatico della chiusura: un assessment supported e quattro unproven;
+  scope non provato. Le scelte grezze supported filtrate dal wrapper non sono
+  descritte come scoperte del modello. L'accettazione resta del coordinatore.
+
+### Pacchetto e client osservati
+
+Wheel 0.5.0: SHA256
+`5575b65e2b8fe526a966b4b8c04cb0d6f6a370c1b5b5beb47d047a2dbb12ac8a`.
+Tutti i 64 file del pacchetto coincidono byte per byte con gli oggetti Git del
+candidato e con il pacchetto globale installato in
+`/root/.local/share/uv/tools/subtask-mcp/lib/python3.14/site-packages/subtask`.
+La revisione è distinta dalla versione nominale tramite `SUBTASK_MCP_BUILD`.
+CLI plan/review e i due trasporti MCP espongono gli stessi 18 strumenti e schemi.
+
+Sincronizzate cinque configurazioni e sei skill. Policy auto, provider,
+tetto mensile di 720 USD e massimo 12 job sono invariati. Il backup attuale
+conserva anche i permessi Codex `danger-full-access`/`never` richiesti
+esplicitamente dall'operatore. Nessun worker preesistente era attivo al momento
+dell'installazione; nessuna sessione è stata interrotta per riconnettere gli MCP.
+
+| Client | Prova osservata | Limite |
+|---|---|---|
+| Codex già aperto | Ricarica accettata, connected, 18 strumenti; chiamata reale plan sul piano del collaudo e result con delivery/receipt/metrics nuovi | Non è solo una nuova connessione da shell |
+| OpenCode | Subtask riconnesso per `/root/arvos` e `/root`, HTTP 204, PID del servizio invariato | Nessun nuovo turno modello lanciato per provare il client |
+| Claude e Claude2 | Nuovo avvio dalla configurazione installata: initialize, tools/list e stato Jev verdi | Riconnessione delle sessioni interattive già aperte non osservata |
+| Kimi | Nuovo avvio MCP configurato verde e worker reale sotto descritto | Riconnessione di un client interattivo preesistente non osservata |
+| FastMCP | Connessione persistente, risposte osservate prima di chiudere stdin; schema identico al server veloce | Una prima sonda che chiudeva subito stdin è stata corretta; non era una prova negativa del servizio |
+
+Per Claude/Kimi già aperti: riconnettere Subtask dal client oppure avviare una
+nuova sessione che carichi la configurazione aggiornata. Non si dichiara una
+riconnessione remota non osservata.
+
+### Kimi e collaudo installato
+
+CLI Kimi 2.3.1: risposta minima e scrittura di un file osservate con exit 0.
+La sonda quota aveva ricevuto 401 leggendo un token scaduto; il comando nativo
+ha rinnovato OAuth e la quota è tornata leggibile. Il nuovo guard non manda
+il token scaduto alla sonda e non modifica le credenziali. Il rinnovo resta
+alla CLI ufficiale. L'assenza di una quota corrente resta sconosciuta, non zero.
+
+Nessun aggiornamento di modello è stato necessario. La
+[documentazione ufficiale dei modelli](https://www.kimi.com/code/docs/en/kimi-code/models.html)
+include ancora K3-256k. Nel wire del collaudo sono osservate **11 richieste**,
+tutte con `model=k3-256k`, alias `kimi-code/k3-256k` e ragionamento `low`,
+compresa la continuazione. Il default interattivo globale non è stato cambiato.
+
+Piano `plan-c3a5c70a7f862470e64e88f666625731a0f11d9669da7ee8b26ced3b2859966b`,
+un solo job **`st-73153d3c6a`**, tre tentativi, nessun avvio duplicato:
+
+1. Il test sintetico fallisce prima. Preview senza worker, poi un worker reale;
+   il riuso del lancio restituisce la stessa ricevuta. Kimi corregge alpha.py,
+   commit `566167e8b`; processo e test a exit 0.
+2. Primo result: correttamente unproven perché unittest genera cache Python non
+   tracciata. La continuazione aggiunge la docstring, commit `1266f569d`;
+   anche il secondo result mantiene onestamente il limite della fixture.
+3. Il tentativo con PYTHONDONTWRITEBYTECODE non raggiunge il verificatore,
+   che usa un ambiente minimo. Si corregge solo `info/exclude` del repository
+   sintetico per la cache generata. Nessun test viene ignorato o modificato.
+4. Seconda continuazione, solo verifica: stesso commit, contratto revisione 3
+   e nuovo digest; processo e runner exit 0, **receipt_validation=valid**,
+   albero pulito. Il log referenziato contiene il controllo realmente eseguito.
+   Il result dal client Codex già aperto conferma i nuovi campi.
+
+Il test controlla alpha.py; test_beta.py contiene un difetto preesistente
+estraneo alla fixture assegnata. Non si dichiara verde l'intera fixture.
+Il collaudo prova il pacchetto locale e il workflow; non prova un rilascio
+pubblico, una causa storica di produzione o l'autenticità del coordinatore.
+
+### Consumi, disponibilità e ricevute
+
+Nove prenotazioni Jev attribuite tramite job e hash delle richieste:
+**18 USD addebitati prudenzialmente al tetto**, fattura **UNKNOWN**.
+Costo di abbonamenti, agenti nativi e totale di tutti i ruoli: **UNKNOWN**,
+non zero. Ultima osservazione globale: 167,24 USD residui su 720; include
+altri incarichi e non viene usata per stimare il costo di questo lavoro.
+Kimi mostrava circa 99% di quota libera dopo il collaudo.
+
+Ricevute private: `/root/.local/state/subtask-workflow-20261026-release/`:
+`installed-wheel-receipt.json`, `live-client-receipt.json`,
+`fresh-clients-receipt.json`, `installed-workflow-smoke.json`,
+`installed-workflow-final-evidence.json`, `kimi-installed-profile.json`,
+`cost-receipt.json` e `rollback-current.json`. Stato di push, GitHub sullo SHA
+pubblicato e pulizia dei worktree sono registrati in `STATUS.json` nella stessa
+cartella. Il gate locale non viene presentato come esito GitHub.
+
+### Trovato strada facendo
+
+- `subtask/core.py:524`, `_line`: crash preesistente con verification non-dict nel risultato semplice, gravità media; evidence è protetto, percorso semplice fuori incarico.
+- `subtask/context.py:123`, repomap: cache preesistente basata solo su HEAD, gravità bassa; il binding identifica il contenuto consegnato, non garantisce freschezza.
+- `subtask/planning.py`, ritorno di eccezione del lancio: workers_started=false può accompagnare state=unknown; la ricevuta conta solo worker osservati. Nessuna prova di assenza di effetti oltre quei dati e nessun replay automatico.
+- Ulteriori limiti del revisore: record di piano corrotti, provenienza identica spec/status, gitlink e scadenza zero/millisecondi non collaudati direttamente. Non sono promossi a difetti riprodotti né a prove di copertura completa.
