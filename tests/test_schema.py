@@ -121,3 +121,15 @@ def test_server_instructions_teach_the_cheap_pattern_without_the_skill():
     assert "ONE start_many" in text and "ONE wait" in text and "Never poll" in text
     assert "Codex 0.164.0" in text and "timeout=60" in text and "cursor=" in text
     assert len(text) < 2000  # sent to every client session: the 0.4 playbook, about 400 tokens
+
+
+def test_fast_server_start_args_follow_the_start_signature():
+    """T-1813: START_ARGS was a hand-written list that drifted from server.start."""
+    import inspect
+
+    from subtask import fastserver, server
+
+    declared = set(inspect.signature(server.start).parameters)
+    assert set(fastserver.START_ARGS) == declared
+    published = next(t for t in _tools() if t["name"] == "start")["inputSchema"]["properties"]
+    assert set(published) == declared

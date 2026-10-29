@@ -192,11 +192,15 @@ def _call(name: str, args: dict, call: Call) -> str:
     raise KeyError(name)
 
 
-START_ARGS = {
-    "task", "kind", "repo", "cwd", "files", "readonly", "engine", "max_usd", "effort",
-    "base", "max_turns", "model", "policy", "verify", "isolation", "max_retries", "adversarial",
-    "context_refs", "auto_repomap", "tier", "invariants", "allowed_paths", "symbol_scope", "oracle_cmd", "contract",
-}  # fmt: skip
+def _tool_params(name: str) -> frozenset[str]:
+    """Argument names a tool publishes: tools.json is generated from the server.py signature."""
+    tool = next(t for t in SPEC["tools"] if t["name"] == name)
+    return frozenset(tool["inputSchema"].get("properties", {}))
+
+
+# Derived, never hand-written; importing server.py to read the signature would cost ~0.9 s.
+# tests/test_schema.py proves tools.json and inspect.signature(server.start) agree.
+START_ARGS = _tool_params("start")
 
 
 def _start_args(args: dict) -> dict:
