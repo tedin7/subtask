@@ -21,6 +21,30 @@ def test_published_tools_have_no_semantic_defects():
     assert schemacheck.tool_problems(_tools()) == []
 
 
+def test_start_accepts_model_on_every_entry_point():
+    """T-1685: `model` was dropped by the MCP start tool and rejected by the fast server."""
+    import inspect
+
+    from subtask import core, fastserver, server
+
+    start_tool = next(t for t in _tools() if t["name"] == "start")
+    assert "model" in inspect.signature(server.start).parameters
+    assert "model" in start_tool["inputSchema"]["properties"]
+    assert fastserver._start_args({"task": "x", "model": "opencode-go/qwen3.8-flash"})["model"]
+    declared = set(inspect.signature(server.start).parameters)
+    assert declared <= fastserver.START_ARGS
+    assert fastserver.START_ARGS <= set(inspect.signature(core.start).parameters)
+
+
+def test_server_start_forwards_model_to_core(monkeypatch):
+    from subtask import core, server
+
+    seen = {}
+    monkeypatch.setattr(core, "start", lambda *a, **k: seen.update(k) or "ok")
+    server.start("t", model="m-1")
+    assert seen["model"] == "m-1"
+
+
 def test_tool_descriptions_are_the_same_on_every_python():
     assert all("\n    " not in (t.get("description") or "") for t in _tools())
 

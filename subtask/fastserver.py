@@ -194,7 +194,7 @@ def _call(name: str, args: dict, call: Call) -> str:
 
 START_ARGS = {
     "task", "kind", "repo", "cwd", "files", "readonly", "engine", "max_usd", "effort",
-    "base", "max_turns", "policy", "verify", "isolation", "max_retries", "adversarial",
+    "base", "max_turns", "model", "policy", "verify", "isolation", "max_retries", "adversarial",
     "context_refs", "auto_repomap", "tier", "invariants", "allowed_paths", "symbol_scope", "oracle_cmd", "contract",
 }  # fmt: skip
 

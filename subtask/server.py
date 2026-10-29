@@ -68,6 +68,7 @@ def start(
     effort: str = "medium",
     base: str = "HEAD",
     max_turns: int = 60,
+    model: str | None = None,
     policy: str | None = None,
     verify: str | None = None,
     isolation: str = "shared",
@@ -83,6 +84,7 @@ def start(
     contract: dict | None = None,
 ) -> str:
     """Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).
+    model: engine-specific model id (opencode, codex, kimi, API engines); omitted = the engine's default.
     verify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.
     invariants: default ['no_test_deletion','no_suppression'] fail verify on deleted/skipped tests or new noqa; [] = off.
     allowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.
@@ -90,7 +92,7 @@ def start(
     adversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff
     instead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only."""
     return core.start(
-        task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort,
+        task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort, model=model,
         kind=kind, files=files, policy=policy, verify=verify,
         isolation=isolation, max_retries=max_retries, adversarial=adversarial,
         context_refs=context_refs, auto_repomap=auto_repomap, tier=tier,

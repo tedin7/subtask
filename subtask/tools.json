@@ -26,7 +26,7 @@
   },
   {
    "name": "start",
-   "description": "Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).\nverify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.\ninvariants: default ['no_test_deletion','no_suppression'] fail verify on deleted/skipped tests or new noqa; [] = off.\nallowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.\noracle_cmd: after verify passes, run on base and result; reports output_match and speedup_pct.\nadversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff\ninstead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only.",
+   "description": "Start one job; returns its id. kind: read|code|review|hard. Writes: repo= or isolation='worktree' (own branch).\nmodel: engine-specific model id (opencode, codex, kimi, API engines); omitted = the engine's default.\nverify: shell check run by subtask after the job; max_retries (0-5) resumes with the failure.\ninvariants: default ['no_test_deletion','no_suppression'] fail verify on deleted/skipped tests or new noqa; [] = off.\nallowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.\noracle_cmd: after verify passes, run on base and result; reports output_match and speedup_pct.\nadversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff\ninstead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only.",
    "inputSchema": {
     "properties": {
      "task": {
@@ -70,6 +70,9 @@
      "max_turns": {
       "default": 60,
       "type": "integer"
+     },
+     "model": {
+      "type": "string"
      },
      "policy": {
       "type": "string"
