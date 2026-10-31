@@ -1217,9 +1217,16 @@ def cleanup(job_id: str) -> str:
     return f"{job_id}: worktree removed, branch {sp['branch']} kept"
 
 
+def _limits_note() -> str:
+    if not config.ENGINE_LIMITS_USD:
+        return ""
+    parts = ", ".join(f"{k} {v:.0f}$" for k, v in config.ENGINE_LIMITS_USD.items())
+    return f" (sum of engine limits: {parts})"
+
+
 def spend() -> str:
     spent = ledger.committed()
-    return f"month: {spent:.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$ · {config.MONTHLY_CAP_USD - spent:.2f}$ left"
+    return f"month: {spent:.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$ · {config.MONTHLY_CAP_USD - spent:.2f}$ left" + _limits_note()
 
 
 def engines() -> str:
@@ -1302,7 +1309,8 @@ def board_data(limit: int = 10) -> dict:
         "jobs": job_rows,
         "bisects": bisect_tool.recent(),
         "budget": {"cap_usd": config.MONTHLY_CAP_USD, "committed_usd": round(spent, 2),
-                   "left_usd": round(config.MONTHLY_CAP_USD - spent, 2)},
+                   "left_usd": round(config.MONTHLY_CAP_USD - spent, 2),
+                   "engine_limits_usd": dict(config.ENGINE_LIMITS_USD)},
     }  # fmt: skip
 
 
