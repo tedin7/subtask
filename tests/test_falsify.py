@@ -301,7 +301,7 @@ def test_v0_ledger_nan_cost_disables_the_cap(home):
     from subtask import config, ledger
 
     config.HOME.mkdir(parents=True)
-    month = time.strftime("%Y-%m")
+    month = time.strftime("%Y-%m", time.gmtime())
     rows = [{"ts": f"{month}-01T00:00:00", "job": "j", "reserve_usd": 1.0},
             f'{{"ts": "{month}-01T00:00:01", "job": "j", "cost_usd": NaN}}']  # fmt: skip
     (config.HOME / "ledger.jsonl").write_text(

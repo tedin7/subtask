@@ -140,7 +140,7 @@ def test_v0_ledger_is_migrated_once_and_kept(home):
     from subtask import config, ledger
 
     config.HOME.mkdir(parents=True)
-    month = time.strftime("%Y-%m")
+    month = time.strftime("%Y-%m", time.gmtime())
     rows = [
         {"ts": f"{month}-01T00:00:00+00:00", "job": "st-c", "reserve_usd": 2.0},
         {"ts": f"{month}-01T00:01:00+00:00", "job": "st-c", "cost_usd": 0.4},
