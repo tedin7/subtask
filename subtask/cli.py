@@ -2,7 +2,7 @@
 
 subtask start "brief" [--engine auto] [--kind code] [--repo PATH] [--readonly] [--max-usd 2]
 subtask wait ID [ID...] [--timeout 50]
-subtask status [ID] | result ID [--full|--evidence] | reply ID "msg" | stop ID | cleanup ID | spend | engines
+subtask status [ID] | result ID [--full|--evidence] | reply ID "msg" | stop ID | cleanup ID | spend | limits [--force] | engines
 subtask steer ID hint|abort|retry ["text"] | inspect ID [--tail N] [--grep W] | board [--json]
 subtask integrate ID... [--action diff|apply|discard] [--auto-resolve] | map-reduce GLOB "tpl {{files}}"
 subtask install|uninstall --client claude|codex|kimi|opencode|all [--yes]
@@ -96,6 +96,8 @@ def main() -> int:
     for name in ("stop", "cleanup"):
         sub.add_parser(name).add_argument("id")
     sub.add_parser("spend")
+    lm = sub.add_parser("limits", help="engine limits read live (T-4821); cap = their sum")
+    lm.add_argument("--force", action="store_true", help="ignore the 5 minute cache")
     sub.add_parser("engines")
     install_commands.add_parsers(sub)
     g = sub.add_parser("gc")
@@ -249,6 +251,8 @@ def main() -> int:
         from . import jev_config
 
         return jev_config.run_cli(a)
+    elif a.cmd == "limits":
+        out = core.limits(force=a.force)
     else:
         out = core.spend()
     print(out)

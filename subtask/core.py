@@ -1224,6 +1224,15 @@ def _limits_note() -> str:
     return f" (sum of engine limits: {parts})"
 
 
+def limits(force: bool = False) -> str:
+    """Read every engine limit live (cached a few minutes, last known on failure) and apply the sum as cap."""
+    from . import live_limits
+
+    readings = live_limits.refresh(force=force)
+    live_limits.apply(readings)
+    return live_limits.render(readings)
+
+
 def spend() -> str:
     spent = ledger.committed()
     return f"month: {spent:.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$ · {config.MONTHLY_CAP_USD - spent:.2f}$ left" + _limits_note()

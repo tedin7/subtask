@@ -39,6 +39,24 @@ def _limit(value: object) -> float | None:
     return number if math.isfinite(number) and number >= 0 else None
 
 
+def _live_cache() -> dict[str, float]:
+    """Limits read live by `subtask limits` (T-4821), last known when a later read failed.
+    Only limits that came from the provider count; configured ones stay in limits.json."""
+    try:
+        data = json.loads((ENV_FILE.parent / "live-limits.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, float] = {}
+    for group, row in data.items():
+        if isinstance(row, dict) and row.get("limit_source") == "live" and row.get("status") in ("live", "stale"):
+            value = _limit(row.get("limit_usd"))
+            if value is not None:
+                out[group] = value
+    return out
+
+
 def engine_limits() -> dict[str, float]:
     """Per-group limits: limits.json (group -> USD), each overridable by SUBTASK_LIMIT_<GROUP>_USD."""
     try:
@@ -46,10 +64,11 @@ def engine_limits() -> dict[str, float]:
     except (OSError, ValueError):
         raw = {}
     raw = raw if isinstance(raw, dict) else {}
+    live = _live_cache()
     out: dict[str, float] = {}
     for group in ENGINE_LIMIT_GROUPS:
         env = os.environ.get(f"SUBTASK_LIMIT_{group.upper().replace('-', '_')}_USD")
-        value = _limit(env if env is not None else raw.get(group))
+        value = _limit(env if env is not None else live.get(group, raw.get(group)))
         if value is not None:
             out[group] = value
     return out
