@@ -342,7 +342,10 @@ def test_worker_delivery_triggers_review_without_a_parent_review_call(home, monk
             auto_review.perform(job, attempt)
 
     monkeypatch.setattr(auto_review, "finish", finish_inline)
-    out = core.start("Fix the parser", engine="fake", cwd=str(home), max_usd=2)
+    # Jev only judges a job whose verification passed (01/11): without one every verdict is "unproven".
+    passed = {"command": "true", "exit_code": 0, "output_tail": "ok", "dirty_after": False}
+    monkeypatch.setattr(worker, "_verify", lambda *a, **k: passed)
+    out = core.start("Fix the parser", engine="fake", cwd=str(home), max_usd=2, verify="true")
     assert " started " in out, out
     job_id = out.split()[0]
     monkeypatch.setattr(sys, "argv", ["worker", job_id])

@@ -69,6 +69,25 @@ def _ledger_spent(group: str) -> float:
     return total
 
 
+LIVE_MAX_AGE = 2 * 86400  # a live spend older than this no longer gates
+
+
+def cached_spent(group: str) -> float | None:
+    """Spend this month as last read from the provider, from the cache only (no network).
+
+    None when there is no recent live reading for the group or it is from another month.
+    """
+    entry = _load_cache().get(group)
+    if not isinstance(entry, dict) or entry.get("status") not in ("live", "stale"):
+        return None
+    spent, ts = _num(entry.get("spent_usd")), _num(entry.get("ts")) or 0.0
+    if spent is None or time.time() - ts > LIVE_MAX_AGE:
+        return None
+    if time.strftime("%Y-%m", time.gmtime(ts)) != time.strftime("%Y-%m", time.gmtime()):
+        return None
+    return spent
+
+
 def _month_start() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-01T00:00:00Z")
 

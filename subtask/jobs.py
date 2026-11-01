@@ -144,6 +144,8 @@ def _close_dead(job_id: str, seen: dict, error: str = "worker died before finish
             # Spend possible but unknown: charge the whole reservation (prudential), else release.
             # v0 statuses (no "v") never recorded spend_possible: stay prudential for them.
             amount = float(row.get("usd") or 0) if data.get("spend_possible", "v" not in data) else 0.0
+            if amount and data.get("spent_usd") is not None:
+                amount = min(amount, float(data["spent_usd"]))  # the engine measured its spend
             booked = ledger.close(row["rid"], amount, "settle" if amount else "release")
             charged += booked or 0.0
         data = update_status(

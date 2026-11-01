@@ -1064,7 +1064,7 @@ def reply(job_id: str, message: str) -> str:
                 }
             ]
             jobs.update_status(
-                job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False,
+                job_id, state="queued", last="reply", attempt=n, attempts=attempts, spend_possible=False, spent_usd=None,
                 stop_requested=False, jev_review=None, feedback_advice=advice, locked=True,
                 contract=updated_contract,
                 exit_code=None,
@@ -1098,6 +1098,7 @@ def _undo_reply(job_id: str, rid: str | None, previous: dict, locked: bool) -> N
             "last",
             "error",
             "spend_possible",
+            "spent_usd",
             "contract",
             "feedback_advice",
             "jev_review",

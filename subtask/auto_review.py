@@ -31,12 +31,21 @@ CRITERIA = [
 ]
 
 
-def prepare(attempt: int, state: str, retry_pending: bool, hints: list | None) -> dict | None:
-    """Included in the same status write as delivery, before a waiter can see it."""
+def prepare(
+    attempt: int, state: str, retry_pending: bool, hints: list | None, *, verified: bool = True
+) -> dict | None:
+    """Included in the same status write as delivery, before a waiter can see it.
+
+    `verified` is False when the job has no passing verification record. Jev is then
+    skipped: the wrapper turns every verdict without a runner check into "unproven",
+    so a review could only cost money and say nothing (2058 of 2097 verdicts by 01/11).
+    """
     from . import jev_config
 
     if state not in {"done", "failed"} or retry_pending or hints:
         return None  # A stop or continuation, not the final delivery yet.
+    if state != "done" or not verified:
+        return None
     entry = {
         "attempt": attempt,
         "state": "queued",

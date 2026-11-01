@@ -48,11 +48,19 @@ class Started(threading.Event):
     def __init__(self, job_id: str) -> None:
         super().__init__()
         self.job_id = job_id
+        self.spent: float | None = None  # spend measured so far by the engine, if it can tell
 
     def set(self) -> None:
         if not self.is_set():
             super().set()
             jobs.update_status(self.job_id, spend_possible=True)
+
+    def meter(self, usd: float) -> None:
+        """Record the spend measured so far, so a crash is charged what was used, not the cap."""
+        usd = round(max(0.0, float(usd)), 6)
+        if self.spent is None or abs(usd - self.spent) >= 0.005:
+            jobs.update_status(self.job_id, spent_usd=usd)
+        self.spent = usd
 
 
 def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
@@ -211,9 +219,15 @@ def main() -> int:
         if not paid:
             charged = 0.0
         elif reported is None:
-            # Stopped or crashed without a final cost: if the engine ran, the spend is unknown,
-            # so charge the whole reservation; if it never started, nothing was spent.
-            charged = float(spec["max_usd"]) if started.is_set() else 0.0
+            # Stopped or crashed without a final cost: charge what the engine measured so far;
+            # if it measured nothing but ran, the spend is unknown, so charge the reservation;
+            # if it never started, nothing was spent.
+            if not started.is_set():
+                charged = 0.0
+            elif started.spent is not None:
+                charged = min(float(spec["max_usd"]), started.spent)
+            else:
+                charged = float(spec["max_usd"])
         elif args.reply_file and adapter.family == "api" and reported >= before:
             charged = reported - before  # a resumed SDK session reports its running total
         else:
@@ -303,7 +317,11 @@ def main() -> int:
         }
         attempts = attempts[:-1] + [{**(attempts[-1] if attempts else {}), **record}]
         review_state = auto_review.prepare(
-            attempt, state, failed_check, jobs.read_json(folder / "status.json").get("hints")
+            attempt,
+            state,
+            failed_check,
+            jobs.read_json(folder / "status.json").get("hints"),
+            verified=bool(verification and verification.get("exit_code") == 0),
         )
         jobs.update_status(
             job_id,

@@ -10,6 +10,9 @@ Row v2: {"v":2,"ts":..,"op":"reserve"|"settle"|"release","rid":..,"job":..,"usd"
 A closing row goes to the file of its reservation's month, so a job that
 crosses midnight at month end is charged once, to the month it was admitted in.
 A second close of the same rid is a no-op (idempotent settlement).
+- correct: {"op":"correct","rid":..,"usd":..,"reason":..} replaces the amount of an
+  already settled rid (a wrong charge found later). Rows are never rewritten or
+  deleted: the original settle stays in the file, readers see the corrected amount.
 
 The v0 single file ledger.jsonl is migrated once; the original is kept as
 ledger.jsonl.v0.bak (rollback: move it back and delete the ledger folder).
@@ -55,6 +58,23 @@ def locked() -> Iterator[None]:
 
 
 def _rows(month: str) -> list[dict]:
+    """Rows of one month with corrections applied: a settle shows its latest corrected amount."""
+    raw = _raw_rows(month)
+    fixes = {r.get("rid"): r for r in raw if r.get("op") == "correct"}
+    if not fixes:
+        return raw
+    out = []
+    for row in raw:
+        if row.get("op") == "correct":
+            continue
+        fix = fixes.get(row.get("rid"))
+        if fix is not None and row.get("op") == "settle":
+            row = {**row, "usd": _usd(fix.get("usd")) or 0.0, "corrected_from": row.get("usd")}
+        out.append(row)
+    return out
+
+
+def _raw_rows(month: str) -> list[dict]:
     path = _dir() / f"{month}.jsonl"
     try:
         lines = path.read_text().splitlines()
@@ -138,6 +158,19 @@ def _group_committed(month: str, group: str) -> float:
     return total + sum(open_.values())
 
 
+def _group_used(month: str, group: str) -> float:
+    """What counts against a group limit: our own books, or the provider's bill when higher.
+
+    The provider figure (cost report, closed days only) covers spend our books miss:
+    keys used outside subtask, prices we do not know. It never lowers the books.
+    """
+    from .live_limits import cached_spent
+
+    books = _group_committed(month, group)
+    live = cached_spent(group) if month == month_of() else None
+    return max(books, live) if live is not None else books
+
+
 def committed(month: str | None = None) -> float:
     """Spent plus still reserved this month (what counts against the cap)."""
     with locked():
@@ -162,7 +195,7 @@ def reserve(
         if total + usd > cap:
             return None
         limit = config.ENGINE_LIMITS_USD.get(_group(engine)) if engine else None
-        if limit is not None and _group_committed(month, _group(engine)) + usd > limit:
+        if limit is not None and _group_used(month, _group(engine)) + usd > limit:
             return None  # each engine group keeps its own monthly limit (Tommaso 01/11)
         row = {
             "v": VERSION,
@@ -223,6 +256,20 @@ def close(rid: str, usd: float, op: str = "settle") -> float | None:
             closing["note"] = f"reported {reported:.4f} above the reservation: capped"
         _append(month, closing)
         return booked
+
+
+def correct(rid: str, usd: float, reason: str, month: str | None = None) -> bool:
+    """Append a correction for a settled rid. False when the rid has no settle in that month."""
+    amount = _usd(usd)
+    if amount is None or not reason:
+        raise ValueError("correct needs a valid amount and a reason")
+    with locked():
+        month = month or month_of()
+        if not any(r.get("op") == "settle" and r.get("rid") == rid for r in _raw_rows(month)):
+            return False
+        _append(month, {"v": VERSION, "ts": now(), "op": "correct", "rid": rid,
+                        "usd": round(amount, 6), "month": month, "reason": reason})  # fmt: skip
+        return True
 
 
 def is_open(rid: str) -> bool:

@@ -21,6 +21,28 @@ SUMMARY_RULE = (
 )
 
 
+# USD per million tokens: input, output, cache write (5 min), cache read. Anthropic list
+# prices (platform.claude.com pricing, Claude 5 family). Unknown models use the Opus row.
+PRICES_USD_M = {
+    "haiku": (0.10, 0.50, 0.125, 0.01),
+    "sonnet": (2.00, 10.00, 2.50, 0.20),
+    "opus": (4.00, 20.00, 5.00, 0.20),
+}
+
+
+def usage_cost(model: str | None, usage: dict) -> float:
+    """USD of one API response from its usage block, at list price."""
+    family = next((k for k in PRICES_USD_M if k in (model or "").lower()), "opus")
+    inp, out, write, read = PRICES_USD_M[family]
+    tokens = (
+        inp * int(usage.get("input_tokens") or 0)
+        + out * int(usage.get("output_tokens") or 0)
+        + write * int(usage.get("cache_creation_input_tokens") or 0)
+        + read * int(usage.get("cache_read_input_tokens") or 0)
+    )
+    return tokens / 1e6
+
+
 def _helper_path(key_name: str = "ANTHROPIC_API_KEY") -> Path:
     suffix = key_name.removeprefix("ANTHROPIC_API_KEY").lower().replace("_", "-")
     return config.HOME / f"key-helper{suffix}.sh"
@@ -148,20 +170,13 @@ class ClaudeApi(Adapter):
         return asyncio.run(self._run(ctx))
 
     async def _run(self, ctx: RunContext) -> Outcome:
-        from claude_agent_sdk import (
-            AssistantMessage,
-            ClaudeAgentOptions,
-            ResultMessage,
-            ToolResultBlock,
-            ToolUseBlock,
-            UserMessage,
-            query,
-        )
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, query
 
         spec = ctx.spec
         readonly = spec.get("readonly", False)
         policy = spec.get("policy") or {}
         sandbox = not readonly and policy.get("level", "sandbox") != "worktree"
+        stderr_lines: list[str] = []
         options = ClaudeAgentOptions(
             cwd=spec["cwd"],
             model=spec.get("model") or self.model,
@@ -175,43 +190,66 @@ class ClaudeApi(Adapter):
             system_prompt={"type": "preset", "preset": "claude_code", "append": SUMMARY_RULE},
             env={**ctx.env, **api_env(self.key_name)},
             resume=ctx.resume,
+            stderr=stderr_lines.append,
         )
         out = Outcome(ok=False, subtype="no result", result="", session_id=ctx.resume)
         pending: dict[str, str] = {}
         turns = 0
-        async for message in query(prompt=ctx.prompt, options=options):
-            ctx.started.set()
-            if isinstance(message, AssistantMessage):
-                turns += 1
-                for block in message.content:
-                    if isinstance(block, ToolUseBlock):
-                        text = _tool_text(block.name, block.input)
-                        if block.name == "Bash":
-                            pending[block.id] = short_command(block.input.get("command"))
-                        ctx.emit("tool", text, source="adapter")
-            elif isinstance(message, UserMessage) and isinstance(message.content, list):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock) and block.tool_use_id in pending:
-                        out.commands.append(
-                            {
-                                "command": pending.pop(block.tool_use_id),
-                                "exit_code": 1 if block.is_error else 0,
-                            }
-                        )
-            elif isinstance(message, ResultMessage):
-                usage = message.usage or {}
-                out = Outcome(
-                    ok=not message.is_error and message.subtype == "success",
-                    subtype=message.subtype,
-                    result=message.result or "",
-                    session_id=message.session_id,
-                    cost_usd=message.total_cost_usd or 0.0,
-                    turns=message.num_turns,
-                    tokens={k: v for k, v in usage.items() if isinstance(v, int)},
-                    commands=out.commands,
-                )
+        seen: dict[str, float] = {}  # message id -> cost; one API reply can arrive as several messages
+        meter = getattr(ctx.started, "meter", None)
+        try:
+            async for message in query(prompt=ctx.prompt, options=options):
+                self._on_message(ctx, message, out, pending, seen, meter)
+                if isinstance(message, AssistantMessage):
+                    turns += 1
+                elif isinstance(message, ResultMessage):
+                    usage = message.usage or {}
+                    out = Outcome(
+                        ok=not message.is_error and message.subtype == "success",
+                        subtype=message.subtype,
+                        result=message.result or "",
+                        session_id=message.session_id,
+                        cost_usd=message.total_cost_usd or 0.0,
+                        turns=message.num_turns,
+                        tokens={k: v for k, v in usage.items() if isinstance(v, int)},
+                        commands=out.commands,
+                    )
+        except Exception as exc:
+            tail = " | ".join(line.strip() for line in stderr_lines[-6:] if line.strip())
+            raise RuntimeError(f"{exc}" + (f" - stderr: {tail[:600]}" if tail else "")) from exc
         out.turns = out.turns or turns
         return out
+
+    @staticmethod
+    def _on_message(ctx: RunContext, message, out: Outcome, pending: dict, seen: dict, meter) -> None:
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        if isinstance(message, (AssistantMessage, ResultMessage)):
+            ctx.started.set()  # only a reply from the API can cost money; the init message cannot
+        if isinstance(message, AssistantMessage):
+            if message.usage:
+                key = message.message_id or f"#{len(seen)}"
+                seen[key] = usage_cost(message.model, message.usage)
+                if meter:
+                    meter(sum(seen.values()))
+            for block in message.content:
+                if isinstance(block, ToolUseBlock):
+                    text = _tool_text(block.name, block.input)
+                    if block.name == "Bash":
+                        pending[block.id] = short_command(block.input.get("command"))
+                    ctx.emit("tool", text, source="adapter")
+        elif isinstance(message, UserMessage) and isinstance(message.content, list):
+            for block in message.content:
+                if isinstance(block, ToolResultBlock) and block.tool_use_id in pending:
+                    out.commands.append(
+                        {"command": pending.pop(block.tool_use_id), "exit_code": 1 if block.is_error else 0}
+                    )
 
 
 def _tool_text(name: str, args: dict) -> str:
