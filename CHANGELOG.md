@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.4
+
+### Fixed
+- A failed or crashed job pays the spend it measured, not the whole `max_usd`: `claude_api`
+  marks spend only on an API reply (not the init message) and meters each reply at list price.
+- `claude_api` errors carry the last lines of the CLI stderr.
+- Automatic Jev runs only on jobs that finished with a passing verification; without one the
+  deterministic wrapper makes every verdict "unproven", so the review only cost money.
+
+### Added
+- Ledger `correct` rows: fix a settled amount later without rewriting history.
+- Group limits count the provider's bill (Anthropic cost report, cached) when it is higher
+  than subtask's own books.
+
 ## 0.5.3
 
 ### Fixed
