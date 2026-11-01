@@ -96,9 +96,18 @@ def test_claude_cost_report_asks_a_valid_range_and_skips_day_one(ll, monkeypatch
             return cls(2026, 11, 1, 0, 30, tzinfo=tz)
 
     monkeypatch.setattr(ll, "datetime", Day1)
-    get2, calls2 = _fake({"cost_report": AssertionError("must not call on day 1")})
+    get2, calls2 = _fake({"cost_report": {"data": [], "has_more": False}})
     monkeypatch.setattr(ll, "_get", get2)
-    assert ll.read_claude_api()["spent_usd"] == 0.0 and calls2 == []
+    assert ll.read_claude_api()["spent_usd"] == 0.0
+    # day 1 still probes the key against the closed previous month (T-6314)
+    assert len(calls2) == 1 and "starting_at=2026-10-01T00:00:00Z&ending_at=2026-11-01T00:00:00Z" in calls2[0]
+
+    def rejected(url, headers):
+        raise RuntimeError("HTTP 401")
+
+    monkeypatch.setattr(ll, "_get", rejected)
+    with pytest.raises(RuntimeError):
+        ll.read_claude_api()
 
 
 def test_failure_returns_last_known_flagged(ll, monkeypatch, tmp_path):

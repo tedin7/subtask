@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import config
@@ -105,6 +105,13 @@ def read_claude_api(key_name: str = "ANTHROPIC_API_KEY") -> dict:
     end = datetime.now(UTC).strftime("%Y-%m-%dT00:00:00Z")
     note = "spend live up to yesterday (UTC); Anthropic has no limit endpoint, limit is configured"
     if end <= start:
+        # Day 1: nothing to sum, but still prove the key works with a one-bucket probe of the
+        # previous (closed) month, so a rejected key raises instead of looking live (T-6314).
+        prev = (datetime.fromisoformat(start) - timedelta(days=1)).strftime("%Y-%m-01T00:00:00Z")
+        _get(
+            f"https://api.anthropic.com/v1/organizations/cost_report?starting_at={prev}&ending_at={start}&limit=1",
+            headers,
+        )
         return {"spent_usd": 0.0, "note": note}
     page, total = "", 0.0
     for _ in range(10):
