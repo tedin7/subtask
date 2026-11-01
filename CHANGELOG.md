@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.5
+
+### Fixed
+- OpenAI prices match the real bill (input 1.25, cached 0.05, output 5.00 $ per million):
+  the old defaults booked about 6.7 times what OpenAI charged.
+
+### Added
+- The `openai` group limit reads the OpenAI cost report (month to date) with a read-only
+  admin key in `openai-admin.key`, like the Anthropic cost report.
+
 ## 0.5.4
 
 ### Fixed
