@@ -204,7 +204,34 @@ def read_opencode() -> dict:
     raise RuntimeError("opencode-go has no usage endpoint (checked 2026-11-01), limit is configured")
 
 
+def read_openai() -> dict:
+    """Month-to-date bill from the OpenAI organization cost report (needs an admin key, read-only is
+    enough). The report includes today, so it is the real spend; the limit stays the configured one."""
+    try:
+        key = config.OPENAI_ADMIN_KEY_FILE.read_text().strip()
+    except OSError:
+        key = ""
+    if not key:
+        raise RuntimeError(f"no OpenAI admin key in {config.OPENAI_ADMIN_KEY_FILE.name}")
+    start = int(datetime.strptime(_month_start(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
+    headers = {"Authorization": f"Bearer {key}"}
+    page, total = "", 0.0
+    for _ in range(10):
+        url = f"https://api.openai.com/v1/organization/costs?start_time={start}&bucket_width=1d&limit=31"
+        if page:
+            url += f"&page={page}"
+        data = _get(url, headers)
+        for bucket in data.get("data", []):
+            for result in bucket.get("results", []):
+                total += _num((result.get("amount") or {}).get("value")) or 0.0
+        page = data.get("next_page") or ""
+        if not data.get("has_more") or not page:
+            break
+    return {"spent_usd": round(total, 4), "note": "OpenAI cost report, month to date; limit is configured"}
+
+
 READERS: dict[str, Callable[[], dict]] = {
+    "openai": read_openai,
     "claude-api": read_claude_api,
     "dsh": read_dsh,
     "codex": read_codex,

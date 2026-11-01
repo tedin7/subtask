@@ -201,3 +201,24 @@ def test_kimi_still_expired_after_cli_says_login(ll, monkeypatch, tmp_path):
     monkeypatch.setattr(ll.subprocess, "run", lambda *a, **k: None)
     with pytest.raises(RuntimeError, match="kimi login"):
         ll.read_kimi()
+
+
+def test_openai_cost_report_reads_the_real_bill_with_the_admin_key(ll, monkeypatch, tmp_path):
+    """Tommaso 01/11: subtask counted 198.50$ of OpenAI, the bill said 29.68$; the group must follow the bill."""
+    page = {"data": [{"results": [{"amount": {"value": 12.303}}, {"amount": {"value": 17.377}}]}], "has_more": False}
+    get, calls = _fake({"organization/costs": page})
+    monkeypatch.setattr(ll, "_get", get)
+    r = ll.read_group("openai", force=True)
+    assert r["status"] != "live" and "admin key" in r["note"], "no key file: no live reading"
+    (tmp_path / "openai-admin.key").write_text("sk-admin-x\n")
+    r = ll.read_group("openai", force=True)
+    assert r["status"] == "live" and r["spent_usd"] == pytest.approx(29.68)
+    assert "start_time=" in calls[-1]
+
+
+def test_openai_prices_match_the_measured_bill():
+    from subtask import config
+
+    # 01/11: 246.87M cached input, 7.98M new input, 1.50M output tokens = 29.68$ on the bill
+    cost = 246.87 * config.OPENAI_CACHED_USD_M + 7.98 * config.OPENAI_INPUT_USD_M + 1.50 * config.OPENAI_OUTPUT_USD_M
+    assert 25 <= cost <= 35
