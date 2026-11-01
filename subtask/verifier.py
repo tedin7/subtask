@@ -30,7 +30,8 @@ def _git(
     cwd: str, *args: str, stdin: str | None = None, env: dict | None = None
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", cwd, *args], input=stdin, capture_output=True, text=True, timeout=60, check=False,
+        ["git", "-C", cwd, *args], input=stdin, capture_output=True, text=True, errors="replace",
+        timeout=60, check=False,
         env={**os.environ, **env} if env else None,
     )  # fmt: skip
 

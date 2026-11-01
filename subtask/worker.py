@@ -77,6 +77,7 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
             env=env,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=900,
             check=False,
             stdin=subprocess.DEVNULL,
@@ -125,7 +126,12 @@ def _guard(job_id: str, spec: dict) -> tuple[dict | None, list[str]]:
 def _git(cwd: str, *args: str) -> str:
     try:
         done = subprocess.run(
-            ["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30, check=False
+            ["git", "-C", cwd, *args],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=30,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""

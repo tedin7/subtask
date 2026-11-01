@@ -31,8 +31,8 @@ SKIP = re.compile(
 
 def _git(cwd: str, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", cwd, *args], capture_output=True, text=True, timeout=60, check=False,
-        env={**os.environ, **env} if env else None,
+        ["git", "-C", cwd, *args], capture_output=True, text=True, errors="replace", timeout=60,
+        check=False, env={**os.environ, **env} if env else None,
     )  # fmt: skip
 
 
@@ -60,7 +60,16 @@ def _changed(cwd: str, base: str) -> list[tuple[str, str]]:
         _git(cwd, "add", "-A", ".", env=env)
         out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", "-z", base, env=env).stdout
     parts = out.split("\0")
-    return [(parts[i][0], parts[i + 1]) for i in range(0, len(parts) - 1, 2) if parts[i]]
+    changed = [(parts[i][0], parts[i + 1]) for i in range(0, len(parts) - 1, 2) if parts[i]]
+    # A sparse checkout leaves files out of the working tree on purpose: they are not deletions.
+    sparse = _skip_worktree(cwd)
+    return [(s, p) for s, p in changed if not (s == "D" and p in sparse)]
+
+
+def _skip_worktree(cwd: str) -> set[str]:
+    """Paths the real index marks skip-worktree (outside a sparse checkout)."""
+    out = _git(cwd, "ls-files", "-t", "-z").stdout
+    return {entry[2:] for entry in out.split("\0") if entry.startswith("S ")}
 
 
 def _old(cwd: str, base: str, path: str) -> str:
