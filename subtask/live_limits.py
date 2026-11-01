@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import config
@@ -52,10 +52,10 @@ def _num(value: object) -> float | None:
 
 def _get(url: str, headers: dict[str, str]) -> dict:
     req = urllib.request.Request(url, headers={**headers, "User-Agent": "subtask"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 (fixed https urls)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         data = json.loads(resp.read().decode())
     if not isinstance(data, dict):
-        raise ValueError("unexpected reply")
+        raise ValueError("unexpected reply")  # noqa: TRY004 (callers catch ValueError)
     return data
 
 
@@ -89,7 +89,7 @@ def cached_spent(group: str) -> float | None:
 
 
 def _month_start() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-01T00:00:00Z")
+    return datetime.now(UTC).strftime("%Y-%m-01T00:00:00Z")
 
 
 def read_claude_api() -> dict:
@@ -102,7 +102,7 @@ def read_claude_api() -> dict:
     start = _month_start()
     # The report holds closed UTC days only: ending_at must be after starting_at, so on day 1 of the
     # month there is nothing to ask (HTTP 400 "ending date must be after starting date").
-    end = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+    end = datetime.now(UTC).strftime("%Y-%m-%dT00:00:00Z")
     note = "spend live up to yesterday (UTC); Anthropic has no limit endpoint, limit is configured"
     if end <= start:
         return {"spent_usd": 0.0, "note": note}
@@ -132,8 +132,12 @@ def read_dsh() -> dict:
             if balance is None:
                 break
             spent = _ledger_spent("dsh")
-            return {"balance_usd": balance, "spent_usd": round(spent, 4), "limit_usd": round(spent + balance, 4),
-                    "note": "limit = spent this month + prepaid balance"}
+            return {
+                "balance_usd": balance,
+                "spent_usd": round(spent, 4),
+                "limit_usd": round(spent + balance, 4),
+                "note": "limit = spent this month + prepaid balance",
+            }
     raise ValueError("no USD balance in the reply")
 
 
@@ -146,7 +150,10 @@ def read_codex() -> dict:
     if used is None:
         raise ValueError("no used_percent in the reply")
     reset_h = (_num(window.get("reset_after_seconds")) or 0) / 3600
-    return {"used_percent": used, "note": f"plan {data.get('plan_type')}, window resets in {reset_h:.0f}h; flat plan, limit is configured"}
+    return {
+        "used_percent": used,
+        "note": f"plan {data.get('plan_type')}, window resets in {reset_h:.0f}h; flat plan, limit is configured",
+    }
 
 
 # `kimi session list`, `provider list` and `doctor` do not touch the token (tested 2026-11-01); the shortest prompt does.
@@ -179,7 +186,13 @@ def _kimi_has_refresh_token() -> bool:
 def _kimi_cli_refresh() -> None:
     """Let the kimi CLI renew its own token (it uses its refresh_token); we never write the file."""
     try:
-        subprocess.run(KIMI_REFRESH_CMD, capture_output=True, timeout=KIMI_REFRESH_TIMEOUT, check=False, stdin=subprocess.DEVNULL)
+        subprocess.run(
+            KIMI_REFRESH_CMD,
+            capture_output=True,
+            timeout=KIMI_REFRESH_TIMEOUT,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
     except (OSError, subprocess.SubprocessError):
         pass
 
@@ -213,7 +226,7 @@ def read_openai() -> dict:
         key = ""
     if not key:
         raise RuntimeError(f"no OpenAI admin key in {config.OPENAI_ADMIN_KEY_FILE.name}")
-    start = int(datetime.strptime(_month_start(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
+    start = int(datetime.strptime(_month_start(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp())
     headers = {"Authorization": f"Bearer {key}"}
     page, total = "", 0.0
     for _ in range(10):
@@ -272,7 +285,12 @@ def read_group(group: str, *, force: bool = False, cache: dict | None = None) ->
     """One reading for one group; never raises."""
     cache = _load_cache() if cache is None else cache
     previous = cache.get(group) if isinstance(cache.get(group), dict) else None
-    if previous and not force and previous.get("status") == "live" and time.time() - previous.get("ts", 0) < CACHE_SECONDS:
+    if (
+        previous
+        and not force
+        and previous.get("status") == "live"
+        and time.time() - previous.get("ts", 0) < CACHE_SECONDS
+    ):
         return previous
     try:
         fresh = READERS[group]()
@@ -282,8 +300,13 @@ def read_group(group: str, *, force: bool = False, cache: dict | None = None) ->
             return {**previous, "status": "stale", "note": f"live read failed ({error}); last known value"}
         configured = config.engine_limits().get(group)
         if configured is not None:
-            return {"group": group, "status": "configured", "limit_usd": configured, "ts": 0,
-                    "note": f"live read failed ({error}); configured value"}
+            return {
+                "group": group,
+                "status": "configured",
+                "limit_usd": configured,
+                "ts": 0,
+                "note": f"live read failed ({error}); configured value",
+            }
         return {"group": group, "status": "unknown", "ts": 0, "note": f"live read failed ({error})"}
     reading = {"group": group, "status": "live", "ts": time.time(), "as_of": _now(), **fresh}
     if reading.get("limit_usd") is None:

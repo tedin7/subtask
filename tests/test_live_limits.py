@@ -15,7 +15,9 @@ def ll(monkeypatch, tmp_path):
     monkeypatch.setenv("SUBTASK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("SUBTASK_ENV_FILE", str(tmp_path / "env"))
     monkeypatch.setenv("SUBTASK_LIMITS_FILE", str(tmp_path / "limits.json"))
-    (tmp_path / "limits.json").write_text(json.dumps({"claude-api": 720, "opencode": 60, "kimi": 60, "codex": 60}))
+    (tmp_path / "limits.json").write_text(
+        json.dumps({"claude-api": 720, "opencode": 60, "kimi": 60, "codex": 60})
+    )
     (tmp_path / "env").write_text("ANTHROPIC_API_KEY=sk-ant-secret\n")
     import subtask.config
     import subtask.ledger
@@ -75,7 +77,7 @@ def test_claude_cost_report_sums_cents_and_keeps_configured_limit(ll, monkeypatc
 
 
 def test_claude_cost_report_asks_a_valid_range_and_skips_day_one(ll, monkeypatch):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     class Day2(datetime):
         @classmethod
@@ -156,7 +158,10 @@ def test_render_never_shows_keys(ll, monkeypatch):
 
 def _kimi_cred(path, token, expires_in):
     import time
-    path.write_text(json.dumps({"access_token": token, "refresh_token": "r", "expires_at": time.time() + expires_in}))
+
+    path.write_text(
+        json.dumps({"access_token": token, "refresh_token": "r", "expires_at": time.time() + expires_in})
+    )
 
 
 def test_kimi_expired_token_is_renewed_by_the_cli_then_reread(ll, monkeypatch, tmp_path):
@@ -205,7 +210,10 @@ def test_kimi_still_expired_after_cli_says_login(ll, monkeypatch, tmp_path):
 
 def test_openai_cost_report_reads_the_real_bill_with_the_admin_key(ll, monkeypatch, tmp_path):
     """Tommaso 01/11: subtask counted 198.50$ of OpenAI, the bill said 29.68$; the group must follow the bill."""
-    page = {"data": [{"results": [{"amount": {"value": 12.303}}, {"amount": {"value": 17.377}}]}], "has_more": False}
+    page = {
+        "data": [{"results": [{"amount": {"value": 12.303}}, {"amount": {"value": 17.377}}]}],
+        "has_more": False,
+    }
     get, calls = _fake({"organization/costs": page})
     monkeypatch.setattr(ll, "_get", get)
     r = ll.read_group("openai", force=True)
@@ -220,5 +228,9 @@ def test_openai_prices_match_the_measured_bill():
     from subtask import config
 
     # 01/11: 246.87M cached input, 7.98M new input, 1.50M output tokens = 29.68$ on the bill
-    cost = 246.87 * config.OPENAI_CACHED_USD_M + 7.98 * config.OPENAI_INPUT_USD_M + 1.50 * config.OPENAI_OUTPUT_USD_M
+    cost = (
+        246.87 * config.OPENAI_CACHED_USD_M
+        + 7.98 * config.OPENAI_INPUT_USD_M
+        + 1.50 * config.OPENAI_OUTPUT_USD_M
+    )
     assert 25 <= cost <= 35
