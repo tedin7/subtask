@@ -1,7 +1,8 @@
 """Retention and disk usage: report first, delete only with --apply, never user work.
 
 Removable: folders of finished jobs older than the retention, whose worktree is
-already gone or clean (no uncommitted and no ignored files), telemetry older
+already gone or clean (no uncommitted files; ignored files only if regenerable,
+like node_modules), telemetry older
 than its retention. Never removed: active jobs, dirty worktrees, branches.
 """
 
@@ -39,16 +40,44 @@ def du() -> dict:
     return {name: _size(path) if path.exists() else 0 for name, path in parts.items()}
 
 
+# Ignored entries that tools regenerate: they do not hold user work.
+REGENERABLE = frozenset(
+    {"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+     ".next", ".turbo", ".cache"}
+)  # fmt: skip
+GIT_TIMEOUT = 60
+
+
+def _git(path: str, *args: str) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(
+            ["git", "--no-optional-locks", "-C", path, *args],
+            capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:
+        return None
+
+
 def _worktree_clean(path: str) -> bool | None:
+    """None: gone. True: nothing to lose. False: dirty, unknown or user ignored files.
+
+    Plain `git status --ignored` walks every node_modules (15+ minutes over 800 copies) and
+    treats them as work. Here ignored folders are only listed, never entered, and the
+    regenerable ones (node_modules, .venv, caches) do not count.
+    """
     if not Path(path).exists():
         return None
-    done = subprocess.run(
-        ["git", "--no-optional-locks", "-C", path, "status", "--porcelain", "--ignored"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return done.returncode == 0 and not done.stdout.strip()
+    status = _git(path, "status", "--porcelain")
+    if status is None or status.returncode != 0 or status.stdout.strip():
+        return False
+    ignored = _git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
+    if ignored is None or ignored.returncode != 0:
+        return False
+    for line in ignored.stdout.splitlines():
+        parts = Path(line.rstrip("/")).parts
+        if not parts or not (set(parts) & REGENERABLE):
+            return False
+    return True
 
 
 def plan(days: int = RETENTION_DAYS) -> list[dict]:
