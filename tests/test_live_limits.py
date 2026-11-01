@@ -234,3 +234,33 @@ def test_openai_prices_match_the_measured_bill():
         + 1.50 * config.OPENAI_OUTPUT_USD_M
     )
     assert 25 <= cost <= 35
+
+
+def test_claude_api2_has_its_own_reader_and_key(ll, monkeypatch, tmp_path):
+    """T-6139: claude-api2 was in ENGINE_LIMIT_GROUPS but not in READERS (KeyError)."""
+    (tmp_path / "env").write_text("ANTHROPIC_API_KEY=sk-ant-one\nANTHROPIC_API_KEY_2=sk-ant-two\n")
+    seen = []
+
+    def get(url, headers):
+        seen.append(headers["x-api-key"])
+        return {"data": [{"results": [{"amount": "250"}]}]}
+
+    monkeypatch.setattr(ll, "_get", get)
+    _pin_day(ll, monkeypatch, 5)
+    r = ll.read_group("claude-api2", force=True)
+    assert r["status"] == "live" and r["spent_usd"] == 2.5 and set(seen) == {"sk-ant-two"}
+
+
+def test_unknown_group_and_missing_key_do_not_raise_keyerror(ll):
+    assert "KeyError" not in ll.read_group("nope", force=True)["note"]
+    assert "ANTHROPIC_API_KEY_2" in ll.read_group("claude-api2", force=True)["note"]
+
+
+def test_kimi_falls_back_to_the_window_detail(ll, monkeypatch, tmp_path):
+    cred = tmp_path / "home"
+    monkeypatch.setattr(ll, "KIMI_CREDENTIALS", cred)
+    cred.mkdir(parents=True)
+    _kimi_cred(cred / "k.json", "tok", 600)
+    reply = {"limits": [{"detail": {"limit": "100", "used": "7"}}]}
+    monkeypatch.setattr(ll, "_get", lambda url, headers: reply)
+    assert ll.read_kimi()["used_percent"] == 7.0

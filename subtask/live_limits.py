@@ -92,12 +92,12 @@ def _month_start() -> str:
     return datetime.now(UTC).strftime("%Y-%m-01T00:00:00Z")
 
 
-def read_claude_api() -> dict:
+def read_claude_api(key_name: str = "ANTHROPIC_API_KEY") -> dict:
     """Month-to-date spend from the Admin API cost report. Anthropic exposes no spend-limit call,
     so the limit stays the configured one."""
-    key = config.load_secrets().get("ANTHROPIC_API_KEY", "")
+    key = config.load_secrets().get(key_name, "")
     if not key:
-        raise RuntimeError("no ANTHROPIC_API_KEY in the env file")
+        raise RuntimeError(f"no {key_name} in the env file")
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
     start = _month_start()
     # The report holds closed UTC days only: ending_at must be after starting_at, so on day 1 of the
@@ -119,6 +119,11 @@ def read_claude_api() -> dict:
         if not data.get("has_more") or not page:
             break
     return {"spent_usd": round(total, 4), "note": note}
+
+
+def read_claude_api2() -> dict:
+    """Second Claude Platform key (own limit group); same cost report, its own key (T-6139)."""
+    return read_claude_api("ANTHROPIC_API_KEY_2")
 
 
 def read_dsh() -> dict:
@@ -197,6 +202,19 @@ def _kimi_cli_refresh() -> None:
         pass
 
 
+def _kimi_percent(data: dict) -> float | None:
+    """Used percent from the reply; the top-level `usage` block, else the first window in `limits`."""
+    candidates = [data.get("usage")]
+    candidates += [(w or {}).get("detail") for w in data.get("limits") or [] if isinstance(w, dict)]
+    for block in candidates:
+        if not isinstance(block, dict):
+            continue
+        limit, used = _num(block.get("limit")), _num(block.get("used"))
+        if limit and used is not None:
+            return round(100 * used / limit, 1)
+    return None
+
+
 def read_kimi() -> dict:
     """Kimi Code plan: usages endpoint with the CLI's own OAuth token (the CLI renews it, we never write it)."""
     token = _kimi_token()
@@ -206,11 +224,10 @@ def read_kimi() -> dict:
     if not token:
         raise RuntimeError("kimi login expired and the CLI could not renew it: run `kimi login`")
     data = _get("https://api.kimi.ai/coding/v1/usages", {"Authorization": f"Bearer {token}"})
-    usage = data.get("usage") or {}
-    limit, used = _num(usage.get("limit")), _num(usage.get("used"))
-    if limit is None or used is None or limit == 0:
+    percent = _kimi_percent(data)
+    if percent is None:
         raise ValueError("no usage figures in the reply")
-    return {"used_percent": round(100 * used / limit, 1), "note": "Kimi Code plan usage; limit is configured"}
+    return {"used_percent": percent, "note": "Kimi Code plan usage; limit is configured"}
 
 
 def read_opencode() -> dict:
@@ -246,6 +263,7 @@ def read_openai() -> dict:
 READERS: dict[str, Callable[[], dict]] = {
     "openai": read_openai,
     "claude-api": read_claude_api,
+    "claude-api2": read_claude_api2,
     "dsh": read_dsh,
     "codex": read_codex,
     "kimi": read_kimi,
@@ -293,7 +311,10 @@ def read_group(group: str, *, force: bool = False, cache: dict | None = None) ->
     ):
         return previous
     try:
-        fresh = READERS[group]()
+        reader = READERS.get(group)
+        if reader is None:
+            raise RuntimeError("no live reader for this group")
+        fresh = reader()
     except Exception as exc:  # noqa: BLE001 (any failure falls back to the last known value)
         error = _clean_error(exc)
         if previous and previous.get("ts"):
