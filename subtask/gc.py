@@ -43,7 +43,10 @@ def _worktree_clean(path: str) -> bool | None:
     if not Path(path).exists():
         return None
     done = subprocess.run(
-        ["git", "-C", path, "status", "--porcelain", "--ignored"], capture_output=True, text=True, check=False
+        ["git", "--no-optional-locks", "-C", path, "status", "--porcelain", "--ignored"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return done.returncode == 0 and not done.stdout.strip()
 
@@ -53,9 +56,12 @@ def plan(days: int = RETENTION_DAYS) -> list[dict]:
     out = []
     for job_id in jobs.all_jobs():
         folder = jobs.job_dir(job_id)
-        st, sp = jobs.status(job_id), jobs.spec(job_id)
+        # The collector must not settle workers or touch the ledger while planning.
+        # An active recorded state is kept, even when the worker may have died.
+        st = jobs.read_json(folder / "status.json", {"state": "unknown"})
         if st.get("state") not in jobs.FINAL:
             continue
+        sp = jobs.spec(job_id)
         if float(st.get("updated") or folder.stat().st_mtime) > cutoff:
             continue
         item = {"job": job_id, "folder": str(folder), "bytes": _size(folder), "worktree": None}

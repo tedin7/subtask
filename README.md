@@ -150,6 +150,8 @@ Groups have a blackboard file for shared notes; new notes show in `wait(since=..
 CLI only: `subtask board [--json]` (the view the OpenCode plugin renders), `subtask doctor`, `gc [--apply]`, `du`, `roi`, `routing explain|calibrate`,
 `watch ID...`, `install`, `uninstall`, and `--model`, `--no-sandbox`, `--untrusted` on start.
 
+The `gc` preview reads recorded job states without settling workers; jobs recorded as active are kept.
+
 ## Progress in the chat
 
 | client | during a `wait` |
