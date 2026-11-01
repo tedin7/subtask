@@ -63,3 +63,29 @@ def test_auth_uses_own_home(monkeypatch, tmp_path):
     assert oa.OpenAI().auth_state() == "missing"
     (tmp_path / "auth.json").write_text("{}")
     assert oa.OpenAI().auth_state() == "present"
+
+
+def test_second_claude_key_engines(monkeypatch, tmp_path):
+    from subtask.engines import claude_api
+
+    eng = _builtins()["sonnet-api2"]
+    assert eng.key_name == "ANTHROPIC_API_KEY_2" and eng.model == "sonnet"
+    assert live_limits.group_of("sonnet-api2") == "claude-api2"
+    assert live_limits.group_of("sonnet-api") == "claude-api"
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    helper = claude_api.key_helper("ANTHROPIC_API_KEY_2")
+    assert helper.name == "key-helper-2.sh" and "ANTHROPIC_API_KEY_2" in helper.read_text()
+    assert claude_api.key_helper().name == "key-helper.sh"
+    monkeypatch.setattr(config, "load_secrets", lambda: {"ANTHROPIC_API_KEY_2": "k", "ANTHROPIC_WORKSPACE_ID": "w"})
+    assert "ANTHROPIC_CUSTOM_HEADERS" not in claude_api.api_env("ANTHROPIC_API_KEY_2")
+
+
+def test_second_key_limit(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "ENGINE_LIMITS_USD", {"claude-api2": 200.0})
+    monkeypatch.setattr(live_limits, "_ledger_spent", lambda g: 199.0)
+    try:
+        _builtins()["sonnet-api2"].run(_ctx(tmp_path, max_usd=2))
+    except RuntimeError as exc:
+        assert "claude-api2" in str(exc)
+    else:
+        raise AssertionError("expected refusal")

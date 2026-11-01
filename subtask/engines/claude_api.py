@@ -11,6 +11,7 @@ from pathlib import Path
 from .. import config
 from .base import Adapter, Capabilities, Capacity, Outcome, RunContext, describe_command, short_command
 
+KEY_2 = "ANTHROPIC_API_KEY_2"  # second Claude Platform key, own limit group claude-api2
 READONLY_TOOLS = ["Read", "Grep", "Glob", "WebSearch"]
 SUMMARY_RULE = (
     "\n\nWhen you finish, end your answer with a section that starts with the exact "
@@ -20,20 +21,27 @@ SUMMARY_RULE = (
 )
 
 
-def key_helper() -> Path:
+def _helper_path(key_name: str = "ANTHROPIC_API_KEY") -> Path:
+    suffix = key_name.removeprefix("ANTHROPIC_API_KEY").lower().replace("_", "-")
+    return config.HOME / f"key-helper{suffix}.sh"
+
+
+def key_helper(key_name: str = "ANTHROPIC_API_KEY") -> Path:
     """Script that prints the key, so the key is never in the agent's environment."""
-    helper = config.HOME / "key-helper.sh"
+    helper = _helper_path(key_name)
     helper.parent.mkdir(parents=True, exist_ok=True)
     tmp = helper.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(
-        f"#!{sys.executable}\nfrom subtask.config import load_secrets\nprint(load_secrets().get('ANTHROPIC_API_KEY', ''))\n"
+        f"#!{sys.executable}\nfrom subtask.config import load_secrets\nprint(load_secrets().get({key_name!r}, ''))\n"
     )
     tmp.chmod(0o700)
     os.replace(tmp, helper)  # atomic: other workers may be running it right now
     return helper
 
 
-def settings(sandbox: bool, git_dir: str | None, network_off: bool = False) -> str:
+def settings(
+    sandbox: bool, git_dir: str | None, network_off: bool = False, key_name: str = "ANTHROPIC_API_KEY"
+) -> str:
     """Per-run settings: OS sandbox for Bash, and best-effort read denies on secrets.
 
     Not a hard boundary: an agent running as the same user can still find a way to
@@ -42,6 +50,7 @@ def settings(sandbox: bool, git_dir: str | None, network_off: bool = False) -> s
     secret_paths = [
         str(config.ENV_FILE),
         str(config.HOME / "key-helper.sh"),
+        str(_helper_path(KEY_2)),
         str(Path.home() / ".claude" / ".credentials.json"),
     ]
     data: dict = {
@@ -50,7 +59,7 @@ def settings(sandbox: bool, git_dir: str | None, network_off: bool = False) -> s
             + [f"Bash(*{p}*)" for p in secret_paths]
             + [f"Bash(*{p.replace(str(Path.home()), '~')}*)" for p in secret_paths]
         },
-        "apiKeyHelper": str(key_helper()),
+        "apiKeyHelper": str(key_helper(key_name)),
     }
     if sandbox:
         data["sandbox"] = {
@@ -69,12 +78,12 @@ def settings(sandbox: bool, git_dir: str | None, network_off: bool = False) -> s
     return json.dumps(data)
 
 
-def api_env() -> dict[str, str]:
+def api_env(key_name: str = "ANTHROPIC_API_KEY") -> dict[str, str]:
     env = {"IS_SANDBOX": "1", "ANTHROPIC_API_KEY": ""}  # key comes from apiKeyHelper only
     secrets = config.load_secrets()
-    if not secrets.get("ANTHROPIC_API_KEY"):
-        raise RuntimeError(f"ANTHROPIC_API_KEY missing (file {config.ENV_FILE})")
-    if secrets.get("ANTHROPIC_WORKSPACE_ID"):
+    if not secrets.get(key_name):
+        raise RuntimeError(f"{key_name} missing (file {config.ENV_FILE})")
+    if key_name == "ANTHROPIC_API_KEY" and secrets.get("ANTHROPIC_WORKSPACE_ID"):
         env["ANTHROPIC_CUSTOM_HEADERS"] = f"anthropic-workspace-id: {secrets['ANTHROPIC_WORKSPACE_ID']}"
     return env
 
@@ -93,11 +102,11 @@ class ClaudeApi(Adapter):
         notes="sandbox = Claude Code OS sandbox (bubblewrap on Linux), same user",
     )
 
-    def __init__(self, name: str, model: str) -> None:
-        self.name, self.model = name, model
+    def __init__(self, name: str, model: str, key_name: str = "ANTHROPIC_API_KEY") -> None:
+        self.name, self.model, self.key_name = name, model, key_name
 
     def auth_state(self) -> str:
-        return "present" if config.load_secrets().get("ANTHROPIC_API_KEY") else "missing"
+        return "present" if config.load_secrets().get(self.key_name) else "missing"
 
     def probe(self):
         probe = super().probe()
@@ -127,6 +136,13 @@ class ClaudeApi(Adapter):
     def run(self, ctx: RunContext) -> Outcome:
         import asyncio  # lazy: 60+ ms at import, only the worker needs it
 
+        if self.key_name == KEY_2:  # the second key has its own limit, checked here
+            from ..live_limits import _ledger_spent
+
+            limit = config.ENGINE_LIMITS_USD.get("claude-api2")
+            if limit is not None and limit - _ledger_spent("claude-api2") < float(ctx.spec.get("max_usd") or 0):
+                raise RuntimeError("claude-api2 monthly limit reached")
+
         return asyncio.run(self._run(ctx))
 
     async def _run(self, ctx: RunContext) -> Outcome:
@@ -153,9 +169,9 @@ class ClaudeApi(Adapter):
             permission_mode="dontAsk" if readonly else "bypassPermissions",
             allowed_tools=READONLY_TOOLS if readonly else [],
             disallowed_tools=["mcp__*", "WebFetch"] if readonly else ["mcp__*"],
-            settings=settings(sandbox, spec.get("git_dir"), policy.get("untrusted", False)),
+            settings=settings(sandbox, spec.get("git_dir"), policy.get("untrusted", False), self.key_name),
             system_prompt={"type": "preset", "preset": "claude_code", "append": SUMMARY_RULE},
-            env={**ctx.env, **api_env()},
+            env={**ctx.env, **api_env(self.key_name)},
             resume=ctx.resume,
         )
         out = Outcome(ok=False, subtype="no result", result="", session_id=ctx.resume)

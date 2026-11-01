@@ -23,10 +23,10 @@ from .engines.base import field, record
 
 # Which engines fit which kind of task, best first. Plain `opencode` is manual-only.
 KINDS = {
-    "read": ["haiku-api", "dsh", "kimi", "opencode-go", "sonnet-api"],
-    "code": ["sonnet-api", "opencode-go", "dsh", "codex", "kimi"],
-    "review": ["sonnet-api", "codex", "kimi"],
-    "hard": ["opus-api", "codex", "sonnet-api"],
+    "read": ["haiku-api", "haiku-api2", "dsh", "kimi", "opencode-go", "sonnet-api"],
+    "code": ["sonnet-api", "sonnet-api2", "openai", "opencode-go", "dsh", "codex", "kimi"],
+    "review": ["sonnet-api", "sonnet-api2", "openai", "codex", "kimi"],
+    "hard": ["opus-api", "opus-api2", "openai", "codex", "sonnet-api"],
 }
 DEFAULTS = {
     "mode": "utility",

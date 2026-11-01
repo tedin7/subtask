@@ -27,7 +27,7 @@ def _money(name: str, default: str) -> float:
 
 # Monthly limit per engine group, in USD. The monthly cap is their SUM (T-4724), so one engine
 # running low never blocks the others. Groups: engine names share a group when they share a budget.
-ENGINE_LIMIT_GROUPS = ("claude-api", "opencode", "kimi", "codex", "dsh", "openai")
+ENGINE_LIMIT_GROUPS = ("claude-api", "opencode", "kimi", "codex", "dsh", "openai", "claude-api2")
 LIMITS_FILE = Path(os.environ.get("SUBTASK_LIMITS_FILE", ENV_FILE.parent / "limits.json"))
 
 

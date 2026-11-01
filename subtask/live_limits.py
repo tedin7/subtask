@@ -33,6 +33,8 @@ KIMI_CREDENTIALS = Path.home() / ".kimi-code" / "credentials"
 
 
 def group_of(engine: str) -> str:
+    if engine.endswith("-api2"):
+        return "claude-api2"
     if engine.endswith("-api"):
         return "claude-api"
     if engine.startswith("opencode"):
