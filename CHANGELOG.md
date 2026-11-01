@@ -1,8 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 ### Added
+- Engine `openai`: the OpenAI API through the Codex CLI with its own `CODEX_HOME`
+  (`~/.codex-api`, API key login), default `gpt-6.1-terra` with high reasoning effort, paid in
+  USD from token usage (prices via `SUBTASK_OPENAI_*_USD_M`), limit group `openai`.
+- Engines `sonnet-api2`, `haiku-api2`, `opus-api2` on a second Claude Platform key
+  (`ANTHROPIC_API_KEY_2` in the env file), limit group `claude-api2`.
+- The router tries `sonnet-api2`, `opus-api2` and `openai` after the first Claude key.
 - Opt-in advisory Jev delivery review through MCP and CLI, bound to the original request,
   criteria, candidate and recorded evidence. Offline preparation is the default; submissions
   use the existing monthly cap and retain unknown invoice costs.

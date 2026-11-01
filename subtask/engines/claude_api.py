@@ -140,7 +140,9 @@ class ClaudeApi(Adapter):
             from ..live_limits import _ledger_spent
 
             limit = config.ENGINE_LIMITS_USD.get("claude-api2")
-            if limit is not None and limit - _ledger_spent("claude-api2") < float(ctx.spec.get("max_usd") or 0):
+            if limit is not None and limit - _ledger_spent("claude-api2") < float(
+                ctx.spec.get("max_usd") or 0
+            ):
                 raise RuntimeError("claude-api2 monthly limit reached")
 
         return asyncio.run(self._run(ctx))

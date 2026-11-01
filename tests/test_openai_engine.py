@@ -43,7 +43,9 @@ def test_cost_counts_cached_once(monkeypatch):
     monkeypatch.setattr(config, "OPENAI_INPUT_USD_M", 10.0)
     monkeypatch.setattr(config, "OPENAI_CACHED_USD_M", 1.0)
     monkeypatch.setattr(config, "OPENAI_OUTPUT_USD_M", 20.0)
-    usd = oa.openai_cost({"input_tokens": 1_000_000, "cached_input_tokens": 400_000, "output_tokens": 100_000})
+    usd = oa.openai_cost(
+        {"input_tokens": 1_000_000, "cached_input_tokens": 400_000, "output_tokens": 100_000}
+    )
     assert abs(usd - (6.0 + 0.4 + 2.0)) < 1e-9
 
 
@@ -76,7 +78,9 @@ def test_second_claude_key_engines(monkeypatch, tmp_path):
     helper = claude_api.key_helper("ANTHROPIC_API_KEY_2")
     assert helper.name == "key-helper-2.sh" and "ANTHROPIC_API_KEY_2" in helper.read_text()
     assert claude_api.key_helper().name == "key-helper.sh"
-    monkeypatch.setattr(config, "load_secrets", lambda: {"ANTHROPIC_API_KEY_2": "k", "ANTHROPIC_WORKSPACE_ID": "w"})
+    monkeypatch.setattr(
+        config, "load_secrets", lambda: {"ANTHROPIC_API_KEY_2": "k", "ANTHROPIC_WORKSPACE_ID": "w"}
+    )
     assert "ANTHROPIC_CUSTOM_HEADERS" not in claude_api.api_env("ANTHROPIC_API_KEY_2")
 
 
