@@ -93,3 +93,20 @@ def test_second_key_limit(monkeypatch, tmp_path):
         assert "claude-api2" in str(exc)
     else:
         raise AssertionError("expected refusal")
+
+
+def test_reserve_respects_group_limit(tmp_path, monkeypatch):
+    from subtask import ledger
+
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    monkeypatch.setattr(ledger, "_rows", lambda m: rows)
+    monkeypatch.setattr(ledger, "_append", lambda m, r: rows.append(r))
+    monkeypatch.setattr(ledger, "_find", lambda rid: None)
+    monkeypatch.setattr(config, "ENGINE_LIMITS_USD", {"openai": 10.0, "claude-api": 100.0})
+    rows = [
+        {"op": "reserve", "rid": "a", "usd": 5, "engine": "openai"},
+        {"op": "settle", "rid": "a", "usd": 8, "engine": "openai"},
+    ]
+    assert ledger.reserve("b", "jb", 3, cap=1000, engine="openai") is None  # 8 + 3 > 10
+    assert ledger.reserve("c", "jc", 3, cap=1000, engine="sonnet-api") is not None
+    assert ledger.reserve("d", "jd", 2, cap=1000, engine="openai") is not None  # 8 + 2 = 10

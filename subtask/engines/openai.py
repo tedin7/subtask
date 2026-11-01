@@ -74,5 +74,9 @@ class OpenAI(Codex):
 
         left = group_left()
         if left is None:
-            return Capacity(None, "usd", "limits.json", time.time(), "none", "no openai limit set")
-        return Capacity(left, "usd", "subtask ledger", time.time(), "high", f"{left:.2f} $ left this month")
+            return Capacity(None, "pct_free", "limits.json", time.time(), "none", "no openai limit set")
+        limit = config.ENGINE_LIMITS_USD["openai"]
+        pct = max(0.0, 100 * left / limit) if limit > 0 else 0.0
+        return Capacity(
+            pct, "pct_free", "subtask ledger", time.time(), "high", f"{left:.2f}$ of {limit:.0f}$ left"
+        )

@@ -118,6 +118,26 @@ def _committed(month: str) -> float:
     return settled + sum(_usd(r.get("usd")) or 0.0 for r in open_.values())
 
 
+def _group_committed(month: str, group: str) -> float:
+    """Settled plus open reservations of one limit group (engine name -> group)."""
+    from .live_limits import group_of
+
+    total, closed = 0.0, set()
+    open_: dict[str, float] = {}
+    for row in _rows(month):
+        op, rid = row.get("op"), row.get("rid")
+        mine = group_of(str(row.get("engine") or "")) == group
+        if op == "reserve" and rid not in closed:
+            if mine:
+                open_[rid] = _usd(row.get("usd")) or 0.0
+        elif op in ("settle", "release") and rid not in closed:
+            closed.add(rid)
+            was_mine = open_.pop(rid, None) is not None
+            if mine or was_mine:
+                total += _usd(row.get("usd")) or 0.0
+    return total + sum(open_.values())
+
+
 def committed(month: str | None = None) -> float:
     """Spent plus still reserved this month (what counts against the cap)."""
     with locked():
@@ -141,6 +161,9 @@ def reserve(
         total = _committed(month)
         if total + usd > cap:
             return None
+        limit = config.ENGINE_LIMITS_USD.get(_group(engine)) if engine else None
+        if limit is not None and _group_committed(month, _group(engine)) + usd > limit:
+            return None  # each engine group keeps its own monthly limit (Tommaso 01/11)
         row = {
             "v": VERSION,
             "ts": now(),
@@ -154,6 +177,12 @@ def reserve(
             row["engine"] = engine
         _append(month, row)
         return total + usd
+
+
+def _group(engine: str) -> str:
+    from .live_limits import group_of
+
+    return group_of(engine)
 
 
 def _find(rid: str) -> tuple[str, dict | None] | None:

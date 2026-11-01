@@ -339,7 +339,10 @@ def start(
             raise
         if booked is None:
             _drop_slot_locked(job_id)
-            return f"monthly cap {config.MONTHLY_CAP_USD:.0f} $ reached: {ledger.committed():.2f} $ committed"
+            return (
+                f"monthly cap reached: {ledger.committed():.2f} $ committed of {config.MONTHLY_CAP_USD:.0f} $, "
+                f"or the limit of the {engine} group is used up (subtask limits)"
+            )
 
     folder = jobs.job_dir(job_id)
     spawned = False
@@ -1235,7 +1238,10 @@ def limits(force: bool = False) -> str:
 
 def spend() -> str:
     spent = ledger.committed()
-    return f"month: {spent:.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$ · {config.MONTHLY_CAP_USD - spent:.2f}$ left" + _limits_note()
+    return (
+        f"month: {spent:.2f}$ committed of {config.MONTHLY_CAP_USD:.0f}$ · {config.MONTHLY_CAP_USD - spent:.2f}$ left"
+        + _limits_note()
+    )
 
 
 def engines() -> str:

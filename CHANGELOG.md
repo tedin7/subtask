@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2
+
+### Fixed
+- Each engine group now keeps its own monthly limit at reservation: a group can no longer
+  spend the share of the others inside the summed cap.
+- `openai` capacity shows the free share in percent.
+
 ## 0.5.1
 
 ### Added
