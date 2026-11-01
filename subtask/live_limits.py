@@ -78,9 +78,16 @@ def read_claude_api() -> dict:
     if not key:
         raise RuntimeError("no ANTHROPIC_API_KEY in the env file")
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+    start = _month_start()
+    # The report holds closed UTC days only: ending_at must be after starting_at, so on day 1 of the
+    # month there is nothing to ask (HTTP 400 "ending date must be after starting date").
+    end = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+    note = "spend live up to yesterday (UTC); Anthropic has no limit endpoint, limit is configured"
+    if end <= start:
+        return {"spent_usd": 0.0, "note": note}
     page, total = "", 0.0
     for _ in range(10):
-        url = f"https://api.anthropic.com/v1/organizations/cost_report?starting_at={_month_start()}&limit=31"
+        url = f"https://api.anthropic.com/v1/organizations/cost_report?starting_at={start}&ending_at={end}&limit=31"
         if page:
             url += f"&page={page}"
         data = _get(url, headers)
@@ -90,7 +97,7 @@ def read_claude_api() -> dict:
         page = data.get("next_page") or ""
         if not data.get("has_more") or not page:
             break
-    return {"spent_usd": round(total, 4), "note": "spend live; Anthropic has no limit endpoint, limit is configured"}
+    return {"spent_usd": round(total, 4), "note": note}
 
 
 def read_dsh() -> dict:

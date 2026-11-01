@@ -53,13 +53,50 @@ def test_dsh_limit_is_spent_plus_balance(ll, monkeypatch, tmp_path):
     assert r["limit_source"] == "live"
 
 
+def _pin_day(ll, monkeypatch, day):
+    from datetime import datetime
+
+    class Pinned(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, day, 10, 0, tzinfo=tz)
+
+    monkeypatch.setattr(ll, "datetime", Pinned)
+
+
 def test_claude_cost_report_sums_cents_and_keeps_configured_limit(ll, monkeypatch):
+    _pin_day(ll, monkeypatch, 5)
     page = {"data": [{"results": [{"amount": "250.5"}, {"amount": "49.5"}]}], "has_more": False}
     get, calls = _fake({"cost_report": page})
     monkeypatch.setattr(ll, "_get", get)
     r = ll.read_group("claude-api", force=True)
     assert r["spent_usd"] == 3.0 and r["limit_usd"] == 720 and r["limit_source"] == "configured"
     assert len(calls) == 1
+
+
+def test_claude_cost_report_asks_a_valid_range_and_skips_day_one(ll, monkeypatch):
+    from datetime import datetime, timezone
+
+    class Day2(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 2, 10, 0, tzinfo=tz)
+
+    monkeypatch.setattr(ll, "datetime", Day2)
+    get, calls = _fake({"cost_report": {"data": [], "has_more": False}})
+    monkeypatch.setattr(ll, "_get", get)
+    ll.read_claude_api()
+    assert "starting_at=2026-11-01T00:00:00Z&ending_at=2026-11-02T00:00:00Z" in calls[0]
+
+    class Day1(Day2):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 1, 0, 30, tzinfo=tz)
+
+    monkeypatch.setattr(ll, "datetime", Day1)
+    get2, calls2 = _fake({"cost_report": AssertionError("must not call on day 1")})
+    monkeypatch.setattr(ll, "_get", get2)
+    assert ll.read_claude_api()["spent_usd"] == 0.0 and calls2 == []
 
 
 def test_failure_returns_last_known_flagged(ll, monkeypatch, tmp_path):
