@@ -30,7 +30,7 @@ CODEX_SEED = (
 def env():
     assert VENV_MCP.exists(), (
         f"{VENV_MCP} is missing: these tests need the project installed in the interpreter that runs them "
-        "(pip install -e '.[dev]' in a venv, or use /root/subtask/.venv/bin/python -m pytest), not the system python"
+        f"(pip install -e '.[dev]' in a venv, or use {ROOT}/.venv/bin/python -m pytest), not the system python"
     )
     BASE.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix="t-", dir=BASE))

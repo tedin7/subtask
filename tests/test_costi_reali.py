@@ -38,7 +38,13 @@ class _Ctx:
 
 
 def test_init_message_does_not_mark_spend_but_api_reply_does():
-    from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock
+    try:
+        from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock
+    except ModuleNotFoundError:
+        pytest.fail(
+            "claude_agent_sdk is missing: run the tests with the project venv "
+            "(.venv/bin/python -m pytest), not the system python"
+        )
 
     from subtask.engines.base import Outcome
     from subtask.engines.claude_api import ClaudeApi
