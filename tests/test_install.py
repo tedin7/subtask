@@ -28,6 +28,10 @@ CODEX_SEED = (
 
 @pytest.fixture
 def env():
+    assert VENV_MCP.exists(), (
+        f"{VENV_MCP} is missing: these tests need the project installed in the interpreter that runs them "
+        f"(pip install -e '.[dev]' in a venv, or use {ROOT}/.venv/bin/python -m pytest), not the system python"
+    )
     BASE.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix="t-", dir=BASE))
     fake_bin = home / "fake bin"
@@ -49,7 +53,10 @@ def cli(e: dict, *args: str, cwd: Path | None = None) -> tuple[int, dict]:
     # These tests cover the `claude mcp add` route; plugin mode has its own tests below.
     proc = subprocess.run([sys.executable, "-m", "subtask.cli", *args, "--json", "--no-plugin"], env=e,
                           capture_output=True, text=True, timeout=120, cwd=cwd or e["HOME"], check=False)  # fmt: skip
-    return proc.returncode, json.loads(proc.stdout)
+    try:
+        return proc.returncode, json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        pytest.fail(f"subtask.cli printed no JSON (rc={proc.returncode}); stderr: {proc.stderr[-500:]}")
 
 
 def tree_hash(root: Path) -> dict[str, str]:
