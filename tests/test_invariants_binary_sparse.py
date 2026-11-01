@@ -69,3 +69,17 @@ def test_real_test_deletion_still_caught_in_sparse_checkout(tmp_path):
     (repo / "tests" / "test_a.py").unlink()
     found = invariants.check(str(repo), base, list(invariants.NAMES))
     assert found and "test_a.py" in found[0]
+
+
+def test_tracked_but_ignored_files_are_not_deletions(tmp_path):
+    repo = tmp_path / "r"
+    base = _repo(repo)
+    (repo / ".gitignore").write_text("docs/\n")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-q", "-m", "ignore docs")
+    base = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    (repo / "app.py").write_text("x = 2\n")
+    assert invariants._changed(str(repo), base) == [("M", "app.py")]
+    assert invariants.revert_outside(str(repo), base, ["app.py"]) == []

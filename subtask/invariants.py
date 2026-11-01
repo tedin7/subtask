@@ -14,6 +14,7 @@ import ast
 import fnmatch
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -56,7 +57,13 @@ def validate(invariants: object, allowed_paths: object, symbol_scope: object) ->
 def _changed(cwd: str, base: str) -> list[tuple[str, str]]:
     """(status, path) of every file that differs from base, untracked included."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = {"GIT_INDEX_FILE": os.path.join(tmp, "index")}
+        index = os.path.join(tmp, "index")
+        # Start from a copy of the real index: tracked files that .gitignore matches stay tracked,
+        # and skip-worktree entries of a sparse checkout keep their flag (T-6276).
+        real = _git(cwd, "rev-parse", "--path-format=absolute", "--git-path", "index").stdout.strip()
+        if real and os.path.isfile(real):
+            shutil.copyfile(real, index)
+        env = {"GIT_INDEX_FILE": index}
         _git(cwd, "add", "-A", ".", env=env)
         out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", "-z", base, env=env).stdout
     parts = out.split("\0")
