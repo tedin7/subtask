@@ -50,7 +50,11 @@ def _live_cache() -> dict[str, float]:
         return {}
     out: dict[str, float] = {}
     for group, row in data.items():
-        if isinstance(row, dict) and row.get("limit_source") == "live" and row.get("status") in ("live", "stale"):
+        if (
+            isinstance(row, dict)
+            and row.get("limit_source") == "live"
+            and row.get("status") in ("live", "stale")
+        ):
             value = _limit(row.get("limit_usd"))
             if value is not None:
                 out[group] = value
@@ -76,7 +80,9 @@ def engine_limits() -> dict[str, float]:
 
 ENGINE_LIMITS_USD = engine_limits()
 # With no engine limit configured the old single cap still applies; with any, it is ignored.
-MONTHLY_CAP_USD = sum(ENGINE_LIMITS_USD.values()) if ENGINE_LIMITS_USD else _money("SUBTASK_MONTHLY_CAP_USD", "180")
+MONTHLY_CAP_USD = (
+    sum(ENGINE_LIMITS_USD.values()) if ENGINE_LIMITS_USD else _money("SUBTASK_MONTHLY_CAP_USD", "180")
+)
 # Jev (Typesafe System One): billed per input token, output free. List price 01/11/2026,
 # docs.typesafe.ai/models.md: $0.042 per million input tokens.
 JEV_INPUT_USD_M = _money("SUBTASK_JEV_INPUT_USD_M", "0.042")
@@ -101,7 +107,9 @@ OPENAI_EFFORT = os.environ.get("SUBTASK_OPENAI_EFFORT", "high")
 OPENAI_INPUT_USD_M = _money("SUBTASK_OPENAI_INPUT_USD_M", "1.25")
 OPENAI_CACHED_USD_M = _money("SUBTASK_OPENAI_CACHED_USD_M", "0.05")
 OPENAI_OUTPUT_USD_M = _money("SUBTASK_OPENAI_OUTPUT_USD_M", "5.00")
-OPENAI_ADMIN_KEY_FILE = Path(os.environ.get("SUBTASK_OPENAI_ADMIN_KEY_FILE", ENV_FILE.parent / "openai-admin.key"))
+OPENAI_ADMIN_KEY_FILE = Path(
+    os.environ.get("SUBTASK_OPENAI_ADMIN_KEY_FILE", ENV_FILE.parent / "openai-admin.key")
+)
 
 
 def deepseek_key() -> str:

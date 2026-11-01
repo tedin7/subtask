@@ -78,8 +78,11 @@ responso favorevole richiede la decisione del coordinatore.
 MCP:
 
 ```python
-review(id="st-…", criteria=["Il parser gestisce input vuoti", "La pagina mostra il risultato"],
-       original_request="Correggi il parser e mostra il risultato nella pagina")
+review(
+    id="st-…",
+    criteria=["Il parser gestisce input vuoti", "La pagina mostra il risultato"],
+    original_request="Correggi il parser e mostra il risultato nella pagina",
+)
 ```
 
 Il default prepara il materiale locale senza chiamare il provider. Per chiedere

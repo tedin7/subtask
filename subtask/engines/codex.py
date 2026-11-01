@@ -109,7 +109,7 @@ def parse_reset(message: str) -> float | None:
     if not match:
         return None
     try:
-        when = datetime.strptime(" ".join(match.groups()), "%b %d %Y %I:%M %p")
+        when = datetime.strptime(" ".join(match.groups()), "%b %d %Y %I:%M %p").astimezone()
     except ValueError:
         return None
     return when.timestamp()
