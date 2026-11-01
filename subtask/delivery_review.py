@@ -853,10 +853,23 @@ def review(
             report.update(status="unknown", reason=diagnostic_code(exc))
             if isinstance(exc, urllib.error.HTTPError):
                 report["http_status"] = exc.code
+        charged, note = charged_usd(
+            report.get("usage") if report.get("status") == "reviewed" else None, reserve
+        )
+        report.update(cost_usd=charged, budget_charged_usd=charged, cost_note=note)
         report = _clean(report)
         _save(receipt, report)
-        ledger.close(reservation, reserve, "settle")
+        ledger.close(reservation, charged, "settle")
     return report
+
+
+def charged_usd(usage: object, allowance: float) -> tuple[float, str]:
+    """(USD to settle, note): the list price of the billed input tokens, else the whole allowance."""
+    tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+    if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
+        usd = round(min(allowance, tokens * config.JEV_INPUT_USD_M / 1e6), 6)  # ledger keeps 6 decimals
+        return usd, f"Charged at list price: {tokens} input tokens x {config.JEV_INPUT_USD_M} $/Mtok"
+    return allowance, "Invoice unknown; full allowance charged prudentially."
 
 
 def diagnostic_code(exc):

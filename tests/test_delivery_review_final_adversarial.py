@@ -331,8 +331,10 @@ def test_reservation_uses_only_process_allowance(home, monkeypatch):
     )
     monkeypatch.setattr(review, "_request", lambda packet, _: _answer(packet))
     report = review.review(DELIVERY, ["Parser fixed"], submit=True, original_request="Fix parser")
-    assert report["budget_charged_usd"] == 0.5
-    assert ledger.committed() == 0.5
+    reserved = [r["usd"] for r in ledger._rows(ledger.month_of()) if r.get("op") == "reserve"]
+    assert reserved == [0.5]  # the reservation uses only the process allowance
+    assert 0 < report["budget_charged_usd"] <= 0.5
+    assert ledger.committed() == report["budget_charged_usd"]
 
 
 def test_low_job_budget_blocks_before_any_reservation(home, monkeypatch):

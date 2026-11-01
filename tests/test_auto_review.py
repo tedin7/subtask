@@ -76,7 +76,7 @@ def test_delivery_starts_one_review_and_wait_includes_the_advice(delivery, monke
     report = status["jev_review"]["report"]
     assert report["scope_assessment"]["assessment"] == "unproven"
     assert all(a["assessment"] == "unproven" for a in report["assessments"])
-    assert ledger.committed() == 2 and ledger.open_for("st-auto-review") == []
+    assert 0 < ledger.committed() < 2 and ledger.open_for("st-auto-review") == []  # list price, not allowance
     assert next(r for r in ledger._rows(ledger.month_of()) if r["op"] == "reserve")["engine"] == "jev"
     assert json.loads(core.result("st-auto-review", evidence=True))["jev_review"]["advisory_only"]
 
@@ -102,7 +102,7 @@ def test_concurrent_claims_cannot_submit_twice(delivery, monkeypatch):
     finally:
         release.set()
         first.join(5)
-    assert not first.is_alive() and len(calls) == 1 and ledger.committed() == 2
+    assert not first.is_alive() and len(calls) == 1 and 0 < ledger.committed() < 2
 
 
 @pytest.mark.parametrize("block", ["key", "budget"])
@@ -261,7 +261,7 @@ def test_supervisor_recovers_a_completed_receipt_without_sending_again(delivery,
         auto_review.subprocess, "Popen", lambda *args, **kw: real_popen([sys.executable, "-c", "pass"], **kw)
     )
     auto_review.finish("st-auto-review", 1)
-    assert calls == [1] and ledger.committed() == 2
+    assert calls == [1] and 0 < ledger.committed() < 2
     assert jobs.status("st-auto-review")["jev_review"]["state"] == "reviewed"
 
 

@@ -110,3 +110,13 @@ def test_reserve_respects_group_limit(tmp_path, monkeypatch):
     assert ledger.reserve("b", "jb", 3, cap=1000, engine="openai") is None  # 8 + 3 > 10
     assert ledger.reserve("c", "jc", 3, cap=1000, engine="sonnet-api") is not None
     assert ledger.reserve("d", "jd", 2, cap=1000, engine="openai") is not None  # 8 + 2 = 10
+
+
+def test_jev_charged_at_list_price():
+    from subtask.delivery_review import charged_usd
+
+    usd, note = charged_usd({"input_tokens": 1_000_000, "output_tokens": 50}, 2.0)
+    assert abs(usd - config.JEV_INPUT_USD_M) < 1e-12 and "list price" in note
+    assert charged_usd(None, 2.0)[0] == 2.0  # unknown usage: whole allowance
+    assert charged_usd({"input_tokens": True}, 2.0)[0] == 2.0
+    assert charged_usd({"input_tokens": 10**12}, 2.0)[0] == 2.0  # never above the allowance

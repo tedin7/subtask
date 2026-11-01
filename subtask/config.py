@@ -77,6 +77,9 @@ def engine_limits() -> dict[str, float]:
 ENGINE_LIMITS_USD = engine_limits()
 # With no engine limit configured the old single cap still applies; with any, it is ignored.
 MONTHLY_CAP_USD = sum(ENGINE_LIMITS_USD.values()) if ENGINE_LIMITS_USD else _money("SUBTASK_MONTHLY_CAP_USD", "180")
+# Jev (Typesafe System One): billed per input token, output free. List price 01/11/2026,
+# docs.typesafe.ai/models.md: $0.042 per million input tokens.
+JEV_INPUT_USD_M = _money("SUBTASK_JEV_INPUT_USD_M", "0.042")
 DEFAULT_MAX_USD = _money("SUBTASK_DEFAULT_MAX_USD", "2")
 MAX_JOB_USD = _money("SUBTASK_MAX_JOB_USD", "20")
 MAX_RUNNING = int(_money("SUBTASK_MAX_RUNNING", "4")) or 4

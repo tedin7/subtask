@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.3
+
+### Fixed
+- Jev reviews settle at the list price of the billed input tokens ($0.042 per million,
+  docs.typesafe.ai/models.md, `SUBTASK_JEV_INPUT_USD_M`) instead of the whole allowance; the
+  allowance is still reserved first and charged only when usage is unknown.
+
 ## 0.5.2
 
 ### Fixed

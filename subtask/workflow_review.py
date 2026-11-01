@@ -122,8 +122,10 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
             )
             delivery._save(folder / (binding + ".request.json"), packet)
             delivery._save(receipt, report)
+            usage = None
             try:
                 body = delivery._request(packet, key)
+                usage = body.get("usage") if isinstance(body, dict) else None
                 answers = jev_filter.validate_answers(body, packet["questions"])
                 answer = answers["workflow"]
                 # Wrapper metadata from provider output cannot become policy authority.
@@ -158,9 +160,12 @@ def evaluate(phase: str, material: dict, *, submit: bool = True) -> dict:
                 }[report["assessment"]]
             except (OSError, ValueError, TypeError, KeyError) as exc:
                 report.update(status="unknown", reason=delivery.diagnostic_code(exc))
+            reviewed = report.get("status") == "reviewed"
+            charged, note = delivery.charged_usd(usage if reviewed else None, allowance)
+            report.update(budget_charged_usd=charged, cost_note=note)
             report = delivery._clean(report)
             delivery._save(receipt, report)
-            ledger.close(reservation, allowance, "settle")
+            ledger.close(reservation, charged, "settle")
             return report
     except (OSError, ValueError, TypeError, RecursionError):
         return {**report, "reason": "configuration_material_or_storage_unavailable"}

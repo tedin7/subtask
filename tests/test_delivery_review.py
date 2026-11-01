@@ -58,7 +58,7 @@ def test_worker_claim_is_never_sufficient_evidence(delivery, monkeypatch):
     report = review.review("st-delivery", ["The UI works"], submit=True)
     assert report["assessments"][0]["assessment"] == "unproven"
     assert report["assessments"][0]["evidence_ref"] == "worker_report"
-    assert report["cost_usd"] is None
+    assert 0 < report["cost_usd"] < 0.01  # charged at the Jev list price per input token
 
 
 def test_worker_claim_cannot_prove_a_contradiction_either(delivery, monkeypatch):
