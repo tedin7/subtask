@@ -19,6 +19,7 @@ def _builtins() -> dict[str, Adapter]:
     from .codex import Codex
     from .dsh import Dsh
     from .kimi import Kimi
+    from .openai import OpenAI
     from .opencode import OpenCode, OpenCodeGo
 
     engines: list[Adapter] = [
@@ -26,6 +27,7 @@ def _builtins() -> dict[str, Adapter]:
         ClaudeApi("haiku-api", "haiku"),
         ClaudeApi("opus-api", "opus"),
         Codex(),
+        OpenAI(),
         Kimi(),
         OpenCodeGo(),
         OpenCode(),

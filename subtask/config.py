@@ -27,7 +27,7 @@ def _money(name: str, default: str) -> float:
 
 # Monthly limit per engine group, in USD. The monthly cap is their SUM (T-4724), so one engine
 # running low never blocks the others. Groups: engine names share a group when they share a budget.
-ENGINE_LIMIT_GROUPS = ("claude-api", "opencode", "kimi", "codex", "dsh")
+ENGINE_LIMIT_GROUPS = ("claude-api", "opencode", "kimi", "codex", "dsh", "openai")
 LIMITS_FILE = Path(os.environ.get("SUBTASK_LIMITS_FILE", ENV_FILE.parent / "limits.json"))
 
 
@@ -88,6 +88,14 @@ DSH_KEY_FILE = Path(os.environ.get("SUBTASK_DSH_KEY_FILE", Path.home() / ".confi
 DSH_INPUT_USD_M = _money("SUBTASK_DSH_INPUT_USD_M", "0.30")
 DSH_CACHED_USD_M = _money("SUBTASK_DSH_CACHED_USD_M", "0.006")
 DSH_OUTPUT_USD_M = _money("SUBTASK_DSH_OUTPUT_USD_M", "1.20")
+# OpenAI API via codex (engine "openai"). Prices are estimates on the high side: set the
+# real list price with SUBTASK_OPENAI_*_USD_M, and keep a hard limit on the OpenAI dashboard.
+OPENAI_CODEX_HOME = os.environ.get("SUBTASK_OPENAI_CODEX_HOME", str(Path.home() / ".codex-api"))
+OPENAI_MODEL = os.environ.get("SUBTASK_OPENAI_MODEL", "gpt-6.1-terra")
+OPENAI_EFFORT = os.environ.get("SUBTASK_OPENAI_EFFORT", "high")
+OPENAI_INPUT_USD_M = _money("SUBTASK_OPENAI_INPUT_USD_M", "5.00")
+OPENAI_CACHED_USD_M = _money("SUBTASK_OPENAI_CACHED_USD_M", "0.50")
+OPENAI_OUTPUT_USD_M = _money("SUBTASK_OPENAI_OUTPUT_USD_M", "30.00")
 
 
 def deepseek_key() -> str:
