@@ -14,6 +14,7 @@ import ast
 import fnmatch
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -31,7 +32,8 @@ SKIP = re.compile(
 
 def _git(cwd: str, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", cwd, *args], capture_output=True, text=True, timeout=60, check=False,
+        ["git", "-C", cwd, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=60, check=False,
         env={**os.environ, **env} if env else None,
     )  # fmt: skip
 
@@ -57,6 +59,11 @@ def _changed(cwd: str, base: str) -> list[tuple[str, str]]:
     """(status, path) of every file that differs from base, untracked included."""
     with tempfile.TemporaryDirectory() as tmp:
         env = {"GIT_INDEX_FILE": os.path.join(tmp, "index")}
+        # Start from the real index so skip-worktree (sparse) entries keep their blob
+        # and are not reported as deleted.
+        real = _git(cwd, "rev-parse", "--path-format=absolute", "--git-path", "index").stdout.strip()
+        if real and os.path.isfile(real):
+            shutil.copyfile(real, env["GIT_INDEX_FILE"])
         _git(cwd, "add", "-A", ".", env=env)
         out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", "-z", base, env=env).stdout
     parts = out.split("\0")
