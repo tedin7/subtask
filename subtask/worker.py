@@ -67,7 +67,7 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
     """Run the parent's verify command in the worktree, on the head the worker left."""
     cwd = spec["cwd"]
     head = _git(cwd, "rev-parse", "HEAD")
-    dirty_before = bool(_git(cwd, "status", "--porcelain"))
+    dirty_before = _is_dirty(cwd)
     argv, env = wrap(["sh", "-c", spec["verify"]], runners.minimal_env(extra))
     t0 = time.monotonic()
     try:
@@ -90,7 +90,7 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
         "exit_code": code,
         "head": head,
         "dirty_before": dirty_before,
-        "dirty_after": bool(_git(cwd, "status", "--porcelain")),
+        "dirty_after": _is_dirty(cwd),
         "seconds": round(time.monotonic() - t0, 1),
         "output_tail": _redact.redact(out),
         "level": "independently_verified",
@@ -124,6 +124,13 @@ def _guard(job_id: str, spec: dict) -> tuple[dict | None, list[str]]:
 
 
 def _git(cwd: str, *args: str) -> str:
+    """Stdout of a git call; "" when it fails (use _git_ok to tell failure from empty output)."""
+    out = _git_ok(cwd, *args)
+    return out if out is not None else ""
+
+
+def _git_ok(cwd: str, *args: str) -> str | None:
+    """Stdout of a git call, or None when git failed, timed out or could not start."""
     try:
         done = subprocess.run(
             ["git", "-C", cwd, *args],
@@ -134,8 +141,14 @@ def _git(cwd: str, *args: str) -> str:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return done.stdout.strip() if done.returncode == 0 else ""
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _is_dirty(cwd: str) -> bool | None:
+    """True/False for the working tree; None when `git status` failed (unknown, not clean)."""
+    out = _git_ok(cwd, "status", "--porcelain")
+    return None if out is None else bool(out)
 
 
 def main() -> int:
