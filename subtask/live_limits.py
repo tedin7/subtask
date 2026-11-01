@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -120,19 +121,49 @@ def read_codex() -> dict:
     return {"used_percent": used, "note": f"plan {data.get('plan_type')}, window resets in {reset_h:.0f}h; flat plan, limit is configured"}
 
 
-def read_kimi() -> dict:
-    """Kimi Code plan: usages endpoint with the CLI's own OAuth token (we never refresh or write it)."""
-    token = ""
+# `kimi session list`, `provider list` and `doctor` do not touch the token (tested 2026-11-01); the shortest prompt does.
+KIMI_REFRESH_CMD = ["kimi", "-p", "ok"]
+KIMI_REFRESH_TIMEOUT = 90
+
+
+def _kimi_token() -> str:
+    """Valid access token from the CLI's credential files, or '' (read only)."""
     for path in sorted(KIMI_CREDENTIALS.glob("*.json")):
         try:
             cred = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
         if cred.get("access_token") and (_num(cred.get("expires_at")) or 0) > time.time():
-            token = cred["access_token"]
-            break
+            return cred["access_token"]
+    return ""
+
+
+def _kimi_has_refresh_token() -> bool:
+    for path in KIMI_CREDENTIALS.glob("*.json"):
+        try:
+            if json.loads(path.read_text()).get("refresh_token"):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def _kimi_cli_refresh() -> None:
+    """Let the kimi CLI renew its own token (it uses its refresh_token); we never write the file."""
+    try:
+        subprocess.run(KIMI_REFRESH_CMD, capture_output=True, timeout=KIMI_REFRESH_TIMEOUT, check=False, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def read_kimi() -> dict:
+    """Kimi Code plan: usages endpoint with the CLI's own OAuth token (the CLI renews it, we never write it)."""
+    token = _kimi_token()
+    if not token and _kimi_has_refresh_token():
+        _kimi_cli_refresh()
+        token = _kimi_token()
     if not token:
-        raise RuntimeError("kimi login expired: run `kimi login`")
+        raise RuntimeError("kimi login expired and the CLI could not renew it: run `kimi login`")
     data = _get("https://api.kimi.ai/coding/v1/usages", {"Authorization": f"Bearer {token}"})
     usage = data.get("usage") or {}
     limit, used = _num(usage.get("limit")), _num(usage.get("used"))
