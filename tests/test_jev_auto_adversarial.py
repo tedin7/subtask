@@ -125,9 +125,10 @@ def test_exhausted_verification_retry_still_triggers_auto_review(home, monkeypat
 
 def test_malformed_config_home_does_not_abort_worker_finalization(home, monkeypatch):
     """An unusable Jev config path must not lose a successful worker delivery."""
-    from subtask import config, core, jobs, procid, worker
+    from subtask import config, core, jev_config, jobs, procid, worker
 
     monkeypatch.setenv("SUBTASK_JEV_CONFIG", "~no-such-user-for-jev-tests/jev.json")
+    assert jev_config.load() == {"version": 1, "mode": "manual", "valid": False}
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'echo \'{"say":"parser fixed"}\'')
     monkeypatch.setattr(config, "DSH_KEY_FILE", home / "missing-deepseek")
     monkeypatch.setattr(core, "_spawn", lambda *_: procid.identity())
