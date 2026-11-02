@@ -30,6 +30,7 @@ from . import (
     telemetry,
     verifier,
     watchdog,
+    worktree_guard,
 )
 from .engines import registry
 from .redact import redact
@@ -1208,8 +1209,13 @@ def cleanup(job_id: str) -> str:
         text=True,
         check=False,
     )
-    if dirty.returncode != 0 or dirty.stdout.strip():
+    if dirty.returncode != 0:
+        return f"{job_id}: git status failed, worktree kept ({dirty.stderr.strip()[:200]})"
+    if dirty.stdout.strip():
         return f"{job_id}: worktree has uncommitted or ignored files, not removed ({sp['cwd']})"
+    blocker = worktree_guard.removal_blocker(sp)
+    if blocker:
+        return f"{job_id}: {blocker}"
     done = subprocess.run(
         ["git", "-C", sp["repo"], "worktree", "remove", sp["cwd"]],
         capture_output=True,

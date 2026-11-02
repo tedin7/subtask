@@ -45,6 +45,7 @@ def test_gc_preview_keeps_job_store_and_git_index_unchanged(home, tmp_path):
         ],
         check=True,
     )
+    subprocess.run(["git", "-C", str(repo), "branch", "test"], check=True)  # the job branch must exist (T-7022)
     # An unchanged file with a new mtime forces status to refresh the index unless optional locks are disabled.
     old_mtime = (repo / "file").stat().st_mtime_ns
     os.utime(repo / "file", ns=(old_mtime + 2_000_000_000, old_mtime + 2_000_000_000))

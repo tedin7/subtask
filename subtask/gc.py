@@ -14,7 +14,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import config, jobs, telemetry
+from . import config, jobs, telemetry, worktree_guard
 
 RETENTION_DAYS = int(os.environ.get("SUBTASK_JOB_RETENTION_DAYS", "30"))
 
@@ -99,7 +99,11 @@ def plan(days: int = RETENTION_DAYS) -> list[dict]:
             if clean is False:
                 item["skip"] = "worktree has uncommitted or ignored files"
             elif clean:
-                item["worktree"] = sp["cwd"]
+                blocker = worktree_guard.removal_blocker(sp)
+                if blocker:
+                    item["skip"] = blocker
+                else:
+                    item["worktree"] = sp["cwd"]
         out.append(item)
     return out
 
