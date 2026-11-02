@@ -814,8 +814,7 @@ def review(
         _save(folder / f"{digest}.request.json", packet)
         if not submit:
             return _clean(report)
-        # Reuse the existing monthly cap. With no verified tariff, the entire
-        # configured per-call allowance remains charged prudentially, not as a bill.
+        # Reuse the existing monthly cap: the allowance is held only while the call runs.
         reserve = packet["state"]["review_allowance_usd"]
         if packet["state"]["job_allowance_usd"] < reserve:
             raise ValueError("recorded job budget is below the operator's review allowance")
@@ -864,12 +863,16 @@ def review(
 
 
 def charged_usd(usage: object, allowance: float) -> tuple[float, str]:
-    """(USD to settle, note): the list price of the billed input tokens, else the whole allowance."""
+    """(USD to settle, note): list price of the billed input tokens, else nothing.
+
+    A review with no token count has no known cost; Jev costs fractions of a cent, so booking the
+    allowance overstated the month by 346 $ in two days and starved the paid engines (02/11).
+    """
     tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
     if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
         usd = round(min(allowance, tokens * config.JEV_INPUT_USD_M / 1e6), 6)  # ledger keeps 6 decimals
         return usd, f"Charged at list price: {tokens} input tokens x {config.JEV_INPUT_USD_M} $/Mtok"
-    return allowance, "Invoice unknown; full allowance charged prudentially."
+    return 0.0, "Invoice unknown; nothing charged, the allowance is released."
 
 
 def diagnostic_code(exc):

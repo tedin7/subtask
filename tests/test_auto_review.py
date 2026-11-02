@@ -134,7 +134,7 @@ def test_provider_failure_finishes_the_wait_without_resubmission(delivery, monke
     assert len(calls) == 1
     assert "st-auto-review done" in core.wait(["st-auto-review"], timeout=0)
     assert jobs.status("st-auto-review")["jev_review"]["state"] == "unknown"
-    assert ledger.committed() == 2
+    assert ledger.committed() == 0  # unknown cost: allowance released
 
 
 def test_disabling_before_submission_preserves_the_delivery(delivery, monkeypatch):
