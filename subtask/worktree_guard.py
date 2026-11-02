@@ -12,7 +12,9 @@ import subprocess
 
 def _run(cwd: str, *args: str) -> tuple[subprocess.CompletedProcess | None, str]:
     try:
-        done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, check=False, timeout=60)
+        done = subprocess.run(
+            ["git", "-C", cwd, *args], capture_output=True, text=True, check=False, timeout=60
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         return None, f"git {args[0]} failed to run: {exc}"
     if done.returncode != 0:
