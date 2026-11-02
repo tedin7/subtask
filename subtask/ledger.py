@@ -13,6 +13,8 @@ A second close of the same rid is a no-op (idempotent settlement).
 - correct: {"op":"correct","rid":..,"usd":..,"reason":..} replaces the amount of an
   already settled rid (a wrong charge found later). Rows are never rewritten or
   deleted: the original settle stays in the file, readers see the corrected amount.
+- observe: records a new monthly high-water mark from a provider cost report;
+  it is not a charge and prevents a later, lower reading from relaxing the cap.
 
 The v0 single file ledger.jsonl is migrated once; the original is kept as
 ledger.jsonl.v0.bak (rollback: move it back and delete the ledger folder).
@@ -178,14 +180,44 @@ def _group_used_with_bill(month: str, group: str, observed_spend: float) -> floa
 
     settled, today_settled, pending = _group_parts(month, group)
     cached = cached_spent(group) if month == month_of() else None
+    recorded = _observed_bill(month, group)
     # Claude's report stops at midnight UTC; our own spending since then is extra.
-    return max(settled, max(observed_spend, cached or 0.0) + today_settled) + pending
+    return max(settled, max(observed_spend, cached or 0.0, recorded) + today_settled) + pending
+
+
+def _observed_bill(month: str, group: str) -> float:
+    return max(
+        (
+            _usd(row.get("usd")) or 0.0
+            for row in _rows(month)
+            if row.get("op") == "observe" and row.get("group") == group
+        ),
+        default=0.0,
+    )
+
+
+def _record_bill(month: str, group: str, observed_spend: float) -> None:
+    """Called with the ledger lock: preserve the highest report seen this month."""
+    if observed_spend > _observed_bill(month, group):
+        _append(
+            month,
+            {
+                "v": VERSION,
+                "ts": now(),
+                "op": "observe",
+                "group": group,
+                "usd": observed_spend,
+                "month": month,
+            },
+        )
 
 
 def group_used_with_bill(group: str, observed_spend: float) -> float:
     """Include outstanding reservations on top of the highest known bill."""
     with locked():
-        return _group_used_with_bill(month_of(), group, observed_spend)
+        month = month_of()
+        _record_bill(month, group, observed_spend)
+        return _group_used_with_bill(month, group, observed_spend)
 
 
 def _group_used(month: str, group: str) -> float:
@@ -232,6 +264,8 @@ def reserve(
         month = month_of()
         if _find(rid) is not None:
             return None
+        if engine and observed_spend is not None:
+            _record_bill(month, _group(engine), observed_spend)
         total = _committed(month)
         if total + usd > cap:
             return None

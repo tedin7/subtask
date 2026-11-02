@@ -97,6 +97,20 @@ def test_simultaneous_reservations_share_the_same_margin(home, monkeypatch):
     assert sum(result is not None for result in results) == 1
 
 
+def test_later_lower_report_does_not_forget_the_highest_bill(home, monkeypatch):
+    monkeypatch.setattr(config, "ENGINE_LIMITS_USD", {"claude-api2": 200.0})
+    assert ledger.reserve("a", "a", 0.6, engine="sonnet-api2", observed_spend=199.0) is not None
+    assert ledger.reserve("b", "b", 0.6, engine="haiku-api2", observed_spend=100.0) is None
+
+
+def test_recorded_bill_is_scoped_to_the_month(home, monkeypatch):
+    monkeypatch.setattr(config, "ENGINE_LIMITS_USD", {"claude-api2": 200.0})
+    monkeypatch.setattr(ledger, "now", lambda: "2026-11-30T12:00:00+00:00")
+    assert ledger.reserve("a", "a", 0.6, cap=1000, engine="sonnet-api2", observed_spend=199.0) is not None
+    monkeypatch.setattr(ledger, "now", lambda: "2026-12-01T12:00:00+00:00")
+    assert ledger.reserve("b", "b", 2.0, cap=1000, engine="sonnet-api2", observed_spend=0.0) is not None
+
+
 def test_live_bill_is_combined_with_today_settlements(home, monkeypatch):
     monkeypatch.setattr(config, "ENGINE_LIMITS_USD", {"claude-api2": 200.0})
     assert ledger.reserve("a", "a", 0.6, engine="sonnet-api2", observed_spend=0.0) is not None
