@@ -327,6 +327,18 @@ def start(
     if files:
         task += "\n\nRead these first: " + ", ".join(str(f) for f in files)
 
+    observed_spend = None
+    if adapter.capabilities.paid:
+        from . import live_limits
+
+        if live_limits.group_of(engine) == "claude-api2":
+            if config.ENGINE_LIMITS_USD.get("claude-api2") is None:
+                return "claude-api2 monthly limit is not configured"
+            try:
+                observed_spend = live_limits.require_claude_api2_report()
+            except RuntimeError as exc:
+                return str(exc)
+
     job_id = jobs.new_id()
     rid = f"{job_id}#1" if adapter.capabilities.paid else None
     with admission.locked():  # slot and money in one critical section, nothing slow inside
@@ -334,7 +346,8 @@ def start(
         if refused:
             return refused
         try:
-            booked = ledger.reserve(rid, job_id, budget, engine=engine) if rid else True
+            extra = {"observed_spend": observed_spend} if observed_spend is not None else {}
+            booked = ledger.reserve(rid, job_id, budget, engine=engine, **extra) if rid else True
         except BaseException:
             _drop_slot_locked(job_id)
             raise

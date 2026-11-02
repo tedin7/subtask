@@ -159,12 +159,21 @@ class ClaudeApi(Adapter):
         import asyncio  # lazy: 60+ ms at import, only the worker needs it
 
         if self.key_name == KEY_2:  # the second key has its own limit, checked here
+            from .. import ledger
             from ..live_limits import _ledger_spent
 
             limit = config.ENGINE_LIMITS_USD.get("claude-api2")
+            if limit is None:
+                raise RuntimeError("claude-api2 monthly limit is not configured")
             if limit is not None and limit - _ledger_spent("claude-api2") < float(
                 ctx.spec.get("max_usd") or 0
             ):
+                raise RuntimeError("claude-api2 monthly limit reached")
+            # Queued or resumed jobs may run after the admission check succeeded.
+            from ..live_limits import require_claude_api2_report
+
+            spent = require_claude_api2_report()
+            if ledger.group_used_with_bill("claude-api2", spent) > limit:
                 raise RuntimeError("claude-api2 monthly limit reached")
 
         return asyncio.run(self._run(ctx))
