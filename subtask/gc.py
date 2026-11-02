@@ -104,6 +104,18 @@ def plan(days: int = RETENTION_DAYS) -> list[dict]:
     return out
 
 
+def _changed_since_plan(item: dict, days: int) -> str | None:
+    """Re-read the job right before deleting: it may have been resumed after the plan (T-6435)."""
+    st = jobs.read_json(Path(item["folder"]) / "status.json", {"state": "unknown"})
+    if st.get("state") not in jobs.FINAL:
+        return "job is active again"
+    if float(st.get("updated") or 0) > time.time() - days * 86400:
+        return "job was updated after the plan"
+    if item["worktree"] and _worktree_clean(item["worktree"]) is False:
+        return "worktree has uncommitted or ignored files"
+    return None
+
+
 def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:
     items = plan(days)
     old_telemetry = telemetry.prune(dry_run=not apply)
@@ -115,6 +127,11 @@ def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:
             lines.append(f"keep {item['job']}: {item['skip']}")
             continue
         if apply:
+            changed = _changed_since_plan(item, days)
+            if changed:
+                kept += 1
+                lines.append(f"keep {item['job']}: {changed}")
+                continue
             if item["worktree"]:
                 sp = jobs.spec(item["job"])
                 done = subprocess.run(["git", "-C", sp["repo"], "worktree", "remove", item["worktree"]],
