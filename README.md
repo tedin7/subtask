@@ -142,6 +142,9 @@ Options of `start`:
   `speedup_pct`.
 - `tier`: `fast` (effort low), `deep` (effort high, kind hard), `free_only`. Past 75% of the monthly cap,
   `auto` and `balanced` go to free engines and the reply carries `budget_warning`.
+- Kimi's default K3-256k and supported managed model aliases accept `low`, `high` and `max` effort.
+  Subtask maps `medium` to `high` and `xhigh` to `max` for those models, which can consume more quota.
+  New sessions retain the effective effort when resumed; custom model aliases keep the requested value.
 
 Memory: when a check fails and a retry fixes it, subtask stores a short lesson for that repository in
 `$SUBTASK_HOME/engrams/` (at most 50, least recently used dropped). Jobs on the same paths get the top three.

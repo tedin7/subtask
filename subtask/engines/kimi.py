@@ -27,6 +27,23 @@ class _ManagedTokenNeedsRefresh(ValueError):
     """The CLI owns OAuth renewal; a read-only quota probe must not trigger it."""
 
 
+_KIMI_EFFORT_MODELS = {
+    "kimi-code/k3-256k",
+    "kimi-code/k3",
+    "kimi-code/k3.1-pro",
+    "kimi-code/k3.1-pro-highspeed",
+    "kimi-code/kimi-for-coding",
+}
+
+
+def _effective_effort(requested: str, model: str | None) -> str:
+    # Managed models expose only low, high and max. Round up so an explicit
+    # request is never silently given less reasoning than requested.
+    if model is None or model in _KIMI_EFFORT_MODELS:
+        return {"medium": "high", "xhigh": "max"}.get(requested, requested)
+    return requested
+
+
 def _managed_account(*, require_fresh: bool = False) -> tuple[str, str]:
     """Read only the configured managed account; never send its token to a custom host."""
     home = kimi_home()
@@ -199,20 +216,24 @@ class Kimi(CliAdapter):
             effort = ctx.spec.get("effort") or "low"
             if effort not in ("low", "medium", "high", "xhigh", "max"):
                 raise ValueError("Invalid Kimi thinking effort; refusing to start session")
-            jobs.write_json(marker, {"v": 1, "effort": effort})
+            effective = _effective_effort(effort, ctx.spec.get("model"))
+            jobs.write_json(marker, {"v": 2, "effort": effort, "effective_effort": effective})
         elif marker.exists():
             recorded = jobs.read_json(marker)
             effort = recorded.get("effort")
             if (
-                recorded.get("v") != 1
+                recorded.get("v") not in (1, 2)
                 or effort not in ("low", "medium", "high", "xhigh", "max")
                 or effort != (ctx.spec.get("effort") or "low")
             ):
                 raise ValueError("Invalid recorded Kimi thinking effort; refusing to change session")
+            effective = recorded.get("effective_effort") if recorded["v"] == 2 else effort
+            if recorded["v"] == 2 and effective != _effective_effort(effort, ctx.spec.get("model")):
+                raise ValueError("Invalid recorded Kimi thinking effort; refusing to change session")
         # Kimi rereads its global default on resume. Restore only the effort
         # pinned by this adapter at session start; leave legacy sessions alone.
         if effort is not None:
-            ctx.env = {**ctx.env, "KIMI_MODEL_THINKING_EFFORT": effort}
+            ctx.env = {**ctx.env, "KIMI_MODEL_THINKING_EFFORT": effective}
         return super().run(ctx)
 
     def argv(self, ctx: RunContext) -> list[str]:

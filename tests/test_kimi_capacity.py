@@ -185,6 +185,52 @@ def test_fresh_k3_job_gets_requested_low_without_global_mutation(tmp_path, monke
     assert "kimi-code/k3-256k" in kimi.Kimi().argv(ctx)
 
 
+@pytest.mark.parametrize(
+    ("model", "requested", "effective"),
+    [
+        (None, "medium", "high"),
+        (None, "xhigh", "max"),
+        ("kimi-code/k3-256k", "medium", "high"),
+        ("kimi-code/k3", "xhigh", "max"),
+        ("custom/model", "medium", "medium"),
+    ],
+)
+def test_fresh_and_resumed_jobs_use_compatible_effort(tmp_path, monkeypatch, model, requested, effective):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda self, context: context.env)
+    adapter = kimi.Kimi()
+    spec = {"effort": requested, "model": model}
+    first = SimpleNamespace(spec=spec, env={}, resume=None, folder=tmp_path, prompt="first")
+    assert adapter.run(first)["KIMI_MODEL_THINKING_EFFORT"] == effective
+    assert json.loads((tmp_path / "kimi-thinking.json").read_text()) == {
+        "v": 2,
+        "effort": requested,
+        "effective_effort": effective,
+    }
+    resumed = SimpleNamespace(spec=spec, env={}, resume="session", folder=tmp_path, prompt="next")
+    assert adapter.run(resumed)["KIMI_MODEL_THINKING_EFFORT"] == effective
+
+
+def test_v1_session_keeps_its_original_effort(tmp_path, monkeypatch):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda self, context: context.env)
+    (tmp_path / "kimi-thinking.json").write_text('{"v":1,"effort":"medium"}')
+    ctx = SimpleNamespace(spec={"effort": "medium"}, env={}, resume="session", folder=tmp_path, prompt="next")
+    assert kimi.Kimi().run(ctx)["KIMI_MODEL_THINKING_EFFORT"] == "medium"
+
+
+def test_resume_refuses_inconsistent_effective_effort(tmp_path, monkeypatch):
+    from subtask.engines.base import CliAdapter
+
+    monkeypatch.setattr(CliAdapter, "run", lambda *args: pytest.fail("CLI must not start"))
+    (tmp_path / "kimi-thinking.json").write_text('{"v":2,"effort":"medium","effective_effort":"low"}')
+    ctx = SimpleNamespace(spec={"effort": "medium"}, env={}, resume="session", folder=tmp_path, prompt="next")
+    with pytest.raises(ValueError, match="Invalid recorded Kimi thinking effort"):
+        kimi.Kimi().run(ctx)
+
+
 def test_resume_preserves_existing_model_and_effort(tmp_path, monkeypatch):
     from subtask.engines.base import CliAdapter
 
