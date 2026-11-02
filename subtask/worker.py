@@ -67,7 +67,8 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
     """Run the parent's verify command in the worktree, on the head the worker left."""
     cwd = spec["cwd"]
     head = _git(cwd, "rev-parse", "HEAD")
-    dirty_before = _is_dirty(cwd)
+    before = _git_ok(cwd, "status", "--porcelain")
+    dirty_before = None if before is None else bool(before)
     argv, env = wrap(["sh", "-c", spec["verify"]], runners.minimal_env(extra))
     t0 = time.monotonic()
     try:
@@ -90,7 +91,7 @@ def _verify(spec: dict, wrap, extra: dict[str, str] | None = None) -> dict:
         "exit_code": code,
         "head": head,
         "dirty_before": dirty_before,
-        "dirty_after": _is_dirty(cwd),
+        "dirty_after": _dirty_after(cwd, before),
         "seconds": round(time.monotonic() - t0, 1),
         "output_tail": _redact.redact(out),
         "level": "independently_verified",
@@ -149,6 +150,17 @@ def _is_dirty(cwd: str) -> bool | None:
     """True/False for the working tree; None when `git status` failed (unknown, not clean)."""
     out = _git_ok(cwd, "status", "--porcelain")
     return None if out is None else bool(out)
+
+
+def _dirty_after(cwd: str, before: str | None) -> bool | None:
+    """Dirty state after the check. Untracked files the check itself created (absent from
+    `before`) are artifacts, not part of the verified head, so they do not make it dirty (T-6291).
+    Tracked changes and untracked files that already existed still do. None when git failed."""
+    after = _git_ok(cwd, "status", "--porcelain")
+    if after is None:
+        return None
+    known = {ln for ln in (before or "").splitlines() if ln.startswith("?? ")}
+    return any(ln and not (ln.startswith("?? ") and ln not in known) for ln in after.splitlines())
 
 
 def main() -> int:
