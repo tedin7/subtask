@@ -92,6 +92,22 @@ def _month_start() -> str:
     return datetime.now(UTC).strftime("%Y-%m-01T00:00:00Z")
 
 
+def _claude_cost_page(data: dict) -> float:
+    buckets = data.get("data")
+    if not isinstance(buckets, list):
+        raise TypeError("invalid cost report")
+    total = 0.0
+    for bucket in buckets:
+        if not isinstance(bucket, dict) or not isinstance(bucket.get("results"), list):
+            raise TypeError("invalid cost report bucket")
+        for result in bucket["results"]:
+            amount = _num(result.get("amount")) if isinstance(result, dict) else None
+            if amount is None:
+                raise ValueError("invalid cost report amount")
+            total += amount / 100.0
+    return total
+
+
 def read_claude_api(key_name: str = "ANTHROPIC_API_KEY") -> dict:
     """Month-to-date spend from the Admin API cost report. Anthropic exposes no spend-limit call,
     so the limit stays the configured one."""
@@ -108,29 +124,46 @@ def read_claude_api(key_name: str = "ANTHROPIC_API_KEY") -> dict:
         # Day 1: nothing to sum, but still prove the key works with a one-bucket probe of the
         # previous (closed) month, so a rejected key raises instead of looking live (T-6314).
         prev = (datetime.fromisoformat(start) - timedelta(days=1)).strftime("%Y-%m-01T00:00:00Z")
-        _get(
+        probe = _get(
             f"https://api.anthropic.com/v1/organizations/cost_report?starting_at={prev}&ending_at={start}&limit=1",
             headers,
         )
+        _claude_cost_page(probe)
         return {"spent_usd": 0.0, "note": note}
-    page, total = "", 0.0
+    page, total, seen_pages = "", 0.0, set()
     for _ in range(10):
         url = f"https://api.anthropic.com/v1/organizations/cost_report?starting_at={start}&ending_at={end}&limit=31"
         if page:
             url += f"&page={page}"
         data = _get(url, headers)
-        for bucket in data.get("data", []):
-            for result in bucket.get("results", []):
-                total += (_num(result.get("amount")) or 0.0) / 100.0  # cents -> USD
-        page = data.get("next_page") or ""
-        if not data.get("has_more") or not page:
+        total += _claude_cost_page(data)
+        if not data.get("has_more"):
             break
+        page = data.get("next_page")
+        if not isinstance(page, str) or not page or page in seen_pages:
+            raise ValueError("incomplete cost report")
+        seen_pages.add(page)
+    else:
+        raise ValueError("cost report exceeds page limit")
     return {"spent_usd": round(total, 4), "note": note}
 
 
 def read_claude_api2() -> dict:
     """Second Claude Platform key (own limit group); same cost report, its own key (T-6139)."""
     return read_claude_api("ANTHROPIC_API_KEY_2")
+
+
+def require_claude_api2_report() -> float:
+    """Refuse paid work if the second account's cost report cannot be read now."""
+    try:
+        report = read_claude_api2()
+        spent = _num(report.get("spent_usd")) if isinstance(report, dict) else None
+        if spent is None:
+            raise ValueError("missing spend")
+    except Exception as exc:  # noqa: BLE001 (fail closed without printing provider responses)
+        detail = f"HTTP {exc.code}" if isinstance(exc, urllib.error.HTTPError) else type(exc).__name__
+        raise RuntimeError(f"claude-api2 cost report unavailable ({detail})") from None
+    return spent
 
 
 def read_dsh() -> dict:

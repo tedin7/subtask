@@ -27,6 +27,7 @@ import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import config
@@ -138,11 +139,12 @@ def _committed(month: str) -> float:
     return settled + sum(_usd(r.get("usd")) or 0.0 for r in open_.values())
 
 
-def _group_committed(month: str, group: str) -> float:
-    """Settled plus open reservations of one limit group (engine name -> group)."""
+def _group_parts(month: str, group: str) -> tuple[float, float, float]:
+    """Settled, today's settled, and open reservations of one limit group."""
     from .live_limits import group_of
 
-    total, closed = 0.0, set()
+    total, today_total, closed = 0.0, 0.0, set()
+    today = now()[:10]
     open_: dict[str, float] = {}
     for row in _rows(month):
         op, rid = row.get("op"), row.get("rid")
@@ -154,8 +156,36 @@ def _group_committed(month: str, group: str) -> float:
             closed.add(rid)
             was_mine = open_.pop(rid, None) is not None
             if mine or was_mine:
-                total += _usd(row.get("usd")) or 0.0
-    return total + sum(open_.values())
+                amount = _usd(row.get("usd")) or 0.0
+                total += amount
+                try:
+                    stamp = datetime.fromisoformat(row["ts"])
+                    is_today = stamp.tzinfo is None or stamp.astimezone(UTC).date().isoformat() >= today
+                except (KeyError, TypeError, ValueError):
+                    is_today = True  # unknown timestamps must not lower the bill
+                if is_today:
+                    today_total += amount
+    return total, today_total, sum(open_.values())
+
+
+def _group_committed(month: str, group: str) -> float:
+    settled, _, pending = _group_parts(month, group)
+    return settled + pending
+
+
+def _group_used_with_bill(month: str, group: str, observed_spend: float) -> float:
+    from .live_limits import cached_spent
+
+    settled, today_settled, pending = _group_parts(month, group)
+    cached = cached_spent(group) if month == month_of() else None
+    # Claude's report stops at midnight UTC; our own spending since then is extra.
+    return max(settled, max(observed_spend, cached or 0.0) + today_settled) + pending
+
+
+def group_used_with_bill(group: str, observed_spend: float) -> float:
+    """Include outstanding reservations on top of the highest known bill."""
+    with locked():
+        return _group_used_with_bill(month_of(), group, observed_spend)
 
 
 def _group_used(month: str, group: str) -> float:
@@ -178,13 +208,24 @@ def committed(month: str | None = None) -> float:
 
 
 def reserve(
-    rid: str, job: str, usd: float, cap: float | None = None, engine: str | None = None
+    rid: str,
+    job: str,
+    usd: float,
+    cap: float | None = None,
+    engine: str | None = None,
+    observed_spend: float | None = None,
 ) -> float | None:
     """Book `usd`; None when it would overshoot the cap or is not a sane amount.
 
     Idempotent per rid: reserving an rid that already exists returns None.
     """
     if not isinstance(usd, (int, float)) or not math.isfinite(usd) or usd <= 0:
+        return None
+    if observed_spend is not None and (
+        not isinstance(observed_spend, (int, float))
+        or not math.isfinite(observed_spend)
+        or observed_spend < 0
+    ):
         return None
     cap = config.MONTHLY_CAP_USD if cap is None else cap
     with locked():
@@ -195,7 +236,14 @@ def reserve(
         if total + usd > cap:
             return None
         limit = config.ENGINE_LIMITS_USD.get(_group(engine)) if engine else None
-        if limit is not None and _group_used(month, _group(engine)) + usd > limit:
+        used = (
+            _group_used_with_bill(month, _group(engine), observed_spend)
+            if engine and observed_spend is not None
+            else _group_used(month, _group(engine))
+            if engine
+            else 0.0
+        )
+        if limit is not None and used + usd > limit:
             return None  # each engine group keeps its own monthly limit (Tommaso 01/11)
         row = {
             "v": VERSION,
