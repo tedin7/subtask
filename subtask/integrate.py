@@ -69,7 +69,10 @@ def integrate(ids: list[str], action: str = "apply", auto_resolve: bool = False)
 
 
 def _discard(job_id: str, sp: dict) -> str:
-    _git(sp["repo"], "worktree", "remove", "--force", sp["cwd"])
+    removed = _git(sp["repo"], "worktree", "remove", "--force", sp["cwd"])
+    if removed.returncode != 0:
+        reason = removed.stderr.strip()[:200] or f"git exited {removed.returncode}"
+        return f"{job_id}: worktree not removed, branch kept: {reason}"
     gone = _git(sp["repo"], "branch", "-D", sp["branch"]).returncode == 0
     return f"{job_id}: worktree and branch removed" if gone else f"{job_id}: worktree removed, branch kept"
 

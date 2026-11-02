@@ -141,6 +141,28 @@ def test_integrate_applies_clean_jobs_and_discards(home, monkeypatch):
     assert "subtask/" not in _git(repo, "branch")
 
 
+def test_discard_reports_locked_worktree_and_keeps_branch(tmp_path, monkeypatch):
+    from subtask import integrate
+
+    repo = _repo(tmp_path / "repo")
+    worktree = tmp_path / "job"
+    _git(repo, "worktree", "add", "-b", "subtask/test", str(worktree))
+    _git(repo, "worktree", "lock", "--reason", "test lock", str(worktree))
+    calls = []
+    real_git = integrate._git
+
+    def record_git(cwd, *args, **kwargs):
+        calls.append(args)
+        return real_git(cwd, *args, **kwargs)
+
+    monkeypatch.setattr(integrate, "_git", record_git)
+    result = integrate._discard("job", {"repo": str(repo), "cwd": str(worktree), "branch": "subtask/test"})
+    assert "worktree not removed" in result and "locked" in result
+    assert worktree.exists()
+    assert "subtask/test" in _git(repo, "branch", "--list", "subtask/test")
+    assert len(calls) == 1
+
+
 def test_integrate_conflict_changes_nothing_or_starts_a_reconciler(home, monkeypatch):
     from subtask import core, jobs
     from subtask.integrate import integrate
