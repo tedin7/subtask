@@ -154,6 +154,8 @@ CLI only: `subtask board [--json]` (the view the OpenCode plugin renders), `subt
 `watch ID...`, `install`, `uninstall`, and `--model`, `--no-sandbox`, `--untrusted` on start.
 
 The `gc` preview reads recorded job states without settling workers; jobs recorded as active are kept.
+`gc` does not calculate file sizes, so its output reports folder counts rather than reclaimed bytes.
+Run `subtask du` separately for disk usage; scanning large stores can take time.
 A copy with files in `.reports` is kept until a collector leaves a receipt, the regular file `.reports/.collected` (any content; its mtime must be at least that of the newest report). Empty `.reports` needs no receipt.
 
 ## Progress in the chat
