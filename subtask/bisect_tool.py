@@ -8,11 +8,14 @@ Rounds needed: about log_(K+1) of the commit count. Worktrees are always removed
 
 from __future__ import annotations
 
+import fcntl
 import secrets
 import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from pathlib import Path
 
 from . import config, jobs
 
@@ -27,11 +30,31 @@ def _git(repo: str, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+@contextmanager
+def _metadata_lock(repo: str):
+    # All linked worktrees and client homes must use the same lock. Git can
+    # prune another concurrent add's incomplete administrative directory.
+    common = _git(repo, "rev-parse", "--git-common-dir")
+    if common.returncode != 0:
+        raise RuntimeError(f"cannot locate Git common directory: {common.stderr.strip()[:1000]}")
+    folder = Path(common.stdout.strip())
+    if not folder.is_absolute():
+        folder = Path(repo) / folder
+    with (folder.resolve() / "subtask-bisect.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def _passes(repo: str, commit: str, cmd: str) -> bool:
     scratch = str(config.HOME / "bisect" / secrets.token_hex(4))
     try:
-        if _git(repo, "worktree", "add", "-q", "--detach", scratch, commit).returncode != 0:
-            raise RuntimeError(f"worktree for {commit[:9]} not created")
+        with _metadata_lock(repo):
+            added = _git(repo, "worktree", "add", "-q", "--detach", scratch, commit)
+            if added.returncode != 0:
+                raise RuntimeError(f"worktree for {commit[:9]} not created: {added.stderr.strip()[:1000]}")
         try:
             done = subprocess.run(
                 ["sh", "-c", cmd], cwd=scratch, capture_output=True, timeout=TIMEOUT_S, check=False,
@@ -41,8 +64,9 @@ def _passes(repo: str, commit: str, cmd: str) -> bool:
         except subprocess.TimeoutExpired:
             return False
     finally:
-        _git(repo, "worktree", "remove", "--force", scratch)
-        shutil.rmtree(scratch, ignore_errors=True)
+        with _metadata_lock(repo):
+            _git(repo, "worktree", "remove", "--force", scratch)
+            shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _note(run: str, **fields) -> None:

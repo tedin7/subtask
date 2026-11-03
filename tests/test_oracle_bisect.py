@@ -114,6 +114,7 @@ def test_bisect_auto_fix_starts_a_worktree_job_with_the_diff(home, monkeypatch):
     repo, good, culprit = _history(home, 3, 2)
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
     out = core.bisect(good, "HEAD", "grep -qx ok v", auto_fix=True, repo=str(repo))
+    assert "fix job: " in out, out
     job = out.split("fix job: ")[1].split()[0]
     sp = jobs.spec(job)
     assert sp["branch"] and sp["verify"] == "grep -qx ok v" and culprit[:12] in sp["task"]
