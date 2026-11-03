@@ -22,6 +22,14 @@ def isolate_jev_configuration(tmp_path, monkeypatch):
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def isolate_live_limits_cache(tmp_path, monkeypatch):
+    """The provider-spend cache lives in the operator's real config dir: never read it in tests (T-7417)."""
+    from subtask import live_limits
+
+    monkeypatch.setattr(live_limits, "CACHE_FILE", tmp_path / "live-limits-cache.json")
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     """A private SUBTASK_HOME, fresh module state, and a bin dir first on PATH."""
