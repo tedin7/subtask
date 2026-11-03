@@ -1,5 +1,6 @@
 """Exercise release and exact rollback using a disposable venv only."""
 
+import hashlib
 import json
 import os
 import shutil
@@ -10,9 +11,8 @@ from pathlib import Path
 SCRIPTS = Path(
     os.environ.get("ARVOS3_TEST_SCRIPTS", Path(__file__).resolve().parents[1] / "scripts" / "arvos3")
 )
-CANDIDATE = Path(
-    "/root/treniamo-calo-20261020-dati/giro5/codex/ARVOS3-prove/dist/subtask_mcp-0.5.0-py3-none-any.whl"
-)
+ROOT = Path(__file__).resolve().parents[1]
+RELEASE_SHA256 = "71b988983c16d46b0a63bd51eab8dcbd41ec6eb7b4cf8ba2bba92434198976d1"
 
 
 def run(*args, env=None, ok=True):
@@ -25,10 +25,20 @@ def run(*args, env=None, ok=True):
 
 
 def test_live_install_snapshot_and_exact_restore(tmp_path):
-    if not CANDIDATE.exists():
-        import pytest
-
-        pytest.skip("ARVOS3 release artifact is required for this integration test")
+    source = tmp_path / "source"
+    source.mkdir()
+    for filename in ("pyproject.toml", "README.md", "LICENSE"):
+        shutil.copy2(ROOT / filename, source / filename)
+    shutil.copytree(ROOT / "subtask", source / "subtask", ignore=shutil.ignore_patterns("__pycache__"))
+    wheel_dir = tmp_path / "dist"
+    run("uv", "build", "--wheel", "--out-dir", str(wheel_dir), str(source))
+    candidate = next(wheel_dir.glob("*.whl"))
+    scripts = tmp_path / "scripts"
+    shutil.copytree(SCRIPTS, scripts)
+    installer = scripts / "installa-ledger.sh"
+    contents = installer.read_text()
+    assert contents.count(RELEASE_SHA256) == 1
+    installer.write_text(contents.replace(RELEASE_SHA256, hashlib.sha256(candidate.read_bytes()).hexdigest()))
     venv = tmp_path / "venv"
     run(sys.executable, "-m", "venv", "--without-pip", str(venv))
     python = str(venv / "bin/python")
@@ -38,8 +48,9 @@ def test_live_install_snapshot_and_exact_restore(tmp_path):
         "ROLLBACK_PARENT": str(tmp_path / "state"),
         "UV_CACHE_DIR": str(tmp_path / "uv-cache"),
         "UV_LINK_MODE": "copy",
+        "CANDIDATE": str(candidate),
     }
-    run("uv", "pip", "install", "--offline", "--python", python, "--no-deps", str(CANDIDATE), env=env)
+    run("uv", "pip", "install", "--offline", "--python", python, "--no-deps", str(candidate), env=env)
     site = Path(
         run(python, "-I", "-B", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))").stdout.strip()
     )
@@ -53,7 +64,7 @@ def test_live_install_snapshot_and_exact_restore(tmp_path):
     executable = venv / "bin/subtask"
     executable.write_bytes(executable.read_bytes() + b"\n# local entrypoint\n")
     original = ledger.read_bytes()
-    result = run("sh", str(SCRIPTS / "installa-ledger.sh"), env=env)
+    result = run("sh", str(installer), env=env)
     backup = Path(result.stdout.strip())
     assert backup.name.startswith("subtask-rollback-")
     assert ledger.read_bytes() != original
