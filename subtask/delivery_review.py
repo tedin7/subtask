@@ -880,11 +880,16 @@ def charged_usd(usage: object, allowance: float) -> tuple[float, str]:
 
     A review with no token count has no known cost; Jev costs fractions of a cent, so booking the
     allowance overstated the month by 346 $ in two days and starved the paid engines (02/11).
+    A reported count above the sanity bound is not unknown: it signals real heavy usage, so it
+    settles at the full allowance instead of zero, keeping the monthly cap enforceable (T-7452).
     """
     estimate = estimated_cost_usd(usage)
     if estimate is not None:
         usd = round(min(allowance, estimate), 6)  # ledger keeps 6 decimals
         return usd, f"Invoice unknown; budget settled using list-price estimate, capped at {allowance} USD"
+    tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+    if type(tokens) is int and tokens > 1000000000:
+        return round(allowance, 6), f"Absurd token count; budget settled at the full {allowance} USD allowance."
     return 0.0, "Invoice unknown; nothing charged, the allowance is released."
 
 

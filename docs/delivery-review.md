@@ -196,8 +196,9 @@ Il costo fatturato `cost_usd` resta `null`: il componente non riceve la fattura.
 configurato; non verifica la fattura. Il controllo prenota il minore tra
 `SUBTASK_DEFAULT_MAX_USD` e `SUBTASK_MAX_JOB_USD` nel registro mensile.
 Con token disponibili, `budget_charged_usd` è la stima arrotondata e limitata
-alla prenotazione; senza token è zero. Una richiesta ancora irrisolta mantiene
-la prenotazione. Questi importi non sono fatture né limiti imposti dal provider.
+alla prenotazione; senza token è zero. Un conteggio oltre il limite di sanità
+(10**9 token) non è sconosciuto: vale l'intera prenotazione, mai zero. Una
+richiesta ancora irrisolta mantiene la prenotazione. Questi importi non sono fatture né limiti imposti dal provider.
 Le ricevute precedenti conservano i campi e i valori originali.
 Un limite del job inferiore alla prenotazione impedisce l'invio: un metadato del
 worker non può ridurre l'accantonamento scelto dall'operatore.

@@ -119,5 +119,6 @@ def test_jev_charged_at_list_price():
     assert abs(usd - config.JEV_INPUT_USD_M) < 1e-12 and "list-price" in note
     assert charged_usd(None, 2.0)[0] == 0.0  # unknown usage: nothing booked
     assert charged_usd({"input_tokens": True}, 2.0)[0] == 0.0
-    assert charged_usd({"input_tokens": 10**12}, 2.0)[0] == 0.0  # absurd count: unknown, nothing booked
+    assert charged_usd({"input_tokens": 10**12}, 2.0)[0] == 2.0  # absurd count: full allowance, never zero
+    assert charged_usd({"input_tokens": -1}, 2.0)[0] == 0.0  # malformed count: nothing booked
     assert charged_usd({"input_tokens": 10**9}, 2.0)[0] == 2.0  # never above the allowance
