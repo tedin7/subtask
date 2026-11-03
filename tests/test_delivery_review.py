@@ -58,7 +58,20 @@ def test_worker_claim_is_never_sufficient_evidence(delivery, monkeypatch):
     report = review.review("st-delivery", ["The UI works"], submit=True)
     assert report["assessments"][0]["assessment"] == "unproven"
     assert report["assessments"][0]["evidence_ref"] == "worker_report"
-    assert 0 < report["cost_usd"] < 0.01  # charged at the Jev list price per input token
+    assert report["cost_usd"] is None  # The provider's invoice is not available.
+    assert report["estimated_cost_usd"] == 0.0000021
+    assert report["budget_charged_usd"] == 0.000002
+    assert "Invoice unknown" in report["cost_note"]
+
+
+def test_list_price_estimate_is_not_truncated_by_budget(monkeypatch):
+    from subtask import delivery_review as review
+
+    monkeypatch.setattr(review.config, "JEV_INPUT_USD_M", 1.0)
+    usage = {"input_tokens": 1_000_000, "output_tokens": 2}
+    assert review.estimated_cost_usd(usage) == 1.0
+    assert review.charged_usd(usage, 0.1)[0] == 0.1
+    assert review.estimated_cost_usd(None) is None
 
 
 def test_worker_claim_cannot_prove_a_contradiction_either(delivery, monkeypatch):

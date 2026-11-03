@@ -191,11 +191,14 @@ precede l'invio. Richieste identiche, concorrenti o riprese dopo un guasto non
 producono un secondo invio. Un timeout resta `unknown`. Se cambia il candidato
 durante la chiamata, la risposta non viene associata al nuovo candidato.
 
-Il costo fatturato resta `null`: non è disponibile una tariffa verificata nel
-componente. Il controllo prenota il minore tra `SUBTASK_DEFAULT_MAX_USD` e
-`SUBTASK_MAX_JOB_USD` nel registro mensile esistente, e lo contabilizza per intero
-in via prudenziale. `budget_charged_usd` è questa contabilizzazione, non una
-fattura né un limite imposto dal provider. Non cambia il tetto mensile.
+Il costo fatturato `cost_usd` resta `null`: il componente non riceve la fattura.
+`estimated_cost_usd` è la stima non limitata dai token di input e dal listino
+configurato; non verifica la fattura. Il controllo prenota il minore tra
+`SUBTASK_DEFAULT_MAX_USD` e `SUBTASK_MAX_JOB_USD` nel registro mensile.
+Con token disponibili, `budget_charged_usd` è la stima arrotondata e limitata
+alla prenotazione; senza token è zero. Una richiesta ancora irrisolta mantiene
+la prenotazione. Questi importi non sono fatture né limiti imposti dal provider.
+Le ricevute precedenti conservano i campi e i valori originali.
 Un limite del job inferiore alla prenotazione impedisce l'invio: un metadato del
 worker non può ridurre l'accantonamento scelto dall'operatore.
 

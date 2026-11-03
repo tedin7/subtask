@@ -808,6 +808,7 @@ def review(
             "scope_assessment": None,
             "metadata_assurance": "same_user_mutable_records",
             "cost_usd": None,
+            "estimated_cost_usd": None,
             "usage": None,
             "budget_charged_usd": 0.0,
         }
@@ -855,23 +856,35 @@ def review(
         charged, note = charged_usd(
             report.get("usage") if report.get("status") == "reviewed" else None, reserve
         )
-        report.update(cost_usd=charged, budget_charged_usd=charged, cost_note=note)
+        report.update(
+            estimated_cost_usd=estimated_cost_usd(report.get("usage")),
+            budget_charged_usd=charged,
+            cost_note=note,
+        )
         report = _clean(report)
         _save(receipt, report)
         ledger.close(reservation, charged, "settle")
     return report
 
 
+def estimated_cost_usd(usage: object) -> float | None:
+    """Estimate from reported input tokens; this is not an invoice."""
+    tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+    if type(tokens) is int and 0 <= tokens <= 1000000000:
+        return round(tokens * config.JEV_INPUT_USD_M / 1e6, 12)
+    return None
+
+
 def charged_usd(usage: object, allowance: float) -> tuple[float, str]:
-    """(USD to settle, note): list price of the billed input tokens, else nothing.
+    """(USD to settle, note): capped list-price estimate, or zero if unknown.
 
     A review with no token count has no known cost; Jev costs fractions of a cent, so booking the
     allowance overstated the month by 346 $ in two days and starved the paid engines (02/11).
     """
-    tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
-    if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
-        usd = round(min(allowance, tokens * config.JEV_INPUT_USD_M / 1e6), 6)  # ledger keeps 6 decimals
-        return usd, f"Charged at list price: {tokens} input tokens x {config.JEV_INPUT_USD_M} $/Mtok"
+    estimate = estimated_cost_usd(usage)
+    if estimate is not None:
+        usd = round(min(allowance, estimate), 6)  # ledger keeps 6 decimals
+        return usd, f"Invoice unknown; budget settled using list-price estimate, capped at {allowance} USD"
     return 0.0, "Invoice unknown; nothing charged, the allowance is released."
 
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.7
+
+### Fixed
+- Garbage collection preserves worktrees with uncollected reports, including ignored reports.
+- Jev distinguishes the input-token list-price estimate from the unknown invoiced cost.
+
 ## 0.5.6
 
 ### Fixed
