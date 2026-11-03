@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.8
 
 ### Fixed
 - `gc` removes a worktree whose `.reports` holds a collection receipt: a regular file
@@ -8,6 +8,7 @@
   copying the reports. Only its modification time counts: the copy goes when the receipt is not
   older than the newest report file, or when `.reports` is empty. No receipt, an older receipt,
   a symlink or a sub-folder means the copy is kept (T-7359).
+- GitHub release notes are taken from the matching CHANGELOG section and are no longer empty (T-7448).
 
 ## 0.5.7
 
