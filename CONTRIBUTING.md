@@ -7,11 +7,15 @@ git clone https://github.com/tedin7/subtask && cd subtask
 uv venv && uv pip install -e '.[dev]' -c constraints.txt
 ```
 
+Create the environment in each worktree. The system Python may lack the installed
+`subtask-mcp` command and report misleading failures in the install tests. The
+`dev` extra also installs pytest-xdist, needed for the `-n 0` option below.
+
 ## Tests and lint
 
 ```bash
-.venv/bin/pytest -q -p no:cacheprovider     # offline, fake engines only
-.venv/bin/pytest -m contract                # adapter contract tests on recorded output
+.venv/bin/python -m pytest -n 0 -q -p no:cacheprovider     # offline, fake engines only
+.venv/bin/python -m pytest -n 0 -m contract                # adapter contract tests on recorded output
 uvx ruff check subtask tests
 ```
 
