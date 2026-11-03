@@ -2,7 +2,8 @@
 
 The version lives in `subtask/__init__.py`; packaging reads it from there.
 
-1. Bump `__version__`, `server.json` and the plugin manifests, and add a CHANGELOG section.
+1. Run `python3 scripts/bump_version.py X.Y.Z` and fill in the new CHANGELOG section.
+   The script checks that all release files contain the current version before writing.
 2. Run the checks locally on `main`. The tag does not wait for CI:
 
        uv run --no-sync ruff check subtask tests
