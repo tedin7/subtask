@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,12 @@ FILES = [
 ]
 
 
+CUR = re.search(r'__version__ = "([^"]+)"', (ROOT / "subtask/__init__.py").read_text()).group(1)
+_MAJOR, _MINOR, _PATCH = (int(x) for x in CUR.split("."))
+NEW = f"{_MAJOR}.{_MINOR}.{_PATCH + 1}"
+OLD = f"{_MAJOR}.{_MINOR}.{_PATCH - 1}"
+
+
 def fixture(tmp_path):
     for name in FILES:
         target = tmp_path / name
@@ -38,23 +45,23 @@ def run(tmp_path, version):
 def test_bump_updates_all_surfaces_and_preserves_history(tmp_path):
     fixture(tmp_path)
     old_changelog = (tmp_path / "CHANGELOG.md").read_text()
-    result = run(tmp_path, "0.5.9")
+    result = run(tmp_path, NEW)
     assert result.returncode == 0, result.stderr
     for name in FILES[:-1]:
         text = (tmp_path / name).read_text()
-        assert "0.5.9" in text
-        assert "0.5.8" not in text
+        assert NEW in text
+        assert CUR not in text
     assert (tmp_path / "CHANGELOG.md").read_text() == old_changelog.replace(
-        "# Changelog\n", "# Changelog\n\n## 0.5.9\n", 1
+        "# Changelog\n", f"# Changelog\n\n## {NEW}\n", 1
     )
 
 
 def test_inconsistent_manifest_leaves_every_file_unchanged(tmp_path):
     fixture(tmp_path)
     broken = tmp_path / "server.json"
-    broken.write_text(broken.read_text().replace('"version": "0.5.8"', '"version": "0.5.7"', 1))
+    broken.write_text(broken.read_text().replace(f'"version": "{CUR}"', f'"version": "{OLD}"', 1))
     before = {name: (tmp_path / name).read_bytes() for name in FILES}
-    result = run(tmp_path, "0.5.9")
+    result = run(tmp_path, NEW)
     assert result.returncode != 0
     assert before == {name: (tmp_path / name).read_bytes() for name in FILES}
 
@@ -62,6 +69,6 @@ def test_inconsistent_manifest_leaves_every_file_unchanged(tmp_path):
 def test_rejects_invalid_or_existing_version(tmp_path):
     fixture(tmp_path)
     before = {name: (tmp_path / name).read_bytes() for name in FILES}
-    for version in ("0.5.8", "bad", "0.5.7"):
+    for version in (CUR, "bad", OLD):
         assert run(tmp_path, version).returncode != 0
     assert before == {name: (tmp_path / name).read_bytes() for name in FILES}

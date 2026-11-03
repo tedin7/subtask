@@ -889,7 +889,9 @@ def charged_usd(usage: object, allowance: float) -> tuple[float, str]:
         return usd, f"Invoice unknown; budget settled using list-price estimate, capped at {allowance} USD"
     tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
     if type(tokens) is int and tokens > 1000000000:
-        return round(allowance, 6), f"Absurd token count; budget settled at the full {allowance} USD allowance."
+        return round(
+            allowance, 6
+        ), f"Absurd token count; budget settled at the full {allowance} USD allowance."
     return 0.0, "Invoice unknown; nothing charged, the allowance is released."
 
 

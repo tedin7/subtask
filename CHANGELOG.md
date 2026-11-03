@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.9
+
+### Fixed
+- Jev charges the full reservation when the token count is absurd, instead of counting it as zero cost (T-7452).
+- `gc` no longer scans the disk (T-7466).
+- Tests: OpenAI test isolated from the live-limits cache (T-7417); ruff ISC004 fixes in `bench/long.py` (F-4523).
+
 ## 0.5.8
 
 ### Fixed
