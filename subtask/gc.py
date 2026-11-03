@@ -67,6 +67,14 @@ def _worktree_clean(path: str) -> bool | None:
     """
     if not Path(path).exists():
         return None
+    # Collection copies reports elsewhere but leaves no receipt in the worktree.
+    # Never infer that a report is safe to discard from Git's ignore rules.
+    reports = Path(path) / ".reports"
+    try:
+        if reports.is_symlink() or (reports.exists() and (not reports.is_dir() or any(reports.iterdir()))):
+            return False
+    except OSError:
+        return False
     status = _git(path, "status", "--porcelain")
     if status is None or status.returncode != 0 or status.stdout.strip():
         return False

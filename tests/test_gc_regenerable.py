@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -63,3 +64,27 @@ def test_git_timeout_is_not_a_clean_tree(tmp_path, monkeypatch):
 
     monkeypatch.setattr(gc.subprocess, "run", slow)
     assert gc._worktree_clean(str(wt)) is False
+
+
+def test_gc_keeps_uncollected_ignored_reports(home, tmp_path, monkeypatch):
+    from subtask import gc, jobs
+
+    repo, wt = _worktree(tmp_path)
+    (repo / ".git" / "info" / "exclude").write_text(".reports/\n")
+    reports = wt / ".reports"
+    reports.mkdir()
+    report = reports / "CONSEGNA.md"
+    report.write_text("uncollected report")
+    monkeypatch.setattr(gc, "REGENERABLE", gc.REGENERABLE | {".reports"})
+    folder = jobs.job_dir("st-report")
+    folder.mkdir(parents=True)
+    jobs.write_json(folder / "status.json", {"state": "done", "updated": time.time() - 40 * 86400})
+    jobs.write_json(folder / "spec.json", {"branch": "b", "cwd": str(wt), "repo": str(repo)})
+
+    result = gc.run(days=30, apply=True)
+
+    assert "kept 1" in result
+    assert folder.exists()
+    assert report.read_text() == "uncollected report"
+    report.unlink()
+    assert gc._worktree_clean(str(wt)) is True
