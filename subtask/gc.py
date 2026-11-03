@@ -40,10 +40,13 @@ def du() -> dict:
     return {name: _size(path) if path.exists() else 0 for name, path in parts.items()}
 
 
+# T-7258: ".reports" holds job reports; the coordinator copies them out (raccogli_rapporto) before cleanup.
+REPORTS = ".reports"
+
 # Ignored entries that tools regenerate: they do not hold user work.
 REGENERABLE = frozenset(
     {"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",
-     ".next", ".turbo", ".cache"}
+     ".next", ".turbo", ".cache", ".reports"}
 )  # fmt: skip
 GIT_TIMEOUT = 60
 
@@ -67,7 +70,7 @@ def _worktree_clean(path: str) -> bool | None:
     """
     if not Path(path).exists():
         return None
-    status = _git(path, "status", "--porcelain")
+    status = _git(path, "status", "--porcelain", "--", ".", f":(exclude){REPORTS}")
     if status is None or status.returncode != 0 or status.stdout.strip():
         return False
     ignored = _git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")

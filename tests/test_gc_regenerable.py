@@ -63,3 +63,29 @@ def test_git_timeout_is_not_a_clean_tree(tmp_path, monkeypatch):
 
     monkeypatch.setattr(gc.subprocess, "run", slow)
     assert gc._worktree_clean(str(wt)) is False
+
+
+def test_reports_folder_does_not_block_cleanup(tmp_path):
+    """T-7258: .reports/ (untracked, copied out by the coordinator) must not keep a finished copy."""
+    from subtask import gc
+
+    repo, wt = _worktree(tmp_path)
+    (wt / ".reports").mkdir()
+    (wt / ".reports" / "CONSEGNA.md").write_text("x")
+    assert gc._worktree_clean(str(wt)) is True
+    (wt / "other.txt").write_text("x")
+    assert gc._worktree_clean(str(wt)) is False  # real untracked work still blocks
+
+
+def test_new_copies_exclude_reports(tmp_path):
+    from subtask import core
+
+    repo, wt = _worktree(tmp_path)
+    git_dir = str(repo / ".git")
+    core._exclude_reports(git_dir)
+    core._exclude_reports(git_dir)
+    (wt / ".reports").mkdir()
+    (wt / ".reports" / "r.md").write_text("x")
+    out = subprocess.run(["git", "-C", str(wt), "status", "--porcelain"], capture_output=True, text=True).stdout
+    assert out.strip() == ""
+    assert (repo / ".git/info/exclude").read_text().split().count(".reports/") == 1
