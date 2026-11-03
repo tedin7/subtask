@@ -1,37 +1,21 @@
 # Releasing
 
-1. Bump `subtask/__init__.py`, the version in `server.json`, the plugin manifests, and add a CHANGELOG section.
-2. Merge to `main` with CI green.
-3. `git tag -a vX.Y.Z -m "subtask X.Y.Z" && git push origin vX.Y.Z`.
+The version lives in `subtask/__init__.py`; packaging reads it from there.
 
-`.github/workflows/release.yml` then tests, builds, publishes to PyPI with Trusted Publishing (no token;
-one-time setup on pypi.org: project `subtask-mcp` -> Publishing -> GitHub publisher `tedin7/subtask`,
-workflow `release.yml`, environment `pypi`), creates the GitHub release with the artifacts, and
-publishes `server.json` to the MCP Registry with GitHub OIDC.
+1. Bump `__version__`, `server.json` and the plugin manifests, and add a CHANGELOG section.
+2. Run the tests and lint described in [CONTRIBUTING.md](CONTRIBUTING.md). Check the
+   `ci.yml` workflow on `main`: it runs on pushes to `main` and on pull requests.
+3. Create and push an annotated tag: `git tag -a vX.Y.Z -m "subtask X.Y.Z"` and
+   `git push origin vX.Y.Z`.
 
-Rollback: yank the version on PyPI (`Manage` -> `Yank`), delete the GitHub release, and tag a fixed
-version; the registry keeps history, publish the fixed version over it.
-
-Previous content kept below for reference.
-
-# Releasing
-
-The version lives in `subtask/__init__.py` (`__version__`); packaging reads it from there.
-
-1. Update `CHANGELOG.md` and bump `__version__`. Commit (`chore: release X.Y.Z`).
-2. Make sure CI is green on `main`.
-3. Tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. Build: `uv build`.
-5. Test the wheel in a fresh venv: `uv venv /tmp/w && uv pip install --python /tmp/w/bin/python dist/*.whl && /tmp/w/bin/subtask --help`.
-6. Create a GitHub release for the tag and attach `dist/*`.
-7. Optional PyPI publish of `subtask-mcp` through trusted publishing. This needs the owner's PyPI account and a trusted-publisher entry for this repository. Not set up yet.
+The tag triggers `.github/workflows/release.yml`. It checks the package and server
+versions against the tag, builds the distribution, publishes to PyPI, creates a
+GitHub release, and publishes `server.json` to the MCP Registry. It does **not**
+run tests or wait for CI; verify those before tagging. Publishing requires the
+configured PyPI trusted publisher and GitHub environment `pypi`.
 
 ## Rollback
 
-Yank the bad version on PyPI (if published), mark the GitHub release as pre-release or delete it, and point users at the previous tag.
-
-## MCP Registry (not done)
-
-1. Write `server.json` for `subtask-mcp` (name, version, package entry for PyPI).
-2. Authenticate with the registry publisher CLI using the owner's GitHub account.
-3. Publish, then confirm the listing. Repeat on each release.
+If published, yank the bad PyPI version and mark the GitHub release as a
+pre-release or delete it. Point users to the previous tag, then release a fixed
+version. The MCP Registry retains its history.

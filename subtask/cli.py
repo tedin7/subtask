@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import core
+from . import __version__, core
 from .install import commands as install_commands
 
 
@@ -33,6 +33,7 @@ class _Parser(argparse.ArgumentParser):
 
 def main() -> int:
     p = _Parser(prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
     pl = sub.add_parser("plan", help="preview JSON tasks, then launch immutable plan once")
     pl.add_argument("--tasks-file", help="JSON task list; - reads stdin")
