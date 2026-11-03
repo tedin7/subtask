@@ -3,8 +3,14 @@
 The version lives in `subtask/__init__.py`; packaging reads it from there.
 
 1. Bump `__version__`, `server.json` and the plugin manifests, and add a CHANGELOG section.
-2. Run the tests and lint described in [CONTRIBUTING.md](CONTRIBUTING.md). Check the
-   `ci.yml` workflow on `main`: it runs on pushes to `main` and on pull requests.
+2. Run the checks locally on `main`. The tag does not wait for CI:
+
+       uv run --no-sync ruff check subtask tests
+       uv run --no-sync ruff format --check subtask tests
+       uv run --no-sync python -m subtask.server --dump-tools | diff - subtask/tools.json
+       uv run --no-sync pytest -q -p no:cacheprovider
+
+   Also check the `ci.yml` workflow on `main`: it runs on pushes to `main` and on pull requests.
 3. Create and push an annotated tag: `git tag -a vX.Y.Z -m "subtask X.Y.Z"` and
    `git push origin vX.Y.Z`.
 
