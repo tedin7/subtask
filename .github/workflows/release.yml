@@ -64,7 +64,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '$0 ~ "^## "v" " {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          awk -v v="$v" '$0 == "## "v || index($0, "## "v" ") == 1 {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || { echo "No changelog notes for $v" >&2; exit 1; }
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --title "subtask $v" --notes-file notes.md dist/*
 
