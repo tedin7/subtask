@@ -38,7 +38,11 @@ def test_live_install_snapshot_and_exact_restore(tmp_path):
     installer = scripts / "installa-ledger.sh"
     contents = installer.read_text()
     assert contents.count(RELEASE_SHA256) == 1
-    installer.write_text(contents.replace(RELEASE_SHA256, hashlib.sha256(candidate.read_bytes()).hexdigest()))
+    installer.write_text(
+        contents.replace(RELEASE_SHA256, hashlib.sha256(candidate.read_bytes()).hexdigest()).replace(
+            'sha256sum "$candidate"', 'shasum -a 256 "$candidate"'
+        )
+    )
     venv = tmp_path / "venv"
     run(sys.executable, "-m", "venv", "--without-pip", str(venv))
     python = str(venv / "bin/python")
@@ -68,26 +72,26 @@ def test_live_install_snapshot_and_exact_restore(tmp_path):
     backup = Path(result.stdout.strip())
     assert backup.name.startswith("subtask-rollback-")
     assert ledger.read_bytes() != original
-    run(python, "-I", "-B", str(SCRIPTS / "installed_snapshot.py"), "verify", str(backup), ok=False)
+    run(python, "-I", "-B", str(scripts / "installed_snapshot.py"), "verify", str(backup), ok=False)
     # Candidate-only files must disappear on return.
     (site / "subtask/candidate-only.txt").write_text("remove me")
-    run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env)
+    run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env)
     assert ledger.read_bytes() == original
     assert extra.read_bytes() == b"local installed bytes\x00\xff"
     assert not (site / "subtask/candidate-only.txt").exists()
     assert executable.read_bytes().endswith(b"# local entrypoint\n")
-    run(python, "-I", "-B", str(SCRIPTS / "installed_snapshot.py"), "verify", str(backup))
+    run(python, "-I", "-B", str(scripts / "installed_snapshot.py"), "verify", str(backup))
     manifest = json.loads((backup / "manifest.json").read_text())
     assert len(manifest["files"]) > 50
-    run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env)
+    run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env)
     # Also recover an interrupted installer that removed metadata and a script.
     shutil.rmtree(dist)
     executable.unlink()
-    run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env)
+    run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env)
     assert ledger.read_bytes() == original
     # Corrupt backup is rejected before touching the current package.
     saved = next((backup / "files").rglob("ledger.py"))
     saved.write_bytes(b"corrupt")
-    result = run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env, ok=False)
+    result = run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env, ok=False)
     assert "SHA256/mode mismatch" in result.stderr
     assert ledger.read_bytes() == original
