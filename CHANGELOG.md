@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.6
+
+### Fixed
+- `cleanup` and `gc` keep a worktree that holds commits found nowhere else, and show Git errors
+  instead of treating them as a clean tree (T-7022, T-6365, T-6302).
+- A failed `git status` means unknown, not clean; untracked files made by the check itself are ignored.
+- `gc` is read-only without `--apply`, skips `node_modules` and similar, and has a time limit.
+- Jev with no known cost no longer counts against the monthly cap; Kimi effort follows supported values.
+- Lint and format fixes (ruff format check now passes).
+
 ## 0.5.5
 
 ### Fixed
