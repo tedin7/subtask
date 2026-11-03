@@ -65,14 +65,16 @@ def test_git_timeout_is_not_a_clean_tree(tmp_path, monkeypatch):
     assert gc._worktree_clean(str(wt)) is False
 
 
-def test_reports_folder_does_not_block_cleanup(tmp_path):
-    """T-7258: .reports/ (untracked, copied out by the coordinator) must not keep a finished copy."""
+def test_reports_folder_keeps_copy_until_collected(tmp_path):
+    """T-7258b: a non-empty .reports/ is a report not yet known as collected: never clean."""
     from subtask import gc
 
     repo, wt = _worktree(tmp_path)
     (wt / ".reports").mkdir()
     (wt / ".reports" / "CONSEGNA.md").write_text("x")
-    assert gc._worktree_clean(str(wt)) is True
+    assert gc._worktree_clean(str(wt)) is False
+    (wt / ".reports" / "CONSEGNA.md").unlink()
+    assert gc._worktree_clean(str(wt)) is True  # empty folder holds nothing
     (wt / "other.txt").write_text("x")
     assert gc._worktree_clean(str(wt)) is False  # real untracked work still blocks
 
