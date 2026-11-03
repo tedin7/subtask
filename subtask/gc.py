@@ -135,7 +135,7 @@ def plan(days: int = RETENTION_DAYS) -> list[dict]:
         sp = jobs.spec(job_id)
         if float(st.get("updated") or folder.stat().st_mtime) > cutoff:
             continue
-        item = {"job": job_id, "folder": str(folder), "bytes": _size(folder), "worktree": None}
+        item = {"job": job_id, "folder": str(folder), "worktree": None}
         if sp.get("branch") and sp.get("cwd"):
             clean = _worktree_clean(sp["cwd"])
             if clean is False:
@@ -153,7 +153,7 @@ def plan(days: int = RETENTION_DAYS) -> list[dict]:
 def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:
     items = plan(days)
     old_telemetry = telemetry.prune(dry_run=not apply)
-    removed = kept = freed = 0
+    removed = kept = 0
     lines = []
     for item in items:
         if item.get("skip"):
@@ -171,10 +171,9 @@ def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:
                     continue
             shutil.rmtree(item["folder"])
         removed += 1
-        freed += item["bytes"]
     verb = "removed" if apply else "would remove"
-    head = f"{verb} {removed} job folders ({freed / 1e6:.1f} MB), kept {kept}; {verb} {len(old_telemetry)} telemetry files"
-    usage = ", ".join(f"{k} {v / 1e6:.1f} MB" for k, v in du().items())
+    head = f"{verb} {removed} job folders, kept {kept}; {verb} {len(old_telemetry)} telemetry files"
     return "\n".join(
-        [head, f"disk: {usage}", *lines[:20]] + ([] if apply else ["(dry run: add --apply to delete)"])
+        [head, "disk usage: run subtask du (may take time)", *lines[:20]]
+        + ([] if apply else ["(dry run: add --apply to delete)"])
     )
