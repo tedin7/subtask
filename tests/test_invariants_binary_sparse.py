@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import time
 
 from subtask import invariants
 
@@ -83,3 +85,18 @@ def test_tracked_but_ignored_files_are_not_deletions(tmp_path):
     (repo / "app.py").write_text("x = 2\n")
     assert invariants._changed(str(repo), base) == [("M", "app.py")]
     assert invariants.revert_outside(str(repo), base, ["app.py"]) == []
+
+
+def test_changed_detects_racy_same_size_file(tmp_path):
+    repo = tmp_path / "r"
+    base = _repo(repo)
+    _git(repo, "config", "core.trustctime", "false")
+    app = repo / "app.py"
+    index = repo / ".git" / "index"
+    timestamp = int(time.time()) - 10
+    os.utime(app, (timestamp, timestamp))
+    _git(repo, "update-index", "--refresh")
+    os.utime(index, (timestamp, timestamp))
+    app.write_text("x = 2\n")
+    os.utime(app, (timestamp, timestamp))
+    assert invariants._changed(str(repo), base) == [("M", "app.py")]

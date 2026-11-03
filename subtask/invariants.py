@@ -62,7 +62,8 @@ def _changed(cwd: str, base: str) -> list[tuple[str, str]]:
         # and skip-worktree entries of a sparse checkout keep their flag (T-6276).
         real = _git(cwd, "rev-parse", "--path-format=absolute", "--git-path", "index").stdout.strip()
         if real and os.path.isfile(real):
-            shutil.copyfile(real, index)
+            # Git needs the original index mtime to detect racy same-size edits.
+            shutil.copy2(real, index)
         env = {"GIT_INDEX_FILE": index}
         _git(cwd, "add", "-A", ".", env=env)
         out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", "-z", base, env=env).stdout
