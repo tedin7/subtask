@@ -7,6 +7,13 @@ git clone https://github.com/tedin7/subtask && cd subtask
 uv venv && uv pip install -e '.[dev]' -c constraints.txt
 ```
 
+Each Git worktree needs its own `.venv`: run the setup commands from that
+worktree before testing. `uv run --no-sync` does not install dependencies and
+can create an empty environment where `mcp` is unavailable. Do not reuse an
+editable installation from another checkout: it can import that checkout's
+code. To reuse its Python for a one-off test, set `PYTHONPATH` to the absolute
+path of the worktree and check `subtask.__file__` before trusting the result.
+
 ## Tests and lint
 
 ```bash
