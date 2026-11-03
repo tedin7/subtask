@@ -153,9 +153,7 @@ def test_violation_is_retried_with_the_reason(home, monkeypatch):
     from subtask import core, jobs
 
     repo = _repo(home / "repo", {"m.py": "x = 1\n"})
-    script = (
-        'if [ -f once ]; then sed -i "s/  # noqa//" m.py; else touch once; echo "z = 3  # noqa" >> m.py; fi'
-    )
+    script = 'if [ -f once ]; then perl -pi -e "s/  # noqa//" m.py; else touch once; echo "z = 3  # noqa" >> m.py; fi'
     job = _job(core, monkeypatch, repo, script, verify="true", max_retries=1)
     out = core.wait([job], timeout=60)
     st = jobs.status(job)
@@ -179,7 +177,7 @@ def test_symbol_scope_blocks_changes_to_other_symbols(home, monkeypatch):
     from subtask import core, jobs
 
     repo = _repo(home / "repo", {"m.py": BASE})
-    script = "sed -i 's/return 1/return 10/; s/return 2/return 20/' m.py"
+    script = "perl -pi -e 's/return 1/return 10/; s/return 2/return 20/' m.py"
     job = _job(core, monkeypatch, repo, script, verify="true", symbol_scope=["m.py::alpha"])
     found = jobs.status(job)["verification"]["invariants"]
     assert found == ["symbol_scope: m.py changes beta outside ['alpha']"]
@@ -192,9 +190,11 @@ def test_integrate_merges_two_jobs_editing_one_file_by_symbol(home, monkeypatch)
     from subtask import core, integrate
 
     repo = _repo(home / "repo", {"m.py": BASE, "n.txt": "n\n"})
-    a = _job(core, monkeypatch, repo, "sed -i 's/return 1/return 10/' m.py", symbol_scope=["m.py::alpha"])
+    a = _job(
+        core, monkeypatch, repo, "perl -pi -e 's/return 1/return 10/' m.py", symbol_scope=["m.py::alpha"]
+    )
     b = _job(
-        core, monkeypatch, repo, "sed -i 's/return 2/return 20/' m.py; echo x >> n.txt",
+        core, monkeypatch, repo, "perl -pi -e 's/return 2/return 20/' m.py; echo x >> n.txt",
         symbol_scope=["m.py::beta"],
     )  # fmt: skip
     out = integrate.integrate([a, b], "apply")
@@ -208,8 +208,12 @@ def test_integrate_by_symbol_refuses_overlap_and_changes_nothing(home, monkeypat
     from subtask import core, integrate
 
     repo = _repo(home / "repo", {"m.py": BASE})
-    a = _job(core, monkeypatch, repo, "sed -i 's/return 1/return 10/' m.py", symbol_scope=["m.py::alpha"])
-    b = _job(core, monkeypatch, repo, "sed -i 's/return 1/return 11/' m.py", symbol_scope=["m.py::alpha"])
+    a = _job(
+        core, monkeypatch, repo, "perl -pi -e 's/return 1/return 10/' m.py", symbol_scope=["m.py::alpha"]
+    )
+    b = _job(
+        core, monkeypatch, repo, "perl -pi -e 's/return 1/return 11/' m.py", symbol_scope=["m.py::alpha"]
+    )
     out = integrate.integrate([a, b], "apply")
     assert out.startswith("conflict: m.py:") and "both change alpha" in out, out
     assert (repo / "m.py").read_text() == BASE

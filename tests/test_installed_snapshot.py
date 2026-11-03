@@ -1,5 +1,6 @@
 """Exercise release and exact rollback using a disposable venv only."""
 
+import hashlib
 import json
 import os
 import shutil
@@ -10,9 +11,8 @@ from pathlib import Path
 SCRIPTS = Path(
     os.environ.get("ARVOS3_TEST_SCRIPTS", Path(__file__).resolve().parents[1] / "scripts" / "arvos3")
 )
-CANDIDATE = Path(
-    "/root/treniamo-calo-20261020-dati/giro5/codex/ARVOS3-prove/dist/subtask_mcp-0.5.0-py3-none-any.whl"
-)
+PROJECT = Path(__file__).resolve().parents[1]
+PINNED_SHA256 = "71b988983c16d46b0a63bd51eab8dcbd41ec6eb7b4cf8ba2bba92434198976d1"
 
 
 def run(*args, env=None, ok=True):
@@ -25,10 +25,21 @@ def run(*args, env=None, ok=True):
 
 
 def test_live_install_snapshot_and_exact_restore(tmp_path):
-    if not CANDIDATE.exists():
-        import pytest
-
-        pytest.skip("ARVOS3 release artifact is required for this integration test")
+    # The original installer pins a historical artifact unavailable on CI.
+    # Exercise a disposable copy with a wheel built from the current checkout.
+    dist_dir = tmp_path / "dist"
+    run("uv", "build", "--wheel", "--out-dir", str(dist_dir), str(PROJECT))
+    candidate = next(dist_dir.glob("*.whl"))
+    scripts = tmp_path / "scripts"
+    shutil.copytree(SCRIPTS, scripts)
+    installer = scripts / "installa-ledger.sh"
+    source = installer.read_text()
+    assert source.count(PINNED_SHA256) == 1
+    installer.write_text(
+        source.replace(PINNED_SHA256, hashlib.sha256(candidate.read_bytes()).hexdigest()).replace(
+            'sha256sum "$candidate"', 'shasum -a 256 "$candidate"'
+        )
+    )
     venv = tmp_path / "venv"
     run(sys.executable, "-m", "venv", "--without-pip", str(venv))
     python = str(venv / "bin/python")
@@ -38,8 +49,9 @@ def test_live_install_snapshot_and_exact_restore(tmp_path):
         "ROLLBACK_PARENT": str(tmp_path / "state"),
         "UV_CACHE_DIR": str(tmp_path / "uv-cache"),
         "UV_LINK_MODE": "copy",
+        "CANDIDATE": str(candidate),
     }
-    run("uv", "pip", "install", "--offline", "--python", python, "--no-deps", str(CANDIDATE), env=env)
+    run("uv", "pip", "install", "--offline", "--python", python, "--no-deps", str(candidate), env=env)
     site = Path(
         run(python, "-I", "-B", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))").stdout.strip()
     )
@@ -53,30 +65,30 @@ def test_live_install_snapshot_and_exact_restore(tmp_path):
     executable = venv / "bin/subtask"
     executable.write_bytes(executable.read_bytes() + b"\n# local entrypoint\n")
     original = ledger.read_bytes()
-    result = run("sh", str(SCRIPTS / "installa-ledger.sh"), env=env)
+    result = run("sh", str(installer), env=env)
     backup = Path(result.stdout.strip())
     assert backup.name.startswith("subtask-rollback-")
     assert ledger.read_bytes() != original
-    run(python, "-I", "-B", str(SCRIPTS / "installed_snapshot.py"), "verify", str(backup), ok=False)
+    run(python, "-I", "-B", str(scripts / "installed_snapshot.py"), "verify", str(backup), ok=False)
     # Candidate-only files must disappear on return.
     (site / "subtask/candidate-only.txt").write_text("remove me")
-    run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env)
+    run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env)
     assert ledger.read_bytes() == original
     assert extra.read_bytes() == b"local installed bytes\x00\xff"
     assert not (site / "subtask/candidate-only.txt").exists()
     assert executable.read_bytes().endswith(b"# local entrypoint\n")
-    run(python, "-I", "-B", str(SCRIPTS / "installed_snapshot.py"), "verify", str(backup))
+    run(python, "-I", "-B", str(scripts / "installed_snapshot.py"), "verify", str(backup))
     manifest = json.loads((backup / "manifest.json").read_text())
     assert len(manifest["files"]) > 50
-    run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env)
+    run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env)
     # Also recover an interrupted installer that removed metadata and a script.
     shutil.rmtree(dist)
     executable.unlink()
-    run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env)
+    run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env)
     assert ledger.read_bytes() == original
     # Corrupt backup is rejected before touching the current package.
     saved = next((backup / "files").rglob("ledger.py"))
     saved.write_bytes(b"corrupt")
-    result = run("sh", str(SCRIPTS / "rollback-ledger.sh"), str(backup), env=env, ok=False)
+    result = run("sh", str(scripts / "rollback-ledger.sh"), str(backup), env=env, ok=False)
     assert "SHA256/mode mismatch" in result.stderr
     assert ledger.read_bytes() == original
