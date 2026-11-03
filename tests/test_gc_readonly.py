@@ -94,6 +94,22 @@ def test_gc_apply_skips_stale_active_jobs(home):
     assert _snapshot(active) == before
 
 
+def test_gc_preview_does_not_scan_file_sizes(home, monkeypatch):
+    from subtask import gc, jobs
+
+    old = time.time() - 40 * 86400
+    _job(jobs, "st-done", {"v": 1, "state": "done", "updated": old})
+
+    def fail_on_size_scan(path):
+        raise AssertionError(f"unexpected size scan: {path}")
+
+    monkeypatch.setattr(gc, "_size", fail_on_size_scan)
+    result = gc.run(days=30)
+
+    assert "would remove 1 job folders" in result
+    assert "subtask du" in result
+
+
 def test_gc_cli_preview_does_not_settle_stale_job(home):
     from subtask import config, jobs
 
