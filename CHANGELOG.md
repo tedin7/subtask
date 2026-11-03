@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `gc` removes a worktree whose `.reports` holds a collection receipt: a regular file
+  `.reports/.collected` (any content, e.g. time and destination) written by the collector after
+  copying the reports. Only its modification time counts: the copy goes when the receipt is not
+  older than the newest report file, or when `.reports` is empty. No receipt, an older receipt,
+  a symlink or a sub-folder means the copy is kept (T-7359).
+
 ## 0.5.7
 
 ### Fixed

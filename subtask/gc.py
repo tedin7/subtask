@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -58,6 +59,42 @@ def _git(path: str, *args: str) -> subprocess.CompletedProcess | None:
         return None
 
 
+RECEIPT = ".collected"
+
+
+def _reports_collected(reports: Path) -> bool:
+    """True if `.reports` is absent or empty, or holds a receipt newer than every report.
+
+    A collector that copied the reports elsewhere writes a regular file `.reports/.collected`
+    (any content, e.g. time and destination) after the copy. Only its modification time is read.
+    A report changed after the receipt, a symlink or any unreadable entry means: keep.
+    """
+    try:
+        if reports.is_symlink():
+            return False
+        if not reports.exists():
+            return True
+        if not reports.is_dir():
+            return False
+        newest = 0
+        receipt = None
+        for entry in reports.iterdir():
+            info = entry.lstat()
+            if entry.name == RECEIPT:
+                if not stat.S_ISREG(info.st_mode):
+                    return False
+                receipt = info.st_mtime_ns
+            elif stat.S_ISREG(info.st_mode):
+                newest = max(newest, info.st_mtime_ns)
+            else:
+                return False
+        if newest == 0:
+            return True  # nothing but, possibly, a receipt
+        return receipt is not None and receipt >= newest
+    except OSError:
+        return False
+
+
 def _worktree_clean(path: str) -> bool | None:
     """None: gone. True: nothing to lose. False: dirty, unknown or user ignored files.
 
@@ -67,13 +104,8 @@ def _worktree_clean(path: str) -> bool | None:
     """
     if not Path(path).exists():
         return None
-    # Collection copies reports elsewhere but leaves no receipt in the worktree.
-    # Never infer that a report is safe to discard from Git's ignore rules.
-    reports = Path(path) / ".reports"
-    try:
-        if reports.is_symlink() or (reports.exists() and (not reports.is_dir() or any(reports.iterdir()))):
-            return False
-    except OSError:
+    # Reports are kept until the collector leaves a receipt (see _reports_collected).
+    if not _reports_collected(Path(path) / ".reports"):
         return False
     status = _git(path, "status", "--porcelain")
     if status is None or status.returncode != 0 or status.stdout.strip():
@@ -83,6 +115,8 @@ def _worktree_clean(path: str) -> bool | None:
         return False
     for line in ignored.stdout.splitlines():
         parts = Path(line.rstrip("/")).parts
+        if parts[:1] == (".reports",):
+            continue  # already judged by _reports_collected
         if not parts or not (set(parts) & REGENERABLE):
             return False
     return True
