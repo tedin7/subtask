@@ -36,14 +36,14 @@ import e2e_live
 
 COMMIT = "3f731f60ebcacba35c0d92f6cc4b917b836517ce"
 PIECES = [
-    ("L1", "Write tests (new files under tests/ only) so that subtask/cli.py reaches at least 80% line "
-           "coverage under `coverage run --source=subtask -m pytest -q tests`. Do not change subtask/."),
-    ("L2", "Write tests (new files under tests/ only) so that subtask/worker.py reaches at least 60% line "
-           "coverage under `coverage run --source=subtask -m pytest -q tests`. No network, no real CLIs: "
-           "fake them. Do not change subtask/."),
-    ("L3", "Make `mypy --strict --follow-imports=silent --ignore-missing-imports subtask/jobs.py "
-           "subtask/worker.py subtask/fastserver.py` report no errors, changing only those three files "
-           "and without changing behaviour: the existing tests must still pass."),
+    ("L1", ("Write tests (new files under tests/ only) so that subtask/cli.py reaches at least 80% line "
+            "coverage under `coverage run --source=subtask -m pytest -q tests`. Do not change subtask/.")),
+    ("L2", ("Write tests (new files under tests/ only) so that subtask/worker.py reaches at least 60% line "
+            "coverage under `coverage run --source=subtask -m pytest -q tests`. No network, no real CLIs: "
+            "fake them. Do not change subtask/.")),
+    ("L3", ("Make `mypy --strict --follow-imports=silent --ignore-missing-imports subtask/jobs.py "
+            "subtask/worker.py subtask/fastserver.py` report no errors, changing only those three files "
+            "and without changing behaviour: the existing tests must still pass.")),
 ]  # fmt: skip
 ARMS = {"parent": None, "subtask:haiku-api": 1.0, "subtask:opencode-go": 0.0, "subtask:kimi": 0.0}
 PARENT_CAP = 2.5
