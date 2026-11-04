@@ -40,7 +40,9 @@ class _Ctx:
 def test_init_message_does_not_mark_spend_but_api_reply_does():
     try:
         from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock
-    except ModuleNotFoundError:
+    except ModuleNotFoundError as exc:
+        if not (exc.name or "").startswith("claude_agent_sdk"):
+            raise
         pytest.fail(
             "claude_agent_sdk is missing: run the tests with the project venv "
             "(.venv/bin/python -m pytest), not the system python"
