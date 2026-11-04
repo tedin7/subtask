@@ -62,3 +62,21 @@ echo '{{"type":"item.completed","item":{{"type":"agent_message","text":"ok"}}}}'
     assert observed.read_text() == str(job_home)
     assert "mcp_servers" not in (job_home / "config.toml").read_text()
     assert (job_home / "auth.json").resolve() == source / "auth.json"
+
+
+def test_prepare_shares_directories_with_backup_words_but_not_backup_files(tmp_path):
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir()
+    names = ("session.bak-data", "session-backup", "before-session", "config.toml-session")
+    for name in names:
+        (src / name).mkdir()
+        (src / name / "session.json").write_text("session")
+    for name in ("auth.json.bak", "backup-auth.json", "before-auth.json", "config.toml.old"):
+        (src / name).write_text("private")
+
+    assert codex_home.prepare(src, dst) == dst
+    for name in names:
+        assert (dst / name).is_symlink()
+        assert (dst / name / "session.json").read_text() == "session"
+    for name in ("auth.json.bak", "backup-auth.json", "before-auth.json", "config.toml.old"):
+        assert not (dst / name).exists()

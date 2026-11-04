@@ -33,8 +33,13 @@ def strip_mcp_servers(text: str) -> str:
     return "".join(out)
 
 
-def _skipped(name: str) -> bool:
-    return name in SKIP or name.startswith("config.toml") or any(t in name for t in (".bak", "backup", "before-"))
+def _skipped(entry: Path) -> bool:
+    name = entry.name
+    if name in SKIP:
+        return True
+    return not entry.is_dir() and (
+        name.startswith("config.toml") or any(t in name for t in (".bak", "backup", "before-"))
+    )
 
 
 def prepare(source: Path | None = None, target: Path | None = None) -> Path:
@@ -44,7 +49,7 @@ def prepare(source: Path | None = None, target: Path | None = None) -> Path:
     try:
         target.mkdir(mode=0o700, exist_ok=True)
         for entry in source.iterdir():
-            if _skipped(entry.name):
+            if _skipped(entry):
                 continue
             link = target / entry.name
             if link.is_symlink() and os.readlink(link) == str(entry):
