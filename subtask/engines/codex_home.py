@@ -34,7 +34,11 @@ def strip_mcp_servers(text: str) -> str:
 
 
 def _skipped(name: str) -> bool:
-    return name in SKIP or name.startswith("config.toml") or any(t in name for t in (".bak", "backup", "before-"))
+    return (
+        name in SKIP
+        or name.startswith("config.toml")
+        or any(t in name for t in (".bak", "backup", "before-"))
+    )
 
 
 def prepare(source: Path | None = None, target: Path | None = None) -> Path:

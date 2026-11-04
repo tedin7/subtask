@@ -1,6 +1,6 @@
 from subtask.engines import codex_home
 
-CFG = '''model = "x"
+CFG = """model = "x"
 [mcp_servers.a]
 command = "a"
 [mcp_servers.a.env]
@@ -9,7 +9,7 @@ K = "v"
 trust = "trusted"
 [mcp_servers."b-c"]
 command = "b"
-'''
+"""
 
 
 def test_strip_keeps_other_tables():
