@@ -1,6 +1,14 @@
-from subtask.engines import codex_home
+import json
+import threading
 
-CFG = '''model = "x"
+import pytest
+
+from subtask import runners
+from subtask.engines import codex_home
+from subtask.engines.base import RunContext
+from subtask.engines.codex import Codex
+
+CFG = """model = "x"
 [mcp_servers.a]
 command = "a"
 [mcp_servers.a.env]
@@ -9,7 +17,7 @@ K = "v"
 trust = "trusted"
 [mcp_servers."b-c"]
 command = "b"
-'''
+"""
 
 
 def test_strip_keeps_other_tables():
@@ -35,3 +43,85 @@ def test_prepare_links_state_and_strips_config(tmp_path):
 
 def test_prepare_falls_back_to_source(tmp_path):
     assert codex_home.prepare(tmp_path / "missing", tmp_path / "d") == tmp_path / "missing"
+
+
+@pytest.mark.parametrize("choice", ["default", "custom", "missing", "keep", "explicit"])
+def test_codex_job_home_reaches_cli(choice, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    source = home / ".codex"
+    default = home / ".codex-job"
+    custom = home / "custom-job"
+    explicit = home / "explicit"
+    for path in (source, default, custom, explicit):
+        path.mkdir(parents=True)
+    (source / "config.toml").write_text(CFG)
+    (default / "config.toml").write_text('model = "default-job"\n')
+    (custom / "config.toml").write_text('model = "custom-job"\n')
+    (explicit / "config.toml").write_text('model = "explicit"\n')
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("SUBTASK_CODEX_JOB_HOME", raising=False)
+    monkeypatch.delenv("SUBTASK_CODEX_KEEP_MCP", raising=False)
+
+    env = {"HOME": str(home), "PATH": str(tmp_path)}
+    if choice in ("custom", "keep", "explicit"):
+        monkeypatch.setenv("SUBTASK_CODEX_JOB_HOME", str(custom))
+    if choice == "missing":
+        monkeypatch.setenv("SUBTASK_CODEX_JOB_HOME", str(home / "missing"))
+    if choice == "keep":
+        monkeypatch.setenv("SUBTASK_CODEX_KEEP_MCP", "1")
+    if choice == "explicit":
+        env["CODEX_HOME"] = str(explicit)
+
+    cli = tmp_path / "codex"
+    cli.write_text(
+        "#!/usr/bin/python3\n"
+        "import json, os\n"
+        "from pathlib import Path\n"
+        'home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))\n'
+        'print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", '
+        '"text": json.dumps({"home": str(home), "config": (home / "config.toml").read_text()})}}))\n'
+    )
+    cli.chmod(0o755)
+    ctx = RunContext(
+        "st-x", {"cwd": str(tmp_path)}, "p", None, 1, tmp_path, print, threading.Event(), runners.direct, env
+    )
+    outcome = Codex().run(ctx)
+    assert outcome.ok
+    observed = json.loads(outcome.result)
+    expected = {
+        "default": default,
+        "custom": custom,
+        "missing": home / ".codex-jobs",
+        "keep": source,
+        "explicit": explicit,
+    }[choice]
+    assert observed["home"] == str(expected)
+    if choice == "missing":
+        assert "mcp_servers" not in observed["config"]
+        assert 'model = "x"' in observed["config"]
+    else:
+        expected_config = {
+            "default": 'model = "default-job"\n',
+            "custom": 'model = "custom-job"\n',
+            "keep": CFG,
+            "explicit": 'model = "explicit"\n',
+        }[choice]
+        assert observed["config"] == expected_config
+        assert (expected / "config.toml").read_text() == expected_config
+
+
+def test_isolated_runner_binds_selected_codex_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    job_home = home / ".codex-job"
+    job_home.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(runners.shutil, "which", lambda *args, **kwargs: "/usr/bin/bwrap")
+    monkeypatch.setattr(runners, "bwrap_available", lambda: True)
+    wrap = runners.isolated({"cwd": str(tmp_path)}, "codex")
+    argv, _ = wrap(["codex"], {"CODEX_HOME": str(job_home)})
+    assert ["--bind", str(job_home), str(job_home)] == argv[argv.index(str(job_home)) - 1 :][:3]
+    with pytest.raises(ValueError):
+        wrap(["codex"], {"CODEX_HOME": str(home)})
+    with pytest.raises(ValueError):
+        wrap(["codex"], {"CODEX_HOME": str(job_home / "..")})
