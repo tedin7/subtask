@@ -22,6 +22,19 @@ def test_unknown_capacity_stays_unknown(home):
     assert {"value", "unit", "source", "ts", "confidence", "freshness_s"} <= set(snap["sonnet-api"])
 
 
+def test_capacity_report_preserves_long_provider_note(monkeypatch):
+    from subtask import capacity
+
+    note = "local budget detail " * 10 + "provider credit unknown"
+    monkeypatch.setattr(
+        capacity,
+        "snapshot",
+        lambda refresh: {"sonnet-api": {"value": 50, "confidence": "high", "ts": time.time(), "note": note}},
+    )
+
+    assert note in capacity.report()
+
+
 def test_codex_capacity_reads_rate_limits_with_age_and_confidence(tmp_path):
     from subtask.engines.codex import codex_capacity
 
