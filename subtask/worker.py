@@ -326,6 +326,11 @@ def main() -> int:
             from .engines.codex import parse_reset
 
             capacity.note_exhausted(spec["engine"], parse_reset(outcome.result), outcome.result[:200])
+        if adapter and adapter.family == "api" and not stopped:
+            if ok:
+                capacity.clear_provider_block(adapter)
+            else:
+                capacity.note_provider_failure(adapter, (outcome.result if outcome else error) or "")
         state = "stopped" if stopped else "done" if ok else "failed"
         detail = outcome.subtype if outcome else "exception"
         record = {

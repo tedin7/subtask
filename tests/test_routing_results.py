@@ -257,3 +257,21 @@ def test_active_index_makes_counting_independent_of_history(home):
         jobs.write_json(folder / "status.json", {"state": "done"})
     full = per_call()
     assert full < empty * 3 + 0.005, (empty, full)  # O(history) would be ~300x
+
+
+def test_provider_credit_or_401_marks_key_engines_blocked(home):
+    from subtask import capacity
+    from subtask.engines.claude_api import ClaudeApi
+
+    adapter = ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2")
+    assert capacity.provider_block("RuntimeError: Claude Code returned an error result: Credit balance is too low")
+    assert capacity.provider_block("API Error: 401 authentication_error invalid x-api-key")
+    assert capacity.provider_block("Il test 4011 ha un errore di rete") is None
+    assert capacity.note_provider_failure(adapter, "API Error: 401 Unauthorized") is True
+    snap = capacity.snapshot(refresh=True)
+    assert snap["sonnet-api2"]["value"] == 0.0 and "401" in snap["sonnet-api2"]["note"]
+    assert snap["opus-api2"]["value"] == 0.0  # same key
+    assert snap["sonnet-api"]["value"] != 0.0  # other key untouched
+    assert capacity.note_provider_failure(adapter, "tests failed") is False
+    capacity.clear_provider_block(adapter)
+    assert capacity.snapshot(refresh=True)["sonnet-api2"]["value"] != 0.0
