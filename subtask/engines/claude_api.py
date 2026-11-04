@@ -152,7 +152,7 @@ class ClaudeApi(Adapter):
             "local ledger vs monthly cap",
             time.time(),
             "high",
-            f"{left:.2f}$ of {cap:.0f}$ left this month",
+            f"{left:.2f}$ of {cap:.0f}$ left this month; provider credit unknown",
         )
 
     def run(self, ctx: RunContext) -> Outcome:

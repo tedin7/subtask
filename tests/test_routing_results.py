@@ -22,6 +22,32 @@ def test_unknown_capacity_stays_unknown(home):
     assert {"value", "unit", "source", "ts", "confidence", "freshness_s"} <= set(snap["sonnet-api"])
 
 
+def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch):
+    from subtask import capacity, config, ledger
+    from subtask.engines.claude_api import ClaudeApi
+
+    monkeypatch.setattr(config, "MONTHLY_CAP_USD", 100.0)
+    monkeypatch.setattr(ledger, "committed", lambda: 25.0)
+    monkeypatch.setattr(
+        capacity.registry,
+        "all_engines",
+        lambda: {
+            "sonnet-api": ClaudeApi("sonnet-api", "sonnet"),
+            "sonnet-api2": ClaudeApi("sonnet-api2", "sonnet"),
+        },
+    )
+    lines = capacity.report().splitlines()
+    assert len(lines) == 2
+    for line in lines:
+        assert "local budget  75%" in line
+        assert "75.00$ of 100$" in line
+        assert "provider credit unknown" in line
+
+    capacity.note_exhausted("sonnet-api", time.time() + 60, "provider quota exhausted")
+    line = capacity.report().splitlines()[0]
+    assert "free   0%" in line and "provider quota exhausted" in line
+
+
 def test_codex_capacity_reads_rate_limits_with_age_and_confidence(tmp_path):
     from subtask.engines.codex import codex_capacity
 
