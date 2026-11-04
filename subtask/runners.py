@@ -90,6 +90,17 @@ def isolated(spec: dict, family: str):
             target = home / rel
             if target.exists():
                 args += ["--bind", str(target), str(target)]
+        if family == "codex" and env.get("CODEX_HOME"):
+            target = Path(env["CODEX_HOME"])
+            if not target.is_absolute():
+                raise ValueError("isolated CODEX_HOME must be an absolute directory, narrower than HOME")
+            target = target.resolve()
+            real_home = home.resolve()
+            if target == real_home or target in real_home.parents:
+                raise ValueError("isolated CODEX_HOME must be an absolute directory, narrower than HOME")
+            env["CODEX_HOME"] = str(target)
+            if target.is_dir():
+                args += ["--bind", str(target), str(target)]
         for key in ("cwd", "git_dir"):
             if spec.get(key):
                 args += ["--bind", spec[key], spec[key]]
