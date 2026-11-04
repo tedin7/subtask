@@ -48,6 +48,19 @@ def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch)
     assert "free   0%" in line and "provider quota exhausted" in line
 
 
+def test_capacity_report_preserves_long_provider_note(monkeypatch):
+    from subtask import capacity
+
+    note = "local budget detail " * 10 + "provider credit unknown"
+    monkeypatch.setattr(
+        capacity,
+        "snapshot",
+        lambda refresh: {"sonnet-api": {"value": 50, "confidence": "high", "ts": time.time(), "note": note}},
+    )
+
+    assert note in capacity.report()
+
+
 def test_codex_capacity_reads_rate_limits_with_age_and_confidence(tmp_path):
     from subtask.engines.codex import codex_capacity
 

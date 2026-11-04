@@ -70,9 +70,7 @@ def report() -> str:
         age = int(time.time() - float(info.get("ts") or time.time()))
         label = "local budget" if info.get("source") == "local ledger vs monthly cap" else "free"
         lines.append(
-            f"{engine:12} {label} {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"[
-                :150
-            ]
+            f"{engine:12} {label} {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"
         )
     return "\n".join(lines)
 
