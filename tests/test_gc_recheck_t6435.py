@@ -29,7 +29,9 @@ def test_worktree_dirtied_between_plan_and_delete_is_kept(home, monkeypatch, tmp
     from subtask import gc, jobs
 
     def git(*a):
-        subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@t", *a], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=T", "-c", "user.email=t@t", *a], check=True, capture_output=True
+        )
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -41,7 +43,10 @@ def test_worktree_dirtied_between_plan_and_delete_is_kept(home, monkeypatch, tmp
     git("-C", str(repo), "worktree", "add", "-q", "-b", "b", str(wt))
     old = time.time() - 90 * 86400
     folder = _job(
-        jobs, "st-dirty", {"state": "done", "updated": old}, {"repo": str(repo), "cwd": str(wt), "branch": "b"}
+        jobs,
+        "st-dirty",
+        {"state": "done", "updated": old},
+        {"repo": str(repo), "cwd": str(wt), "branch": "b"},
     )
     real_plan = gc.plan
 
