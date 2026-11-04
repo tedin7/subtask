@@ -95,7 +95,7 @@ class Codex(CliAdapter):
         return None
 
     def run(self, ctx: RunContext):
-        if not ctx.env.get("CODEX_HOME") and not os.environ.get("SUBTASK_CODEX_KEEP_MCP"):
+        if not os.environ.get("SUBTASK_CODEX_KEEP_MCP"):
             ctx.env["CODEX_HOME"] = str(codex_home.prepare())  # no MCP servers for jobs (T-8189)
         outcome = super().run(ctx)
         last = ctx.folder / f"last-message-{ctx.attempt}.txt"

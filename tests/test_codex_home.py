@@ -1,6 +1,8 @@
 from subtask.engines import codex_home
 
-CFG = '''model = "x"
+from .conftest import fake_cli, wait_final
+
+CFG = """model = "x"
 [mcp_servers.a]
 command = "a"
 [mcp_servers.a.env]
@@ -9,7 +11,7 @@ K = "v"
 trust = "trusted"
 [mcp_servers."b-c"]
 command = "b"
-'''
+"""
 
 
 def test_strip_keeps_other_tables():
@@ -35,3 +37,28 @@ def test_prepare_links_state_and_strips_config(tmp_path):
 
 def test_prepare_falls_back_to_source(tmp_path):
     assert codex_home.prepare(tmp_path / "missing", tmp_path / "d") == tmp_path / "missing"
+
+
+def test_worker_uses_job_home_when_codex_home_is_inherited(home, monkeypatch):
+    from subtask import core
+
+    source = home / "custom-codex"
+    source.mkdir()
+    (source / "config.toml").write_text(CFG)
+    (source / "auth.json").write_text("{}")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CODEX_HOME", str(source))
+    monkeypatch.delenv("SUBTASK_CODEX_KEEP_MCP", raising=False)
+    observed = home / "observed-home"
+    fake_cli(
+        home,
+        "codex",
+        f'''printf "%s" "$CODEX_HOME" > "{observed}"
+echo '{{"type":"item.completed","item":{{"type":"agent_message","text":"ok"}}}}' ''',
+    )
+    job = core.start("test", engine="codex", cwd=str(home)).split()[0]
+    assert wait_final(job)["state"] == "done"
+    job_home = home / ".codex-jobs"
+    assert observed.read_text() == str(job_home)
+    assert "mcp_servers" not in (job_home / "config.toml").read_text()
+    assert (job_home / "auth.json").resolve() == source / "auth.json"
