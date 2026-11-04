@@ -21,13 +21,21 @@ RETENTION_DAYS = int(os.environ.get("SUBTASK_JOB_RETENTION_DAYS", "30"))
 
 
 def _size(path: Path) -> int:
+    """Bytes on disk: a file with many hard links counts once, a sparse file only for its blocks."""
     total = 0
+    linked: set[tuple[int, int]] = set()
     for root, _dirs, files in os.walk(path):
         for name in files:
             try:
-                total += (Path(root) / name).lstat().st_size
+                info = (Path(root) / name).lstat()
             except OSError:
                 continue
+            if info.st_nlink > 1:
+                inode = (info.st_dev, info.st_ino)
+                if inode in linked:
+                    continue
+                linked.add(inode)
+            total += info.st_blocks * 512
     return total
 
 
