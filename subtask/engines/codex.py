@@ -96,7 +96,13 @@ class Codex(CliAdapter):
 
     def run(self, ctx: RunContext):
         if not ctx.env.get("CODEX_HOME") and not os.environ.get("SUBTASK_CODEX_KEEP_MCP"):
-            ctx.env["CODEX_HOME"] = str(codex_home.prepare())  # no MCP servers for jobs (T-8189)
+            job_home = Path(
+                os.environ.get("SUBTASK_CODEX_JOB_HOME") or Path.home() / ".codex-job"
+            ).expanduser()
+            if (job_home / "config.toml").is_file():
+                ctx.env["CODEX_HOME"] = str(job_home.resolve())
+            else:
+                ctx.env["CODEX_HOME"] = str(codex_home.prepare())  # no MCP servers for jobs (T-8189)
         outcome = super().run(ctx)
         last = ctx.folder / f"last-message-{ctx.attempt}.txt"
         if last.is_file() and last.read_text().strip():

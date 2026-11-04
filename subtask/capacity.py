@@ -7,6 +7,7 @@ engines, and it says so. Quota exhaustion seen in a real run (e.g. Codex
 
 from __future__ import annotations
 
+import re
 import time
 
 from . import config, jobs
@@ -30,6 +31,52 @@ def note_exhausted(engine: str, until: float | None, message: str) -> None:
     hints[engine] = {"seen": time.time(), "until": until, "message": message[:200]}
     jobs.write_json(_hints(), hints)
     _cache().unlink(missing_ok=True)
+
+
+_PROVIDER_BLOCKS = (
+    (re.compile(r"credit balance is too low", re.IGNORECASE), "provider credit exhausted"),
+    (
+        re.compile(
+            r"invalid (x-)?api[ -]?key|authentication_error|\b401\b.{0,80}(unauthori|authenticat|invalid)",
+            re.IGNORECASE,
+        ),
+        "provider rejected the key (HTTP 401)",
+    ),
+)
+
+
+def provider_block(text: str) -> str | None:
+    """Reason when an API run failed because the provider refused the account, else None."""
+    for pattern, reason in _PROVIDER_BLOCKS:
+        if pattern.search(text or ""):
+            return reason
+    return None
+
+
+def _same_key(adapter) -> list[str]:
+    key = getattr(adapter, "key_name", None)
+    if not key:
+        return [adapter.name]
+    return [n for n, a in registry.all_engines().items() if getattr(a, "key_name", None) == key]
+
+
+def note_provider_failure(adapter, text: str) -> bool:
+    """An API run died on credit or key: mark every engine on that key as blocked."""
+    reason = provider_block(text)
+    if not reason:
+        return False
+    for name in _same_key(adapter):
+        note_exhausted(name, None, reason)
+    return True
+
+
+def clear_provider_block(adapter) -> None:
+    """A real success on this key proves the block is over."""
+    hints = jobs.read_json(_hints())
+    names = [n for n in _same_key(adapter) if n in hints]
+    if names:
+        jobs.write_json(_hints(), {k: v for k, v in hints.items() if k not in names})
+        _cache().unlink(missing_ok=True)
 
 
 def _hint(engine: str) -> dict | None:
@@ -68,8 +115,9 @@ def report() -> str:
     for engine, info in snapshot(refresh=True).items():
         value = "?" if info["value"] is None else f"{info['value']:.0f}%"
         age = int(time.time() - float(info.get("ts") or time.time()))
+        label = "local budget" if info.get("source") == "local ledger vs monthly cap" else "free"
         lines.append(
-            f"{engine:12} free {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"[:150]
+            f"{engine:12} {label} {value:>4} · conf {info['confidence']:6} · age {age}s · {info['note']}"
         )
     return "\n".join(lines)
 

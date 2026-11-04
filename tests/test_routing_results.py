@@ -22,6 +22,45 @@ def test_unknown_capacity_stays_unknown(home):
     assert {"value", "unit", "source", "ts", "confidence", "freshness_s"} <= set(snap["sonnet-api"])
 
 
+def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch):
+    from subtask import capacity, config, ledger
+    from subtask.engines.claude_api import ClaudeApi
+
+    monkeypatch.setattr(config, "MONTHLY_CAP_USD", 100.0)
+    monkeypatch.setattr(ledger, "committed", lambda: 25.0)
+    monkeypatch.setattr(
+        capacity.registry,
+        "all_engines",
+        lambda: {
+            "sonnet-api": ClaudeApi("sonnet-api", "sonnet"),
+            "sonnet-api2": ClaudeApi("sonnet-api2", "sonnet"),
+        },
+    )
+    lines = capacity.report().splitlines()
+    assert len(lines) == 2
+    for line in lines:
+        assert "local budget  75%" in line
+        assert "75.00$ of 100$" in line
+        assert "provider credit unknown" in line
+
+    capacity.note_exhausted("sonnet-api", time.time() + 60, "provider quota exhausted")
+    line = capacity.report().splitlines()[0]
+    assert "free   0%" in line and "provider quota exhausted" in line
+
+
+def test_capacity_report_preserves_long_provider_note(monkeypatch):
+    from subtask import capacity
+
+    note = "local budget detail " * 10 + "provider credit unknown"
+    monkeypatch.setattr(
+        capacity,
+        "snapshot",
+        lambda refresh: {"sonnet-api": {"value": 50, "confidence": "high", "ts": time.time(), "note": note}},
+    )
+
+    assert note in capacity.report()
+
+
 def test_codex_capacity_reads_rate_limits_with_age_and_confidence(tmp_path):
     from subtask.engines.codex import codex_capacity
 
@@ -218,3 +257,21 @@ def test_active_index_makes_counting_independent_of_history(home):
         jobs.write_json(folder / "status.json", {"state": "done"})
     full = per_call()
     assert full < empty * 3 + 0.005, (empty, full)  # O(history) would be ~300x
+
+
+def test_provider_credit_or_401_marks_key_engines_blocked(home):
+    from subtask import capacity
+    from subtask.engines.claude_api import ClaudeApi
+
+    adapter = ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2")
+    assert capacity.provider_block("RuntimeError: Claude Code returned an error result: Credit balance is too low")
+    assert capacity.provider_block("API Error: 401 authentication_error invalid x-api-key")
+    assert capacity.provider_block("Il test 4011 ha un errore di rete") is None
+    assert capacity.note_provider_failure(adapter, "API Error: 401 Unauthorized") is True
+    snap = capacity.snapshot(refresh=True)
+    assert snap["sonnet-api2"]["value"] == 0.0 and "401" in snap["sonnet-api2"]["note"]
+    assert snap["opus-api2"]["value"] == 0.0  # same key
+    assert snap["sonnet-api"]["value"] != 0.0  # other key untouched
+    assert capacity.note_provider_failure(adapter, "tests failed") is False
+    capacity.clear_provider_block(adapter)
+    assert capacity.snapshot(refresh=True)["sonnet-api2"]["value"] != 0.0

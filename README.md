@@ -180,9 +180,14 @@ Details and evidence: [docs/progress-matrix.md](docs/progress-matrix.md).
 | `SUBTASK_ROUTING` | `~/.config/subtask/routing.json` (weights, `"mode": "legacy"`) |
 | `SUBTASK_JOB_RETENTION_DAYS` / `SUBTASK_TELEMETRY_DAYS` | `30` / `90` |
 | `SUBTASK_PROGRESS_MIN_S` / `SUBTASK_PROGRESS_HEARTBEAT_S` | `2` / `10` |
+| `SUBTASK_CODEX_JOB_HOME` | `~/.codex-job`, used if it has `config.toml`; otherwise a sanitized `~/.codex-jobs` is prepared |
+| `SUBTASK_CODEX_KEEP_MCP` | unset; set to keep the normal Codex home and its MCP servers |
 
 Costs of API engines come from the SDK's estimate; a run whose real cost is
 unknown is charged its whole reservation. Telemetry stays on this machine.
+An existing job home is used as-is: its configuration and shared authentication
+are managed by the operator. An explicit `CODEX_HOME` takes precedence. For
+isolated jobs, the chosen home must be an absolute directory narrower than `HOME`.
 
 ## Platforms
 

@@ -176,7 +176,7 @@ def test_progress_does_not_count_a_pending_review_as_an_ended_delivery(delivery)
     assert "Jev:" in reporter.summary() and " done " not in reporter.summary()
 
 
-@pytest.mark.parametrize("created", ["bad", float("nan"), float("inf"), time.time() + 1000])
+@pytest.mark.parametrize("created", ["bad", float("nan"), float("inf"), 4102444800.0])
 def test_invalid_pending_metadata_cannot_hold_wait_forever(delivery, created):
     from subtask import auto_review, jobs
 

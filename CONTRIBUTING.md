@@ -11,6 +11,17 @@ Create the environment in each worktree. The system Python may lack the installe
 `subtask-mcp` command and report misleading failures in the install tests. The
 `dev` extra also installs pytest-xdist, needed for the `-n 0` option below.
 
+Run tests from the worktree being tested. With `python -m pytest`, the current
+directory takes precedence over `PYTHONPATH`, so running from another checkout
+can silently import its `subtask` package. Before testing a branch, check that
+the import resolves inside that worktree:
+
+```bash
+cd /path/to/worktree
+.venv/bin/python -c 'from pathlib import Path; import subtask; p = Path(subtask.__file__).resolve(); print(p); assert p.is_relative_to(Path.cwd().resolve())'
+.venv/bin/python -m pytest -n 0 -q tests/test_file.py
+```
+
 ## Tests and lint
 
 ```bash

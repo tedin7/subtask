@@ -102,7 +102,7 @@ def main() -> int:
     sub.add_parser("engines")
     install_commands.add_parsers(sub)
     g = sub.add_parser("gc")
-    g.add_argument("--days", type=int, default=30)
+    g.add_argument("--days", type=int, help="default: SUBTASK_JOB_RETENTION_DAYS, or 30")
     g.add_argument("--apply", action="store_true")
     sub.add_parser("du")
     sub.add_parser("roi")
@@ -215,7 +215,7 @@ def main() -> int:
     elif a.cmd == "gc":
         from . import gc
 
-        out = gc.run(a.days, a.apply)
+        out = gc.run(gc.RETENTION_DAYS if a.days is None else a.days, a.apply)
     elif a.cmd == "du":
         from . import gc
 

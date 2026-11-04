@@ -228,9 +228,7 @@ def main() -> int:
             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
         level = (spec.get("policy") or {}).get("effective")
         wrap = runners.isolated(spec, adapter.family) if level == "isolated" else runners.direct
-        env = runners.minimal_env(
-            {k: os.environ[k] for k in os.environ if k.startswith(("XDG_", "KIMI_", "CODEX_HOME"))}
-        )
+        env = runners.minimal_env({k: os.environ[k] for k in os.environ if k.startswith(("XDG_", "KIMI_"))})
         env.update(_isolated_vars(job_id, spec, folder, level))
         if adapter.family not in ("api", "dsh") and not prompt.rstrip().endswith(SUMMARY_RULE.strip()):
             prompt += SUMMARY_RULE
@@ -328,6 +326,11 @@ def main() -> int:
             from .engines.codex import parse_reset
 
             capacity.note_exhausted(spec["engine"], parse_reset(outcome.result), outcome.result[:200])
+        if adapter and adapter.family == "api" and not stopped:
+            if ok:
+                capacity.clear_provider_block(adapter)
+            else:
+                capacity.note_provider_failure(adapter, (outcome.result if outcome else error) or "")
         state = "stopped" if stopped else "done" if ok else "failed"
         detail = outcome.subtype if outcome else "exception"
         record = {
