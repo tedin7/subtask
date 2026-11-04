@@ -22,6 +22,23 @@ def test_unknown_capacity_stays_unknown(home):
     assert {"value", "unit", "source", "ts", "confidence", "freshness_s"} <= set(snap["sonnet-api"])
 
 
+def test_claude_local_budget_does_not_claim_provider_capacity(home, monkeypatch):
+    from subtask import capacity, config, ledger
+
+    monkeypatch.setattr(config, "MONTHLY_CAP_USD", 100.0)
+    monkeypatch.setattr(ledger, "committed", lambda: 20.0)
+    readings = capacity.snapshot(refresh=True)
+    for name in ("sonnet-api", "sonnet-api2"):
+        reading = readings[name]
+        assert reading["value"] is None
+        assert reading["confidence"] == "none"
+        assert "provider capacity unknown" in reading["note"]
+        assert "80.00$" in reading["note"]
+    report = capacity.report()
+    assert "sonnet-api2  free    ? · conf none" in report
+    assert "provider capacity unknown" in report
+
+
 def test_codex_capacity_reads_rate_limits_with_age_and_confidence(tmp_path):
     from subtask.engines.codex import codex_capacity
 

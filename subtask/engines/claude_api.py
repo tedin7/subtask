@@ -147,12 +147,12 @@ class ClaudeApi(Adapter):
         cap = config.MONTHLY_CAP_USD
         left = cap - ledger.committed()
         return Capacity(
-            max(0.0, 100 * left / cap) if cap > 0 else 0.0,
+            None,
             "pct_free",
             "local ledger vs monthly cap",
             time.time(),
-            "high",
-            f"{left:.2f}$ of {cap:.0f}$ left this month",
+            "none",
+            f"provider capacity unknown; local budget {left:.2f}$ of {cap:.0f}$ left this month",
         )
 
     def run(self, ctx: RunContext) -> Outcome:
