@@ -228,9 +228,7 @@ def main() -> int:
             raise RuntimeError(f"working folder is gone: {spec['cwd']} (cleaned up?)")
         level = (spec.get("policy") or {}).get("effective")
         wrap = runners.isolated(spec, adapter.family) if level == "isolated" else runners.direct
-        env = runners.minimal_env(
-            {k: os.environ[k] for k in os.environ if k.startswith(("XDG_", "KIMI_", "CODEX_HOME"))}
-        )
+        env = runners.minimal_env({k: os.environ[k] for k in os.environ if k.startswith(("XDG_", "KIMI_"))})
         env.update(_isolated_vars(job_id, spec, folder, level))
         if adapter.family not in ("api", "dsh") and not prompt.rstrip().endswith(SUMMARY_RULE.strip()):
             prompt += SUMMARY_RULE
