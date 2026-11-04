@@ -17,7 +17,7 @@ BASE_ENV = ("PATH", "LANG", "LC_ALL", "TERM", "TZ", "SSL_CERT_FILE", "SSL_CERT_D
 
 # Per engine family: state directories under HOME the engine needs (read-write).
 STATE_DIRS = {
-    "codex": [".codex"],
+    "codex": [".codex", ".codex-jobs"],
     "kimi": [".kimi-code", ".kimi", ".config/kimi", ".local/share/kimi", ".cache/kimi"],
     "opencode": [".local/share/opencode", ".config/opencode", ".cache/opencode", ".local/state/opencode"],
     "api": [".claude", ".claude.json"],

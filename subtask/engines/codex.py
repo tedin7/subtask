@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from datetime import datetime
 from pathlib import Path
 
+from . import codex_home
 from .base import Capabilities, Capacity, CliAdapter, RunContext, describe_command, json_line, short_command
 
 LIMIT_RE = re.compile(
@@ -93,6 +95,8 @@ class Codex(CliAdapter):
         return None
 
     def run(self, ctx: RunContext):
+        if not ctx.env.get("CODEX_HOME") and not os.environ.get("SUBTASK_CODEX_KEEP_MCP"):
+            ctx.env["CODEX_HOME"] = str(codex_home.prepare())  # no MCP servers for jobs (T-8189)
         outcome = super().run(ctx)
         last = ctx.folder / f"last-message-{ctx.attempt}.txt"
         if last.is_file() and last.read_text().strip():
