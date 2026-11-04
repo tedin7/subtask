@@ -30,10 +30,12 @@ SKIP = re.compile(
 )
 
 
-def _git(cwd: str, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
+def _git(
+    cwd: str, *args: str, env: dict | None = None, stdin: str | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-C", cwd, *args], capture_output=True, text=True, errors="replace", timeout=60,
-        check=False, env={**os.environ, **env} if env else None,
+        check=False, env={**os.environ, **env} if env else None, input=stdin,
     )  # fmt: skip
 
 
@@ -65,13 +67,34 @@ def _changed(cwd: str, base: str) -> list[tuple[str, str]]:
             # Git needs the original index mtime to detect racy same-size edits.
             shutil.copy2(real, index)
         env = {"GIT_INDEX_FILE": index}
-        _git(cwd, "add", "-A", ".", env=env)
+        _unhide(cwd, env)
+        # --sparse: without it git silently skips whatever lies outside the sparse patterns.
+        _git(cwd, "add", "-A", "--sparse", ".", env=env)
         out = _git(cwd, "diff", "--cached", "--name-status", "--no-renames", "-z", base, env=env).stdout
     parts = out.split("\0")
     changed = [(parts[i][0], parts[i + 1]) for i in range(0, len(parts) - 1, 2) if parts[i]]
     # A sparse checkout leaves files out of the working tree on purpose: they are not deletions.
     sparse = _skip_worktree(cwd)
     return [(s, p) for s, p in changed if not (s == "D" and p in sparse)]
+
+
+def _unhide(cwd: str, env: dict) -> None:
+    """Clear the index flags that would hide a real edit, on the private index only.
+
+    A skip-worktree file missing from disk keeps its flag: sparse checkout left it out on purpose.
+    """
+    hiding = []
+    for entry in _git(cwd, "ls-files", "-v", "-z", env=env).stdout.split("\0"):
+        tag, path = entry[:1], entry[2:]
+        if tag not in ("S", "s", "h"):
+            continue
+        if tag == "h" or os.path.lexists(os.path.join(cwd, path)):
+            hiding.append(path)
+    if hiding:
+        paths = "\0".join(hiding) + "\0"
+        # Separate calls: git applies only one of the two flags when given together.
+        _git(cwd, "update-index", "-z", "--no-skip-worktree", "--stdin", env=env, stdin=paths)
+        _git(cwd, "update-index", "-z", "--no-assume-unchanged", "--stdin", env=env, stdin=paths)
 
 
 def _skip_worktree(cwd: str) -> set[str]:
@@ -86,11 +109,16 @@ def _old(cwd: str, base: str, path: str) -> str:
 
 
 def _new(cwd: str, path: str) -> str:
+    full = os.path.join(cwd, path)
     try:
-        with open(os.path.join(cwd, path), encoding="utf-8", errors="replace") as fh:
+        with open(full, encoding="utf-8", errors="replace") as fh:
             return fh.read()
     except OSError:
-        return ""
+        if os.path.lexists(full):
+            return ""
+    # Changed yet missing from disk: a commit touched a file outside the sparse checkout.
+    done = _git(cwd, "show", f":{path}")
+    return done.stdout if done.returncode == 0 else ""
 
 
 def _is_test(path: str) -> bool:
@@ -133,15 +161,15 @@ def revert_outside(cwd: str, base: str, allowed: list[str]) -> list[str]:
     out = [(s, p) for s, p in _changed(cwd, base) if not _allowed(p, allowed)]
     for status, path in out:
         if status == "A":
-            _git(cwd, "rm", "-q", "-f", "--cached", "--ignore-unmatch", "--", path)
+            _git(cwd, "rm", "-q", "-f", "--sparse", "--cached", "--ignore-unmatch", "--", path)
             try:
                 os.remove(os.path.join(cwd, path))
             except OSError:
                 pass
         else:
-            _git(cwd, "checkout", base, "--", path)
+            _git(cwd, "checkout", "--ignore-skip-worktree-bits", base, "--", path)
     if out:
-        _git(cwd, "add", "-A", "--", *[p for _, p in out])
+        _git(cwd, "add", "-A", "--sparse", "--", *[p for _, p in out])
         _git(cwd, "-c", "user.name=subtask", "-c", "user.email=subtask@localhost", "commit", "-q",
              "--no-verify", "-m", "subtask: revert changes outside allowed_paths")  # fmt: skip
     return [p for _, p in out]
