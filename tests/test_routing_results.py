@@ -277,6 +277,7 @@ def test_provider_credit_or_401_marks_key_engines_blocked(home):
     snap = capacity.snapshot(refresh=True)
     assert snap["sonnet-api2"]["value"] == 0.0 and "401" in snap["sonnet-api2"]["note"]
     assert snap["opus-api2"]["value"] == 0.0  # same key
+    assert snap["sonnet-api2"]["resets_at"] - time.time() > 6 * 3600  # stays skipped past the 1h default
     assert snap["sonnet-api"]["value"] != 0.0  # other key untouched
     assert capacity.note_provider_failure(adapter, "tests failed") is False
     capacity.clear_provider_block(adapter)
