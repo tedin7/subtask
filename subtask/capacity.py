@@ -70,8 +70,25 @@ def note_provider_failure(adapter, text: str) -> bool:
     return True
 
 
+def _ok_file():
+    return config.HOME / "provider-ok.json"
+
+
+PROVIDER_OK_TTL_S = 24 * 3600
+
+
+def provider_ok_recently(key_name: str) -> bool:
+    """True when a real run on this key succeeded within the last day."""
+    seen = jobs.read_json(_ok_file()).get(key_name)
+    return bool(seen) and time.time() - float(seen) < PROVIDER_OK_TTL_S
+
+
 def clear_provider_block(adapter) -> None:
     """A real success on this key proves the block is over."""
+    key = getattr(adapter, "key_name", None)
+    if key:
+        config.HOME.mkdir(parents=True, exist_ok=True)
+        jobs.write_json(_ok_file(), {**jobs.read_json(_ok_file()), key: time.time()})
     hints = jobs.read_json(_hints())
     names = [n for n in _same_key(adapter) if n in hints]
     if names:

@@ -33,7 +33,7 @@ def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch)
         "all_engines",
         lambda: {
             "sonnet-api": ClaudeApi("sonnet-api", "sonnet"),
-            "sonnet-api2": ClaudeApi("sonnet-api2", "sonnet"),
+            "sonnet-api2": ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2"),
         },
     )
     lines = capacity.report().splitlines()
@@ -42,6 +42,12 @@ def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch)
         assert "local budget  75%" in line
         assert "75.00$ of 100$" in line
         assert "provider credit unknown" in line
+        assert "conf low" in line and "no successful provider call" in line  # T-8452
+
+    capacity.clear_provider_block(ClaudeApi("sonnet-api", "sonnet"))  # a real success on key 1
+    lines = capacity.snapshot(refresh=True)
+    assert lines["sonnet-api"]["confidence"] == "high"
+    assert lines["sonnet-api2"]["confidence"] == "low"  # other key never proven
 
     capacity.note_exhausted("sonnet-api", time.time() + 60, "provider quota exhausted")
     line = capacity.report().splitlines()[0]

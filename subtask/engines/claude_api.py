@@ -142,17 +142,19 @@ class ClaudeApi(Adapter):
         return probe
 
     def capacity(self) -> Capacity:
-        from .. import ledger
+        from .. import capacity, ledger
 
         cap = config.MONTHLY_CAP_USD
+        proven = capacity.provider_ok_recently(self.key_name)
         left = cap - ledger.committed()
         return Capacity(
             max(0.0, 100 * left / cap) if cap > 0 else 0.0,
             "pct_free",
             "local ledger vs monthly cap",
             time.time(),
-            "high",
-            f"{left:.2f}$ of {cap:.0f}$ left this month; provider credit unknown",
+            "high" if proven else "low",
+            f"{left:.2f}$ of {cap:.0f}$ left this month; provider credit unknown"
+            + ("" if proven else "; no successful provider call in 24h"),
         )
 
     def run(self, ctx: RunContext) -> Outcome:
