@@ -4,6 +4,9 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+import subtask
 
 
 def _job(jobs, job_id, status, spec=None):
@@ -120,6 +123,7 @@ def test_gc_cli_preview_does_not_settle_stale_job(home):
 
     result = subprocess.run(
         [sys.executable, "-m", "subtask.cli", "gc", "--days", "30"],
+        cwd=Path(subtask.__file__).resolve().parents[1],
         capture_output=True,
         text=True,
         check=True,
