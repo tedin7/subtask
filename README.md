@@ -45,6 +45,9 @@ subtask install --client all --yes    # applies it: MCP server + skill
 subtask doctor --client all           # checks app, config entry and a real handshake
 ```
 
+`subtask --version` reports the installed Git commit when the installer records it.
+For local, editable, or registry installations without Git provenance it reports `commit unknown`.
+
 Jev provides advisory workflow checks automatically, or only when requested:
 
 ```sh

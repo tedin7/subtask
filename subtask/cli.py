@@ -17,10 +17,34 @@ routing and watch. MCP `engines` returns capacity plus spend in one call.
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import sys
+from importlib import metadata
+from pathlib import Path
 
 from . import __version__, core
 from .install import commands as install_commands
+
+PACKAGE_DIR = Path(__file__).resolve().parent
+
+
+def installed_commit() -> str:
+    """Read the immutable VCS revision of this installation, when recorded."""
+    try:
+        dist = metadata.distribution("subtask-mcp")
+        if Path(dist.locate_file("subtask/__init__.py")).resolve() != PACKAGE_DIR / "__init__.py":
+            return "unknown"
+        source = json.loads(dist.read_text("direct_url.json") or "{}")
+        vcs = source.get("vcs_info", {})
+        revision = vcs.get("commit_id", "") if vcs.get("vcs") == "git" else ""
+        return (
+            revision
+            if isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{40,64}", revision)
+            else "unknown"
+        )
+    except (metadata.PackageNotFoundError, OSError, ValueError, AttributeError, TypeError):
+        return "unknown"
 
 
 class _Parser(argparse.ArgumentParser):
@@ -33,7 +57,9 @@ class _Parser(argparse.ArgumentParser):
 
 def main() -> int:
     p = _Parser(prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    p.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__} (commit {installed_commit()})"
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
     pl = sub.add_parser("plan", help="preview JSON tasks, then launch immutable plan once")
     pl.add_argument("--tasks-file", help="JSON task list; - reads stdin")
