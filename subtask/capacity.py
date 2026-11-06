@@ -65,9 +65,13 @@ def note_provider_failure(adapter, text: str) -> bool:
     reason = provider_block(text)
     if not reason:
         return False
+    until = time.time() + PROVIDER_BLOCK_TTL_S  # not the 1h default: credit does not return by itself
     for name in _same_key(adapter):
-        note_exhausted(name, None, reason)
+        note_exhausted(name, until, reason)
     return True
+
+
+PROVIDER_BLOCK_TTL_S = 12 * 3600
 
 
 def _ok_file():
@@ -100,8 +104,8 @@ def _hint(engine: str) -> dict | None:
     hint = jobs.read_json(_hints()).get(engine)
     if not hint:
         return None
-    until = hint.get("until") or hint["seen"] + 3600  # unknown reset: assume an hour
-    return hint if until > time.time() else None
+    until = hint.get("until")
+    return hint if until is None or until > time.time() else None
 
 
 def snapshot(refresh: bool = False) -> dict[str, dict]:
