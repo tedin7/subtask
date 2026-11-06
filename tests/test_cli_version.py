@@ -13,7 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def test_cli_version():
     result = subprocess.run(
-        [sys.executable, "-m", "subtask.cli", "--version"], capture_output=True, text=True, check=False, cwd=REPO_ROOT
+        [sys.executable, "-m", "subtask.cli", "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
     )
     assert result.returncode == 0
     assert result.stdout.strip().startswith(f"subtask {__version__} (commit ")
