@@ -270,7 +270,9 @@ def test_provider_credit_or_401_marks_key_engines_blocked(home):
     from subtask.engines.claude_api import ClaudeApi
 
     adapter = ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2")
-    assert capacity.provider_block("RuntimeError: Claude Code returned an error result: Credit balance is too low")
+    assert capacity.provider_block(
+        "RuntimeError: Claude Code returned an error result: Credit balance is too low"
+    )
     assert capacity.provider_block("API Error: 401 authentication_error invalid x-api-key")
     assert capacity.provider_block("Il test 4011 ha un errore di rete") is None
     assert capacity.note_provider_failure(adapter, "API Error: 401 Unauthorized") is True
@@ -282,3 +284,29 @@ def test_provider_credit_or_401_marks_key_engines_blocked(home):
     assert capacity.note_provider_failure(adapter, "tests failed") is False
     capacity.clear_provider_block(adapter)
     assert capacity.snapshot(refresh=True)["sonnet-api2"]["value"] != 0.0
+
+
+def test_block_without_reset_stays_blocked_until_cleared(home, monkeypatch):
+    from subtask import capacity
+    from subtask.engines.claude_api import ClaudeApi
+
+    now = [1_000_000.0]
+    monkeypatch.setattr(capacity.time, "time", lambda: now[0])
+    adapter = ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2")
+    assert capacity.note_provider_failure(adapter, "API Error: 401 Unauthorized")
+    now[0] += 7200
+    assert capacity.snapshot(refresh=True)["sonnet-api2"]["value"] == 0.0
+    capacity.clear_provider_block(adapter)
+    assert capacity.snapshot(refresh=True)["sonnet-api2"]["value"] != 0.0
+
+
+def test_block_with_reset_expires_at_reset(home, monkeypatch):
+    from subtask import capacity
+
+    now = [1_000_000.0]
+    monkeypatch.setattr(capacity.time, "time", lambda: now[0])
+    capacity.note_exhausted("fake", now[0] + 7200, "quota exhausted")
+    now[0] += 3600
+    assert capacity.snapshot(refresh=True)["fake"]["value"] == 0.0
+    now[0] += 3600
+    assert capacity._hint("fake") is None

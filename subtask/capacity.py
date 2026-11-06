@@ -104,8 +104,8 @@ def _hint(engine: str) -> dict | None:
     hint = jobs.read_json(_hints()).get(engine)
     if not hint:
         return None
-    until = hint.get("until") or hint["seen"] + 3600  # unknown reset: assume an hour
-    return hint if until > time.time() else None
+    until = hint.get("until")
+    return hint if until is None or until > time.time() else None
 
 
 def snapshot(refresh: bool = False) -> dict[str, dict]:
