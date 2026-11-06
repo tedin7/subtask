@@ -372,6 +372,7 @@ def start(
                 base = _git(repo, "rev-parse", "--verify", "--end-of-options", base + "^{commit}")
                 _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
                 git_dir = str(Path(repo, _git(repo, "rev-parse", "--git-common-dir")).resolve())
+                _exclude_reports(git_dir)
             except subprocess.CalledProcessError as exc:
                 raise _Compensate(f"worktree not created: {exc.stderr.strip()[:200]}") from exc
             task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
@@ -1204,6 +1205,18 @@ def inspect(job_id: str, tail: int = 80, grep: str | None = None) -> str:
         return f"{_line(job_id)}\nno log lines" + (f" matching {grep!r}" if grep else "")
     body = "\n".join(line[:300] for line in lines[-tail:])
     return f"{_line(job_id)}\n{redact(body)}"
+
+
+def _exclude_reports(git_dir: str) -> None:
+    """T-7258: .reports/ of a job copy must not count as unsaved work (it kept ~100 copies on disk)."""
+    try:
+        path = Path(git_dir, "info", "exclude")
+        text = path.read_text() if path.exists() else ""
+        if ".reports/" not in text.split():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text + ("" if not text or text.endswith("\n") else "\n") + ".reports/\n")
+    except OSError:
+        pass
 
 
 def cleanup(job_id: str) -> str:

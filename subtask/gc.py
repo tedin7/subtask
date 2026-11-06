@@ -49,6 +49,10 @@ def du() -> dict:
     return {name: _size(path) if path.exists() else 0 for name, path in parts.items()}
 
 
+# T-7258b: ".reports" holds job reports. Nothing in the copy records that the coordinator
+# collected them (raccogli_rapporto only copies out), so a non-empty .reports always keeps the copy.
+REPORTS = ".reports"
+
 # Ignored entries that tools regenerate: they do not hold user work.
 REGENERABLE = frozenset(
     {"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",

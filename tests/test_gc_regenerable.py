@@ -88,3 +88,19 @@ def test_gc_keeps_uncollected_ignored_reports(home, tmp_path, monkeypatch):
     assert report.read_text() == "uncollected report"
     report.unlink()
     assert gc._worktree_clean(str(wt)) is True
+
+
+def test_new_copies_exclude_reports(tmp_path):
+    from subtask import core
+
+    repo, wt = _worktree(tmp_path)
+    git_dir = str(repo / ".git")
+    core._exclude_reports(git_dir)
+    core._exclude_reports(git_dir)
+    (wt / ".reports").mkdir()
+    (wt / ".reports" / "r.md").write_text("x")
+    out = subprocess.run(
+        ["git", "-C", str(wt), "status", "--porcelain"], capture_output=True, text=True, check=False
+    ).stdout
+    assert out.strip() == ""
+    assert (repo / ".git/info/exclude").read_text().split().count(".reports/") == 1
