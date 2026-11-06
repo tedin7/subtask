@@ -4,13 +4,16 @@ import json
 import subprocess
 import sys
 from importlib import metadata
+from pathlib import Path
 
 from subtask import __version__, cli
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_cli_version():
     result = subprocess.run(
-        [sys.executable, "-m", "subtask.cli", "--version"], capture_output=True, text=True, check=False
+        [sys.executable, "-m", "subtask.cli", "--version"], capture_output=True, text=True, check=False, cwd=REPO_ROOT
     )
     assert result.returncode == 0
     assert result.stdout.strip().startswith(f"subtask {__version__} (commit ")
