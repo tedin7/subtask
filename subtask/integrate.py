@@ -11,8 +11,9 @@ from __future__ import annotations
 import secrets
 import shutil
 import subprocess
+from datetime import UTC, datetime
 
-from . import ast_merge, config, jobs, verifier
+from . import ast_merge, config, events, jobs, verifier
 
 ACTIONS = ("diff", "apply", "discard")
 MAX_DIFF = 30000
@@ -73,7 +74,16 @@ def _discard(job_id: str, sp: dict) -> str:
     if removed.returncode != 0:
         reason = removed.stderr.strip()[:200] or f"git exited {removed.returncode}"
         return f"{job_id}: worktree not removed, branch kept: {reason}"
+    message = (
+        f"{datetime.now(UTC).isoformat()} branch={sp['branch']} reason=integrate discard; deletion attempted"
+    )
+    if len(message) > 200:
+        return f"{job_id}: worktree removed, branch kept: audit log entry too long"
+    event = events.emit(job_id, "integrate", message)
+    if not event or event.get("msg") != message:
+        return f"{job_id}: worktree removed, branch kept: audit log not written intact"
     gone = _git(sp["repo"], "branch", "-D", sp["branch"]).returncode == 0
+    events.emit(job_id, "integrate", f"branch={sp['branch']} discard: " + ("removed" if gone else "kept"))
     return f"{job_id}: worktree and branch removed" if gone else f"{job_id}: worktree removed, branch kept"
 
 

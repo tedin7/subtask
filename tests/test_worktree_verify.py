@@ -163,6 +163,41 @@ def test_discard_reports_locked_worktree_and_keeps_branch(tmp_path, monkeypatch)
     assert len(calls) == 1
 
 
+def test_discard_audits_branch_deletion_in_utc(home):
+    from datetime import UTC, datetime
+
+    from subtask import events, integrate, jobs
+
+    repo = _repo(home / "audit-repo")
+    worktree = home / "audit-worktree"
+    job_id = "st-audit"
+    jobs.job_dir(job_id).mkdir(parents=True)
+    _git(repo, "worktree", "add", "-b", "subtask/audit", str(worktree))
+    before = datetime.now(UTC).timestamp()
+    result = integrate._discard(job_id, {"repo": str(repo), "cwd": str(worktree), "branch": "subtask/audit"})
+    rows, _ = events.read_since(job_id)
+    assert "branch removed" in result
+    assert len(rows) >= 1
+    assert rows[0]["job"] == job_id and rows[0]["ts"] >= before
+    assert "subtask/audit" in rows[0]["msg"] and "discard" in rows[0]["msg"]
+    assert "+00:00" in rows[0]["msg"]
+    assert not _git(repo, "branch", "--list", "subtask/audit").strip()
+
+
+def test_discard_keeps_branch_when_audit_fails(home, monkeypatch):
+    from subtask import events, integrate
+
+    repo = _repo(home / "audit-failure-repo")
+    worktree = home / "audit-failure-worktree"
+    _git(repo, "worktree", "add", "-b", "subtask/audit-failure", str(worktree))
+    monkeypatch.setattr(events, "emit", lambda *args, **kwargs: None)
+    result = integrate._discard(
+        "st-audit", {"repo": str(repo), "cwd": str(worktree), "branch": "subtask/audit-failure"}
+    )
+    assert "branch kept" in result and "log" in result
+    assert _git(repo, "branch", "--list", "subtask/audit-failure").strip()
+
+
 def test_integrate_conflict_changes_nothing_or_starts_a_reconciler(home, monkeypatch):
     from subtask import core, jobs
     from subtask.integrate import integrate
