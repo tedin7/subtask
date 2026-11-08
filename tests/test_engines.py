@@ -152,3 +152,38 @@ def test_unknown_output_format_is_counted_not_crashing(home):
     fake_cli(home, "kimi", 'echo \'{"role":"assistant","tool_calls":"not-a-list"}\'; echo plain answer')
     job = core.start("x", engine="kimi", cwd=str(home)).split()[0]
     assert wait_final(job)["state"] == "done"
+
+
+def test_cli_failure_without_output_reports_stderr_reason(tmp_path):
+    """T-10994: a CLI that dies with only stderr must leave the reason in the outcome."""
+    import threading
+
+    from subtask.engines.base import RunContext
+    from subtask.engines.kimi import Kimi
+
+    class Dies(Kimi):
+        def argv(self, ctx):
+            return [
+                "/bin/sh",
+                "-c",
+                "echo 'Warning: x' >&2; echo 'error: failed: 429 usage limit' >&2; exit 1",
+            ]
+
+    (tmp_path / "worker-stderr.log").write_text("error: old attempt\n")
+    ctx = RunContext(
+        "st-x",
+        {"cwd": str(tmp_path)},
+        "p",
+        None,
+        2,
+        tmp_path,
+        lambda *a, **k: None,
+        threading.Event(),
+        lambda argv, env: (argv, env),
+        {},
+    )
+    out = Dies().run(ctx)
+    assert not out.ok
+    assert "429 usage limit" in out.result
+    assert "old attempt" not in out.result
+    assert out.quota_exhausted

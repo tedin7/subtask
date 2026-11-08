@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -207,7 +208,9 @@ class CliAdapter(Adapter):
         argv, env = ctx.wrap(self.argv(ctx), dict(ctx.env))
         state: dict = {"text": [], "commands": [], "session": None, "tokens": {}, "cost": None}
         raw = ctx.folder / f"output-{ctx.attempt}.jsonl"
-        with raw.open("a") as keep, (ctx.folder / "worker-stderr.log").open("a") as err:
+        stderr_log = ctx.folder / "worker-stderr.log"
+        stderr_from = stderr_log.stat().st_size if stderr_log.exists() else 0
+        with raw.open("a") as keep, stderr_log.open("a") as err:
             proc = subprocess.Popen(
                 argv,
                 cwd=ctx.spec["cwd"],
@@ -239,6 +242,12 @@ class CliAdapter(Adapter):
             text = "\n".join(state["plain"]).strip()  # engine printed no structured events: keep its output
         if state.get("error") and not text:
             text = state["error"]
+        if code != 0 and not text:
+            reason = stderr_reason(stderr_log, stderr_from)
+            if reason:
+                text = reason  # a failed run must say why (T-10994)
+                if re.search(r"\b429\b|usage limit|quota", reason, re.IGNORECASE):
+                    state["quota"] = True
         return Outcome(
             ok=code == 0 and not state.get("error") and bool(text),
             subtype=state.get("error_kind") or f"exit {code}",
@@ -252,6 +261,20 @@ class CliAdapter(Adapter):
             quota_exhausted=bool(state.get("quota")),
             exit_code=code,
         )
+
+
+def stderr_reason(path: Path, start: int = 0) -> str:
+    """The last `error:` line (or last line) the CLI wrote to stderr from byte `start`."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(start)
+            data = handle.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    lines = [ln.strip() for ln in data.splitlines() if ln.strip() and not ln.startswith("Warning:")]
+    errors = [ln for ln in lines if ln.lower().startswith("error")]
+    pick = (errors or lines or [""])[-1]
+    return pick[:500]
 
 
 def _run(argv: list[str], timeout: float = 10) -> str:
