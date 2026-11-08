@@ -20,7 +20,21 @@ from subtask.install.doctor import handshake
 ROOT = Path(__file__).resolve().parent.parent
 FAKE = Path(__file__).with_name("fake_clients.py")
 BASE = Path("/tmp/claude-0/installtest")
-VENV_MCP = Path(sys.executable).parent / "subtask-mcp"
+
+
+def _default_mcp() -> Path:
+    here = Path(sys.executable).parent / "subtask-mcp"
+    if here.exists():
+        return here
+    # A linked worktree has no venv of its own: fall back to the main checkout's.
+    gitfile = ROOT / ".git"
+    main = ROOT
+    if gitfile.is_file():
+        main = Path(gitfile.read_text().strip().removeprefix("gitdir: ")).parents[2]
+    return main / ".venv" / "bin" / "subtask-mcp"
+
+
+VENV_MCP = _default_mcp()
 CODEX_SEED = (
     '# my settings\nmodel = "o3"  # keep me\n\n[mcp_servers.other]\ncommand = "other"\n# trailing note\n'
 )
@@ -29,8 +43,9 @@ CODEX_SEED = (
 @pytest.fixture
 def env():
     assert VENV_MCP.exists(), (
-        f"{VENV_MCP} is missing: these tests need the project installed in the interpreter that runs them "
-        f"(pip install -e '.[dev]' in a venv, or use {ROOT}/.venv/bin/python -m pytest), not the system python"
+        f"{VENV_MCP} is missing: these tests need the project installed "
+        f"(pip install -e '.[dev]') in the venv that runs them, or in the main checkout's .venv "
+        f"when running from a linked worktree ({ROOT})"
     )
     BASE.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix="t-", dir=BASE))
@@ -43,7 +58,8 @@ def env():
     e = {
         "HOME": str(home), "CODEX_HOME": str(home / ".codex"), "KIMI_CODE_HOME": str(home / ".kimi-code"),
         "XDG_CONFIG_HOME": str(home / ".config"), "XDG_DATA_HOME": str(home / ".local" / "share"),
-        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "PATH": f"{fake_bin}:{VENV_MCP.parent}:/usr/bin:/bin",
+        "PYTHONPATH": str(ROOT),
     }  # fmt: skip
     yield home, e
     shutil.rmtree(home, ignore_errors=True)
