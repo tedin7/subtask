@@ -213,3 +213,41 @@ def test_integrate_conflict_changes_nothing_or_starts_a_reconciler(home, monkeyp
     wait_final(rec)
     assert integrate(["st-ffffffffff"]).startswith("unknown job")
     assert integrate(ids, "merge").startswith("action must be")
+
+
+def test_worktree_base_follows_a_newer_origin(home, monkeypatch):
+    """T-20137: the job worktree starts from the refreshed upstream, not a stale local HEAD."""
+    from subtask import core
+
+    origin = _repo(home / "origin")
+    subprocess.run(["git", "clone", "-q", str(origin), str(home / "clone")], check=True)
+    clone = home / "clone"
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(origin), "commit", "-q",
+         "--allow-empty", "-m", "newer"], check=True,
+    )
+    newest = _git(origin, "rev-parse", "HEAD").strip()
+    assert _git(clone, "rev-parse", "HEAD").strip() != newest
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
+    out = core.start("x", engine="fake", cwd=str(clone), isolation="worktree", max_usd=0.5)
+    job = out.split()[0]
+    wait_final(job)
+    assert _git(clone, "rev-parse", f"subtask/{job}~0").strip() == newest
+
+
+def test_worktree_base_keeps_local_commits_when_diverged(home, monkeypatch):
+    from subtask import core
+
+    origin = _repo(home / "origin")
+    subprocess.run(["git", "clone", "-q", str(origin), str(home / "clone")], check=True)
+    clone = home / "clone"
+    for repo in (origin, clone):
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-q",
+             "--allow-empty", "-m", f"own {repo.name}"], check=True,
+        )
+    local = _git(clone, "rev-parse", "HEAD").strip()
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
+    job = core.start("x", engine="fake", cwd=str(clone), isolation="worktree", max_usd=0.5).split()[0]
+    wait_final(job)
+    assert _git(clone, "rev-parse", f"subtask/{job}~0").strip() == local

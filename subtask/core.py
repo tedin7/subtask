@@ -49,6 +49,35 @@ def _git(repo: str, *args: str) -> str:
     ).stdout.strip()
 
 
+def _fresh_base(repo: str, base: str) -> str:
+    """Refresh origin, then move a plain HEAD base forward to its upstream (T-20137).
+
+    Best effort: no remote, no network or a diverged branch leave the base untouched.
+    Only a fast-forward is followed, so local commits are never skipped.
+    """
+    try:
+        subprocess.run(
+            ["git", "-C", repo, "fetch", "-q", "origin"],
+            capture_output=True, text=True, check=True, timeout=60,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return base
+    try:
+        head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}")
+        # the default base is HEAD, possibly frozen as its sha by the contract: both mean "no explicit base"
+        if base not in ("HEAD", head):
+            return base
+        upstream = _git(repo, "rev-parse", "--verify", "-q", "@{upstream}^{commit}")
+        if upstream != head:
+            subprocess.run(
+                ["git", "-C", repo, "merge-base", "--is-ancestor", head, upstream], check=True
+            )
+            return upstream
+    except (subprocess.SubprocessError, OSError):
+        pass
+    return base
+
+
 def _spawn(job_id: str, *extra: str) -> dict:
     with (jobs.job_dir(job_id) / "worker.log").open("a") as log:
         proc = subprocess.Popen(
@@ -369,6 +398,7 @@ def start(
             workdir = str(config.WORKTREES / job_id)
             config.WORKTREES.mkdir(parents=True, exist_ok=True)
             try:
+                base = _fresh_base(repo, base)
                 base = _git(repo, "rev-parse", "--verify", "--end-of-options", base + "^{commit}")
                 _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
                 git_dir = str(Path(repo, _git(repo, "rev-parse", "--git-common-dir")).resolve())
