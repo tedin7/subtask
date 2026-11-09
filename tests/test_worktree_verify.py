@@ -251,3 +251,21 @@ def test_worktree_base_keeps_local_commits_when_diverged(home, monkeypatch):
     job = core.start("x", engine="fake", cwd=str(clone), isolation="worktree", max_usd=0.5).split()[0]
     wait_final(job)
     assert _git(clone, "rev-parse", f"subtask/{job}~0").strip() == local
+
+
+def test_fresh_base_warns_when_diverged_and_stays_quiet_otherwise(home):
+    """T-20370: a diverged branch keeps its base but says so; being only ahead is silent."""
+    from subtask import core
+
+    origin = _repo(home / "origin")
+    subprocess.run(["git", "clone", "-q", str(origin), str(home / "clone")], check=True)
+    clone = home / "clone"
+    notes = []
+    commit = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C"]
+    subprocess.run([*commit, str(clone), "commit", "-q", "--allow-empty", "-m", "ahead"], check=True)
+    local = _git(clone, "rev-parse", "HEAD").strip()
+    assert core._fresh_base(str(clone), "HEAD", notes.append) == "HEAD"
+    assert notes == []
+    subprocess.run([*commit, str(origin), "commit", "-q", "--allow-empty", "-m", "theirs"], check=True)
+    assert core._fresh_base(str(clone), "HEAD", notes.append) == "HEAD"
+    assert len(notes) == 1 and "diverged" in notes[0] and local[:9] in notes[0]

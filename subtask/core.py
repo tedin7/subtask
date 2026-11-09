@@ -49,11 +49,12 @@ def _git(repo: str, *args: str) -> str:
     ).stdout.strip()
 
 
-def _fresh_base(repo: str, base: str) -> str:
+def _fresh_base(repo: str, base: str, note=None) -> str:
     """Refresh origin, then move a plain HEAD base forward to its upstream (T-20137).
 
     Best effort: no remote, no network or a diverged branch leave the base untouched.
-    Only a fast-forward is followed, so local commits are never skipped.
+    Only a fast-forward is followed, so local commits are never skipped; when the
+    branch diverged from its upstream the base stays and `note(msg)` is called (T-20370).
     """
     try:
         subprocess.run(
@@ -69,10 +70,17 @@ def _fresh_base(repo: str, base: str) -> str:
             return base
         upstream = _git(repo, "rev-parse", "--verify", "-q", "@{upstream}^{commit}")
         if upstream != head:
-            subprocess.run(
-                ["git", "-C", repo, "merge-base", "--is-ancestor", head, upstream], check=True
+            ff = subprocess.run(
+                ["git", "-C", repo, "merge-base", "--is-ancestor", head, upstream], capture_output=True
             )
-            return upstream
+            if ff.returncode == 0:
+                return upstream
+            if ff.returncode == 1 and note is not None:
+                ahead = subprocess.run(
+                    ["git", "-C", repo, "merge-base", "--is-ancestor", upstream, head], capture_output=True
+                ).returncode == 0
+                if not ahead:
+                    note(f"local branch diverged from {upstream[:9]}: base stays {head[:9]}, not the upstream")
     except (subprocess.SubprocessError, OSError):
         pass
     return base
@@ -398,7 +406,7 @@ def start(
             workdir = str(config.WORKTREES / job_id)
             config.WORKTREES.mkdir(parents=True, exist_ok=True)
             try:
-                base = _fresh_base(repo, base)
+                base = _fresh_base(repo, base, lambda m: _phase(progress, job_id, "worktree", m))
                 base = _git(repo, "rev-parse", "--verify", "--end-of-options", base + "^{commit}")
                 _git(repo, "worktree", "add", "-q", "-b", branch, workdir, base)
                 git_dir = str(Path(repo, _git(repo, "rev-parse", "--git-common-dir")).resolve())
