@@ -121,6 +121,8 @@ def test_budget_past_75_percent_routes_auto_to_free_engines(home, monkeypatch):
     monkeypatch.setattr(config, "MONTHLY_CAP_USD", 20.0)
     out = core.start("x", engine="fake", cwd=str(home), max_usd=0.5, tier="balanced")
     assert "budget_warning: 95% of the monthly cap" in out, out
+    assert "explicitly selected paid engine fake remains allowed" in out, out
+    assert "routed to free engines" not in out, out
     assert (
         core.start("x", engine="fake", cwd=str(home), tier="free_only")
         == "tier free_only: fake is a paid engine"

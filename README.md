@@ -144,7 +144,10 @@ Options of `start`:
   time and reports whether exit code and stdout match, plus `duration_ms_before`, `duration_ms_after`,
   `speedup_pct`.
 - `tier`: `fast` (effort low), `deep` (effort high, kind hard), `free_only`. Past 75% of the monthly cap,
-  `auto` and `balanced` go to free engines and the reply carries `budget_warning`.
+  `auto` and `balanced` route automatically selected engines to free engines and the reply carries
+  `budget_warning`. For these tiers, an explicitly selected paid engine remains allowed with a warning.
+  `fast` and `deep` do not change or emit this warning at this threshold. Explicit `free_only` still
+  rejects paid engines. The monthly cap remains subject to the separate budget admission check.
 - Kimi's default K3-256k and supported managed model aliases accept `low`, `high` and `max` effort.
   Subtask maps `medium` to `high` and `xhigh` to `max` for those models, which can consume more quota.
   New sessions retain the effective effort when resumed; custom model aliases keep the requested value.

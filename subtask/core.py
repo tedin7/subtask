@@ -355,6 +355,9 @@ def start(
             return reason
     elif tier == "free_only" and not budget_warning and registry.get(engine).capabilities.paid:
         return f"tier free_only: {engine} is a paid engine"
+    elif budget_warning:
+        kind_label = "paid engine" if registry.get(engine).capabilities.paid else "engine"
+        budget_warning = f"{budget_warning.partition(':')[0]}: explicitly selected {kind_label} {engine} remains allowed"
     adapter = registry.get(engine)
     assert adapter is not None
     effective, why = _effective(adapter, wanted)
