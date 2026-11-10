@@ -3,11 +3,11 @@
 The Python distribution is **`subtask-mcp`**. The PyPI name `subtask` belongs to an
 unrelated project: never run `pip install subtask`.
 
-## Where it is published (2026-10-14)
+## Where it is published (state as of 2026-10-14, versions below may lag)
 
 | Channel | State |
 |---|---|
-| GitHub release | `v0.2.11` with wheel and sdist: https://github.com/tedin7/subtask/releases |
+| GitHub release | `v0.5.9` with wheel and sdist: https://github.com/tedin7/subtask/releases |
 | PyPI | `subtask-mcp` 0.2.3: `uv tool install subtask-mcp` |
 | MCP Registry | `io.github.tedin7/subtask` 0.2.3 |
 | Claude Code / Codex marketplaces | in this repository (`claude plugin marketplace add tedin7/subtask`); no official catalog listing |
@@ -20,7 +20,7 @@ sh scripts/install.sh --yes        # same, and applies it
 sh scripts/install.sh --install-uv # also installs uv with its official installer if missing
 ```
 
-It runs `uv tool install "git+https://github.com/tedin7/subtask@${SUBTASK_REF:-v0.2.11}"`
+It runs `uv tool install "git+https://github.com/tedin7/subtask@${SUBTASK_REF:-v0.5.9}"`
 (falls back to `pipx`), then `subtask install --client all`.
 
 ## Automatic install (any client)
@@ -53,7 +53,7 @@ server is registered once.
   `--force` replaces it).
 - Manual: `claude plugin marketplace add tedin7/subtask && claude plugin install subtask@subtask`.
 - The plugin starts `subtask-mcp` if it is installed (fast), otherwise
-  `uvx --from subtask-mcp==0.2.11 subtask-mcp` from PyPI (first start downloads it).
+  `uvx --from subtask-mcp==0.5.9 subtask-mcp` from PyPI (first start downloads it).
 - The hook prints `mcp <server>/<tool> <seconds> ok|error` after every MCP tool call.
 - Verify: `subtask doctor --client claude` (looks for `plugin:subtask:subtask · Connected`
   in `claude mcp list` and warns about a duplicate entry).
