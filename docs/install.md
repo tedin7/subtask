@@ -3,13 +3,13 @@
 The Python distribution is **`subtask-mcp`**. The PyPI name `subtask` belongs to an
 unrelated project: never run `pip install subtask`.
 
-## Where it is published (2026-10-14)
+## Where it is published (checked 2026-11-10)
 
 | Channel | State |
 |---|---|
-| GitHub release | `v0.2.11` with wheel and sdist: https://github.com/tedin7/subtask/releases |
-| PyPI | `subtask-mcp` 0.2.3: `uv tool install subtask-mcp` |
-| MCP Registry | `io.github.tedin7/subtask` 0.2.3 |
+| GitHub release | `v0.5.9` with wheel and sdist: https://github.com/tedin7/subtask/releases |
+| PyPI | `subtask-mcp` 0.5.9: `uv tool install subtask-mcp` |
+| MCP Registry | `io.github.tedin7/subtask` 0.5.9 |
 | Claude Code / Codex marketplaces | in this repository (`claude plugin marketplace add tedin7/subtask`); no official catalog listing |
 
 ## Clean machine
