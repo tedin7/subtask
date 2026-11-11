@@ -3,12 +3,14 @@
 Removable: folders of finished jobs older than the retention, whose worktree is
 already gone or clean (no uncommitted files; ignored files only if regenerable,
 like node_modules), telemetry older
-than its retention. Never removed: active jobs, dirty worktrees, branches.
+than its retention. Never removed: active jobs, dirty worktrees. Branches: only with `--branches`,
+and only those already contained in the remote default branch (see branch_plan).
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -172,6 +174,119 @@ def _changed_since_plan(item: dict, days: int) -> str | None:
     if item["worktree"] and _worktree_clean(item["worktree"]) is False:
         return "worktree has uncommitted or ignored files"
     return None
+
+
+BRANCH_PREFIX = "refs/heads/subtask/st-"
+BRANCH_LOG = "gc-branches.log"
+
+
+def _default_base(repo: str) -> str | None:
+    """The remote default branch (origin/HEAD), or None: never guessed between main and master."""
+    done = _git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if done is None or done.returncode != 0 or not done.stdout.strip():
+        return None
+    return done.stdout.strip()
+
+
+def _repos() -> list[str]:
+    seen: dict[str, None] = {}
+    for job_id in jobs.all_jobs():
+        repo = jobs.spec(job_id).get("repo")
+        if repo and Path(repo).is_dir():
+            seen[str(repo)] = None
+    return list(seen)
+
+
+def _checked_out(repo: str) -> set[str] | None:
+    done = _git(repo, "worktree", "list", "--porcelain")
+    if done is None or done.returncode != 0:
+        return None
+    return {line.split(" ", 1)[1] for line in done.stdout.splitlines() if line.startswith("branch ")}
+
+
+def branch_plan() -> list[dict]:
+    """Local `subtask/st-*` branches whose tip is an ancestor of the remote default branch.
+
+    Such a branch holds no commit that the default branch lacks, so deleting it loses no work.
+    Kept: a branch with a worktree, one whose job is not in a final state, and any repo whose
+    default branch or worktree list cannot be read. Equivalent patches (squash) are not touched.
+    """
+    out: list[dict] = []
+    for repo in _repos():
+        base = _default_base(repo)
+        in_use = _checked_out(repo)
+        if base is None or in_use is None:
+            out.append({"repo": repo, "skip": "origin/HEAD or worktree list not readable"})
+            continue
+        listing = _git(
+            repo, "for-each-ref", "--merged", base, "--format=%(refname) %(objectname)", BRANCH_PREFIX[:-3]
+        )
+        if listing is None or listing.returncode != 0:
+            out.append({"repo": repo, "skip": "branch list not readable"})
+            continue
+        for line in listing.stdout.splitlines():
+            ref, _, sha = line.partition(" ")
+            if not ref.startswith(BRANCH_PREFIX) or ref in in_use:
+                continue
+            job = ref.removeprefix("refs/heads/subtask/")
+            state = jobs.read_json(jobs.job_dir(job) / "status.json", {}).get("state")
+            if state is not None and state not in jobs.FINAL:
+                continue
+            out.append({"repo": repo, "base": base, "ref": ref, "sha": sha})
+    return out
+
+
+def _remove_branch(item: dict) -> str | None:
+    """Delete one branch only if it still points at the planned sha, which is still integrated."""
+    repo, ref, sha = item["repo"], item["ref"], item["sha"]
+    now = _git(repo, "rev-parse", "--verify", "-q", ref + "^{commit}")
+    if now is None or now.stdout.strip() != sha:
+        return "branch moved after the plan"
+    merged = _git(repo, "merge-base", "--is-ancestor", sha, item["base"])
+    if merged is None or merged.returncode != 0:
+        return "branch not integrated anymore"
+    try:
+        with (config.HOME / BRANCH_LOG).open("a", encoding="utf-8") as log:
+            log.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\t{ref.removeprefix('refs/heads/')}\t{sha}\t{repo}\n")  # fmt: skip
+    except OSError as exc:
+        return f"log not written: {exc}"  # no recovery line, no deletion
+    done = subprocess.run(
+        ["git", "-C", repo, "branch", "-D", ref.removeprefix("refs/heads/")],
+        capture_output=True, text=True, check=False, env={**os.environ, "LC_ALL": "C"}, timeout=GIT_TIMEOUT,
+    )  # fmt: skip
+    if done.returncode != 0:
+        return f"git refused: {done.stderr.strip()[:80]}"
+    deleted = re.search(r"\(was ([0-9a-f]{7,40})\)", done.stdout)
+    if deleted is None or not sha.startswith(deleted.group(1)):
+        if deleted is not None:  # a different tip was deleted: put it back
+            full = _git(repo, "rev-parse", "--verify", "-q", deleted.group(1) + "^{commit}")
+            if full is not None and full.stdout.strip():
+                _git(repo, "update-ref", ref, full.stdout.strip(), "")
+        return "branch changed during deletion, restored"
+    return None
+
+
+def run_branches(apply: bool = False) -> str:
+    """Delete integrated, idle `subtask/st-*` branches in every repo the jobs used (F-11589)."""
+    removed = 0
+    lines: list[str] = []
+    for item in branch_plan():
+        if item.get("skip"):
+            lines.append(f"skip {item['repo']}: {item['skip']}")
+            continue
+        name = item["ref"].removeprefix("refs/heads/")
+        if not apply:
+            removed += 1
+            continue
+        why = _remove_branch(item)
+        if why:
+            lines.append(f"keep {name}: {why}")
+        else:
+            removed += 1
+    verb = "removed" if apply else "would remove"
+    return "\n".join(
+        [f"{verb} {removed} branches", *lines[:20]] + ([] if apply else ["(dry run: add --apply to delete)"])
+    )
 
 
 def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:

@@ -131,6 +131,11 @@ def main() -> int:
     g = sub.add_parser("gc")
     g.add_argument("--days", type=int, help="default: SUBTASK_JOB_RETENTION_DAYS, or 30")
     g.add_argument("--apply", action="store_true")
+    g.add_argument(
+        "--branches",
+        action="store_true",
+        help="only delete local subtask/st-* branches already in origin/HEAD",
+    )
     sub.add_parser("du")
     sub.add_parser("roi")
     ro = sub.add_parser("routing")
@@ -243,7 +248,10 @@ def main() -> int:
     elif a.cmd == "gc":
         from . import gc
 
-        out = gc.run(gc.RETENTION_DAYS if a.days is None else a.days, a.apply)
+        if a.branches:
+            out = gc.run_branches(a.apply)
+        else:
+            out = gc.run(gc.RETENTION_DAYS if a.days is None else a.days, a.apply)
     elif a.cmd == "du":
         from . import gc
 

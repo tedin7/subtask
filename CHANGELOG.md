@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `subtask gc --branches [--apply]` deletes local `subtask/st-*` branches already contained in the remote default branch (origin/HEAD), in every repo the jobs used. It keeps branches with a worktree, with a running job, or with own commits, logs each deleted sha to `gc-branches.log` (F-11589).
+
 ## 0.5.9
 
 ### Fixed
