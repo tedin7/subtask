@@ -81,15 +81,28 @@ def _installed(adapter) -> bool:
     return adapter.available()
 
 
-def _repo_rate(repo: str | None, engine: str) -> tuple[int, int]:
-    """(passed, verified) of `engine` on `repo` from engine_stats.json, written by every worker."""
+def _repo_rate(repo: str | None, engine: str, kind: str) -> tuple[int, int]:
+    """(passed, verified) of `engine` on `repo` for this `kind`, from the telemetry rows.
+
+    Contract: one unit = one job's first attempt (attempt_kind "start") with a
+    verification result, for that repo, engine and kind. Replies (later attempts)
+    and rows without a repo are not counted; a job counts once. engine_stats.json
+    mixes kinds and replies, so the router no longer reads it.
+    """
     if not repo:
         return 0, 0
-    try:
-        row = json.loads((config.HOME / "engine_stats.json").read_text()).get(repo, {}).get(engine, {})
-    except (OSError, json.JSONDecodeError, AttributeError):
-        return 0, 0
-    return int(row.get("passed") or 0), int(row.get("verified") or 0)
+    seen: dict[str, bool] = {}
+    for n, row in enumerate(telemetry.rows()):
+        if (
+            row.get("repo") != repo
+            or row.get("engine") != engine
+            or row.get("kind") != kind
+            or row.get("attempt_kind") != "start"
+            or row.get("verified") is None
+        ):
+            continue
+        seen.setdefault(str(row.get("job") or f"row{n}"), bool(row["verified"]))
+    return sum(seen.values()), len(seen)
 
 
 def rank(
@@ -138,7 +151,7 @@ def rank(
             continue
         rows = history.get(name, [])
         verified = [r for r in rows if r.get("verified") is not None]
-        passed_here, verified_here = _repo_rate(repo, name)
+        passed_here, verified_here = _repo_rate(repo, name, kind)
         if verified_here >= cfg["min_samples"]:  # this repository's own record wins over the global one
             p_success = (passed_here + 1) / (verified_here + 2)
             p_src = f"repo stats n={verified_here}"

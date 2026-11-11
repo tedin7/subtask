@@ -40,11 +40,15 @@ def test_result_always_carries_cost_and_budget_remaining(home, monkeypatch):
 def test_engine_stats_of_the_repo_steer_the_auto_choice(home):
     from subtask import config, policy, router
 
-    stats = {str(home): {"fake": {"runs": 6, "verified": 6, "passed": 0, "usd": 0, "pass_rate": 0.0}}}
-    (config.HOME).mkdir(parents=True, exist_ok=True)
-    (config.HOME / "engine_stats.json").write_text(json.dumps(stats))
+    from subtask import telemetry
+
+    for i in range(6):
+        telemetry.record(
+            {"job": f"j{i}", "repo": str(home), "engine": "fake", "kind": "code",
+             "attempt_kind": "start", "verified": False}
+        )  # fmt: skip
     options = router.rank("code", None, policy.demand(), repo=str(home))
     fake = [o for o in options if o.engine == "fake"]
     if fake and fake[0].admissible:
         assert fake[0].terms["p_source"].startswith("repo stats"), fake[0].terms
-    assert router._repo_rate(str(home), "fake") == (0, 6)
+    assert router._repo_rate(str(home), "fake", "code") == (0, 6)

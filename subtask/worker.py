@@ -437,6 +437,7 @@ def _telemetry(
                 "attempt_kind": record["kind"],
                 "engine": spec.get("engine"),
                 "kind": spec.get("kind"),
+                "repo": spec.get("repo") or spec.get("cwd"),
                 "routing": spec.get("routing"),
                 "policy": (spec.get("policy") or {}).get("effective"),
                 "queue_s": round(record["started"] - created, 2) if record["kind"] == "start" else None,
