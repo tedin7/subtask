@@ -34,10 +34,8 @@ def demand(readonly: bool = False, level: str | None = None, untrusted: bool = F
 def effective(adapter: Adapter, wanted: dict) -> tuple[str | None, str]:
     """(level the run will really have, reason). None = cannot satisfy."""
     caps = adapter.capabilities
-    if wanted["readonly"]:
-        if not caps.readonly:
-            return None, f"{adapter.name} cannot run read-only"
-        return "readonly", "engine-enforced read-only"
+    if wanted["readonly"] and not caps.readonly:
+        return None, f"{adapter.name} cannot run read-only"
     if wanted["untrusted"] and not caps.command_network_off:
         return None, f"{adapter.name} cannot deny network to commands (untrusted)"
     floor = LEVELS.index(wanted["level"])
@@ -48,6 +46,8 @@ def effective(adapter: Adapter, wanted: dict) -> tuple[str | None, str]:
     # Strongest native level at or above the demand; isolation only when asked or needed.
     native = [lvl for lvl in caps.levels if lvl != "isolated" and LEVELS.index(lvl) >= floor]
     if native:
+        if wanted["readonly"]:
+            return "readonly", "engine-enforced read-only"
         level = max(native, key=LEVELS.index)
         return (
             level,

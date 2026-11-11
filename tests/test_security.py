@@ -35,6 +35,32 @@ def test_policy_matrix_is_enforced_not_scored(home):
         policy.demand(level="yolo")
 
 
+def test_readonly_does_not_bypass_isolation_or_network_requirements(home):
+    from types import SimpleNamespace
+
+    from subtask import policy
+    from subtask.engines import registry
+
+    codex = registry.all_engines()["codex"]
+    assert policy.effective(codex, policy.demand(readonly=True, level="isolated"))[0] == "isolated"
+    no_network_control = SimpleNamespace(
+        name=codex.name, capabilities=SimpleNamespace(readonly=True, command_network_off=False)
+    )
+    assert policy.effective(no_network_control, policy.demand(readonly=True, untrusted=True))[0] is None
+
+
+def test_readonly_isolated_start_refuses_missing_bwrap(home, monkeypatch):
+    from subtask import core, runners
+
+    def unexpected_spawn(*args):
+        raise AssertionError("worker must not start without bubblewrap")
+
+    monkeypatch.setattr(runners, "bwrap_available", lambda: False)
+    monkeypatch.setattr(core, "_spawn", unexpected_spawn)
+    out = core.start("x", engine="codex", cwd=str(home), readonly=True, policy="isolated")
+    assert "bubblewrap" in out and "started" not in out
+
+
 def test_router_never_trades_security_for_cost(home):
     from subtask import policy, router
 
