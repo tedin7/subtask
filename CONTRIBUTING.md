@@ -24,10 +24,17 @@ cd /path/to/worktree
 
 ## Tests and lint
 
+Run Ruff from the worktree being checked as well. Relative paths such as
+`subtask tests` refer to the current directory, even when the Ruff executable
+comes from another checkout. Running it from the main checkout checks that
+checkout, not the worktree under review:
+
 ```bash
+cd /path/to/worktree
 .venv/bin/python -m pytest -n 0 -q -p no:cacheprovider     # offline, fake engines only
 .venv/bin/python -m pytest -n 0 -m contract                # adapter contract tests on recorded output
 uvx ruff check subtask tests
+uvx ruff format --check subtask tests
 ```
 
 Install `bubblewrap` to run the isolation tests (they skip without it).
