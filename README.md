@@ -127,6 +127,8 @@ Options of `start`:
 
 - `isolation="worktree"`: own worktree and branch (like `repo=`), plus `SUBTASK_PORT` (from 18100),
   `SUBTASK_ID` and a private `TMPDIR`. The result lists `files_modified` and `diff_stat`.
+  This also applies to `readonly=True`; `repo=` alone keeps read-only jobs in the original directory.
+  The CLI exposes the same choice through `start --isolation worktree`.
 - `verify` + `max_retries`: a failed check resumes the job with the output; when every retry fails, a
   worktree goes back to its best attempt (scored from "N passed / N failed").
 - `adversarial=True`: a Breaker job writes edge-case tests from the spec only; they are copied into the

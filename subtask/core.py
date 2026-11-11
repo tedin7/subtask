@@ -59,7 +59,10 @@ def _fresh_base(repo: str, base: str, note=None) -> str:
     try:
         subprocess.run(
             ["git", "-C", repo, "fetch", "-q", "origin"],
-            capture_output=True, text=True, check=True, timeout=60,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
         )
     except (subprocess.SubprocessError, OSError):
         return base
@@ -186,7 +189,7 @@ def start(
     if tier == "deep":
         effort = "high" if effort == "medium" else effort
         kind = "hard" if kind == "code" else kind
-    if isolation == "worktree" and not repo and not readonly:
+    if isolation == "worktree" and not repo:
         repo = _repo_of(str(Path(cwd or os.getcwd()).resolve()))
         if not repo:
             return "isolation worktree needs a git repository"
@@ -403,7 +406,7 @@ def start(
     try:
         folder.mkdir(parents=True)
         branch = git_dir = None
-        if repo and not readonly:
+        if repo and (not readonly or isolation == "worktree"):
             _phase(progress, job_id, "worktree", f"preparing worktree from {base}")
             branch = f"subtask/{job_id}"
             workdir = str(config.WORKTREES / job_id)
@@ -416,7 +419,10 @@ def start(
                 _exclude_reports(git_dir)
             except subprocess.CalledProcessError as exc:
                 raise _Compensate(f"worktree not created: {exc.stderr.strip()[:200]}") from exc
-            task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
+            if readonly:
+                task += f"\n\nYou work in an isolated git worktree on branch {branch}. Read only."
+            else:
+                task += f"\n\nYou work in an isolated git worktree on branch {branch}. Commit your work there; never push."
             if allowed_paths:
                 task += "\nChange only these paths; anything else is reverted: " + ", ".join(allowed_paths)
             if symbol_scope:
