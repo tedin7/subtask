@@ -28,6 +28,62 @@ def test_strip_keeps_other_tables():
     assert 'model = "x"' in out and '[projects."/r"]' in out and 'trust = "trusted"' in out
 
 
+TRICKY = '''model = "x"
+notes = """
+[mcp_servers.fake]
+mcp_servers = 1
+"""
+mcp_servers.dotted.command = "d"
+list = [
+  "[mcp_servers.in_array]",
+]
+[other]
+mcp_servers = "mine"  # belongs to [other], not the root table
+[ mcp_servers . "q]x" ]  # spaced header, bracket in a quoted name
+command = "q"
+args = [
+  "a",
+  "b",
+]
+[[mcp_servers.arr]]
+command = "z"
+[projects."/r"]
+trust = "trusted"
+'''
+
+
+def test_strip_is_structural():
+    import tomllib
+
+    out = codex_home.strip_mcp_servers(TRICKY)
+    before, after = tomllib.loads(TRICKY), tomllib.loads(out)
+    assert "mcp_servers" not in after
+    assert after["notes"] == before["notes"] and after["list"] == before["list"]
+    assert after["other"] == {"mcp_servers": "mine"}
+    assert after["projects"] == before["projects"] and after["model"] == "x"
+    assert "mcp_servers.dotted" not in out and "q]x" not in out and "[[mcp_servers" not in out
+
+
+def test_strip_only_removes_the_mcp_node():
+    import tomllib
+
+    for text in (CFG, TRICKY):
+        rest = {k: v for k, v in tomllib.loads(text).items() if k != "mcp_servers"}
+        assert tomllib.loads(codex_home.strip_mcp_servers(text)) == rest
+
+
+def test_strip_rejects_broken_toml():
+    with pytest.raises(ValueError):
+        codex_home.strip_mcp_servers('a = """open\n')
+
+
+def test_prepare_keeps_source_home_on_unstrippable_config(tmp_path):
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir()
+    (src / "config.toml").write_text('a = """open\n')
+    assert codex_home.prepare(src, dst) == src
+
+
 def test_prepare_links_state_and_strips_config(tmp_path):
     src, dst = tmp_path / "src", tmp_path / "dst"
     src.mkdir()
