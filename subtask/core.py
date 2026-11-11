@@ -74,16 +74,25 @@ def _fresh_base(repo: str, base: str, note=None) -> str:
         upstream = _git(repo, "rev-parse", "--verify", "-q", "@{upstream}^{commit}")
         if upstream != head:
             ff = subprocess.run(
-                ["git", "-C", repo, "merge-base", "--is-ancestor", head, upstream], capture_output=True
+                ["git", "-C", repo, "merge-base", "--is-ancestor", head, upstream],
+                capture_output=True,
+                check=False,
             )
             if ff.returncode == 0:
                 return upstream
             if ff.returncode == 1 and note is not None:
-                ahead = subprocess.run(
-                    ["git", "-C", repo, "merge-base", "--is-ancestor", upstream, head], capture_output=True
-                ).returncode == 0
+                ahead = (
+                    subprocess.run(
+                        ["git", "-C", repo, "merge-base", "--is-ancestor", upstream, head],
+                        capture_output=True,
+                        check=False,
+                    ).returncode
+                    == 0
+                )
                 if not ahead:
-                    note(f"local branch diverged from {upstream[:9]}: base stays {head[:9]}, not the upstream")
+                    note(
+                        f"local branch diverged from {upstream[:9]}: base stays {head[:9]}, not the upstream"
+                    )
     except (subprocess.SubprocessError, OSError):
         pass
     return base
@@ -360,7 +369,9 @@ def start(
         return f"tier free_only: {engine} is a paid engine"
     elif budget_warning:
         kind_label = "paid engine" if registry.get(engine).capabilities.paid else "engine"
-        budget_warning = f"{budget_warning.partition(':')[0]}: explicitly selected {kind_label} {engine} remains allowed"
+        budget_warning = (
+            f"{budget_warning.partition(':')[0]}: explicitly selected {kind_label} {engine} remains allowed"
+        )
     adapter = registry.get(engine)
     assert adapter is not None
     effective, why = _effective(adapter, wanted)
