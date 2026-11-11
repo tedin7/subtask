@@ -73,6 +73,7 @@ def main() -> int:
     s.add_argument("--cwd")
     s.add_argument("--base", default="HEAD")
     s.add_argument("--readonly", action="store_true")
+    s.add_argument("--isolation", choices=["shared", "worktree"], default="shared")
     s.add_argument("--max-usd", type=float)
     s.add_argument("--max-turns", type=int, default=60)
     s.add_argument("--effort", default="medium")
@@ -201,6 +202,7 @@ def main() -> int:
             policy=a.policy,
             verify=a.verify,
             untrusted=a.untrusted,
+            isolation=a.isolation,
             contract=__import__("json").loads(__import__("pathlib").Path(a.contract_file).read_text())
             if a.contract_file
             else None,

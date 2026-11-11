@@ -223,8 +223,21 @@ def test_worktree_base_follows_a_newer_origin(home, monkeypatch):
     subprocess.run(["git", "clone", "-q", str(origin), str(home / "clone")], check=True)
     clone = home / "clone"
     subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(origin), "commit", "-q",
-         "--allow-empty", "-m", "newer"], check=True,
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-C",
+            str(origin),
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "newer",
+        ],
+        check=True,
     )
     newest = _git(origin, "rev-parse", "HEAD").strip()
     assert _git(clone, "rev-parse", "HEAD").strip() != newest
@@ -243,11 +256,51 @@ def test_worktree_base_keeps_local_commits_when_diverged(home, monkeypatch):
     clone = home / "clone"
     for repo in (origin, clone):
         subprocess.run(
-            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), "commit", "-q",
-             "--allow-empty", "-m", f"own {repo.name}"], check=True,
+            [
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-C",
+                str(repo),
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                f"own {repo.name}",
+            ],
+            check=True,
         )
     local = _git(clone, "rev-parse", "HEAD").strip()
     monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
     job = core.start("x", engine="fake", cwd=str(clone), isolation="worktree", max_usd=0.5).split()[0]
     wait_final(job)
     assert _git(clone, "rev-parse", f"subtask/{job}~0").strip() == local
+
+
+def test_readonly_explicit_worktree_is_honored(home, monkeypatch):
+    from subtask import core, jobs, planning
+
+    repo = _repo(home / "readonly-repo")
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", SAY)
+    for location in ({"cwd": str(repo)}, {"repo": str(repo)}):
+        out = core.start("read", engine="fake", readonly=True, isolation="worktree", **location)
+        assert " started " in out, out
+        job = out.split()[0]
+        spec = jobs.spec(job)
+        assert spec["cwd"] != str(repo)
+        assert spec["repo"] == str(repo)
+        assert spec["branch"] == f"subtask/{job}"
+        assert "Commit your work" not in spec["task"]
+        assert spec["readonly"] is True
+        wait_final(job)
+    assert core.start("read", engine="fake", readonly=True, cwd=str(home), isolation="worktree") == (
+        "isolation worktree needs a git repository"
+    )
+    import pytest
+
+    with pytest.raises(ValueError, match="isolation worktree needs a git repository"):
+        planning.preflight(
+            {"task": "read", "engine": "fake", "readonly": True, "cwd": str(home), "isolation": "worktree"}
+        )

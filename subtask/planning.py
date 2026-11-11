@@ -51,7 +51,7 @@ def preflight(task, *, dependency_ids=()):
     if issue:
         raise ValueError(issue)
     repo = task.get("repo")
-    if task.get("isolation") == "worktree" and not repo and not task.get("readonly"):
+    if task.get("isolation") == "worktree" and not repo:
         repo = core._repo_of(str(Path(task.get("cwd") or os.getcwd()).resolve()))
         if not repo:
             raise ValueError("isolation worktree needs a git repository")
