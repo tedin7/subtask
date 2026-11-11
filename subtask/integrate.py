@@ -8,6 +8,7 @@ own worktree, that merges the branches and runs every job's verify.
 
 from __future__ import annotations
 
+import os
 import secrets
 import shutil
 import subprocess
@@ -69,13 +70,35 @@ def integrate(ids: list[str], action: str = "apply", auto_resolve: bool = False)
     return _apply(found, auto_resolve)
 
 
+def _worktree_gone(repo: str, cwd: str) -> bool:
+    """True when `cwd` no longer exists and git has no worktree registered there (stale entries are pruned)."""
+    if os.path.lexists(cwd):
+        return False
+    _git(repo, "worktree", "prune")
+    listing = _git(repo, "worktree", "list", "--porcelain")
+    if listing.returncode != 0:
+        return False
+    target = os.path.realpath(cwd)
+    return all(
+        os.path.realpath(line[9:]) != target
+        for line in listing.stdout.splitlines()
+        if line.startswith("worktree ")
+    )
+
+
 def _discard(job_id: str, sp: dict) -> str:
     removed = _git(sp["repo"], "worktree", "remove", "--force", sp["cwd"])
+    already = False
     if removed.returncode != 0:
-        reason = removed.stderr.strip()[:200] or f"git exited {removed.returncode}"
-        return f"{job_id}: worktree not removed, branch kept: {reason}"
+        # A retry after an earlier discard stopped half way (e.g. audit log error): the worktree
+        # is already gone, so go on with the audit and the branch instead of failing forever.
+        already = _worktree_gone(sp["repo"], sp["cwd"])
+        if not already:
+            reason = removed.stderr.strip()[:200] or f"git exited {removed.returncode}"
+            return f"{job_id}: worktree not removed, branch kept: {reason}"
     message = (
         f"{datetime.now(UTC).isoformat()} branch={sp['branch']} reason=integrate discard; deletion attempted"
+        + ("; worktree already removed" if already else "")
     )
     if len(message) > 200:
         return f"{job_id}: worktree removed, branch kept: audit log entry too long"

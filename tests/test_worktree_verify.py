@@ -184,6 +184,41 @@ def test_discard_audits_branch_deletion_in_utc(home):
     assert not _git(repo, "branch", "--list", "subtask/audit").strip()
 
 
+def test_discard_retry_after_worktree_already_removed_finishes_audit_and_branch(home, monkeypatch):
+    """T-21901: audit failed once (worktree gone, branch kept); the retry completes both phases."""
+    from subtask import events, integrate, jobs
+
+    repo = _repo(home / "retry-repo")
+    worktree = home / "retry-worktree"
+    job_id = "st-retry"
+    jobs.job_dir(job_id).mkdir(parents=True)
+    sp = {"repo": str(repo), "cwd": str(worktree), "branch": "subtask/retry"}
+    _git(repo, "worktree", "add", "-b", "subtask/retry", str(worktree))
+    real_emit = events.emit
+    monkeypatch.setattr(events, "emit", lambda *args, **kwargs: None)
+    assert "branch kept" in integrate._discard(job_id, sp)
+    assert not worktree.exists() and _git(repo, "branch", "--list", "subtask/retry").strip()
+    monkeypatch.setattr(events, "emit", real_emit)
+    result = integrate._discard(job_id, sp)
+    assert "worktree and branch removed" in result, result
+    assert not _git(repo, "branch", "--list", "subtask/retry").strip()
+    rows, _ = events.read_since(job_id)
+    assert any("worktree already removed" in r["msg"] for r in rows)
+
+
+def test_discard_retry_keeps_branch_when_audit_fails_again(home, monkeypatch):
+    from subtask import events, integrate
+
+    repo = _repo(home / "retry2-repo")
+    worktree = home / "retry2-worktree"
+    sp = {"repo": str(repo), "cwd": str(worktree), "branch": "subtask/retry2"}
+    _git(repo, "worktree", "add", "-b", "subtask/retry2", str(worktree))
+    monkeypatch.setattr(events, "emit", lambda *args, **kwargs: None)
+    integrate._discard("st-retry2", sp)
+    assert "branch kept" in integrate._discard("st-retry2", sp)
+    assert _git(repo, "branch", "--list", "subtask/retry2").strip()
+
+
 def test_discard_keeps_branch_when_audit_fails(home, monkeypatch):
     from subtask import events, integrate
 
