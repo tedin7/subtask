@@ -627,7 +627,7 @@ def _line(job_id: str) -> str:
 
 
 def status(job_id: str | None = None, limit: int = 8) -> str:
-    ids = [job_id] if job_id else jobs.all_jobs()[:limit]
+    ids = [job_id] if job_id else jobs.newest_jobs(limit)
     if not ids:
         return "no sub-tasks"
     if job_id:
@@ -1391,7 +1391,7 @@ def board_data(limit: int = 10) -> dict:
                            "expanded_from": t.get("expanded_from")} for t in tasks],
             })  # fmt: skip
     job_rows = []
-    for job_id in jobs.all_jobs()[:limit]:
+    for job_id in jobs.newest_jobs(limit):
         st, sp = jobs.status(job_id), jobs.spec(job_id)
         tried = [a for a in st.get("attempts") or [] if a.get("verification")]
         v = st.get("verification") or {}
