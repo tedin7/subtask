@@ -20,17 +20,17 @@ import argparse
 import json
 import re
 import sys
-from importlib import metadata
 from pathlib import Path
 
 from . import __version__, core
-from .install import commands as install_commands
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
 
 def installed_commit() -> str:
     """Read the immutable VCS revision of this installation, when recorded."""
+    from importlib import metadata  # 20 ms: only --version needs it, not every command
+
     try:
         dist = metadata.distribution("subtask-mcp")
         if Path(dist.locate_file("subtask/__init__.py")).resolve() != PACKAGE_DIR / "__init__.py":
@@ -56,6 +56,8 @@ class _Parser(argparse.ArgumentParser):
 
 
 def main() -> int:
+    from .install import commands as install_commands
+
     p = _Parser(prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__} (commit {installed_commit()})"
@@ -314,8 +316,17 @@ def _watch(ids: list[str], interval: float) -> int:
         return 130
 
 
+def _plain_status(args: list[str]) -> bool:
+    """`subtask status [ID]` with no option: status lines run it every few minutes, so it skips
+    building the parser of every command (and importing the install commands) to give the same output."""
+    return args[:1] == ["status"] and len(args) <= 2 and not any(a.startswith("-") for a in args[1:])
+
+
 def run() -> int:
     try:
+        if _plain_status(sys.argv[1:]):
+            print(core.status(sys.argv[2] if len(sys.argv) > 2 else None))
+            return 0
         return main()
     except ValueError as exc:  # bad id or argument: one line, no traceback
         print(f"error: {exc}", file=sys.stderr)
