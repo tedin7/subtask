@@ -13,34 +13,47 @@ from functools import cache
 
 from .base import ADAPTER_API, Adapter
 
+# Built-in engines in listing order: name -> (module, class, constructor arguments). Each module is
+# imported only when its engine is asked for: `subtask status` needs one or two of them, and kimi
+# alone pulls in urllib, http and ssl (20 ms).
+BUILTINS: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "sonnet-api": ("claude_api", "ClaudeApi", ("sonnet-api", "sonnet")),
+    "haiku-api": ("claude_api", "ClaudeApi", ("haiku-api", "haiku")),
+    "opus-api": ("claude_api", "ClaudeApi", ("opus-api", "opus")),
+    "sonnet-api2": ("claude_api", "ClaudeApi", ("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2")),
+    "haiku-api2": ("claude_api", "ClaudeApi", ("haiku-api2", "haiku", "ANTHROPIC_API_KEY_2")),
+    "opus-api2": ("claude_api", "ClaudeApi", ("opus-api2", "opus", "ANTHROPIC_API_KEY_2")),
+    "codex": ("codex", "Codex", ()),
+    "openai": ("openai", "OpenAI", ()),
+    "kimi": ("kimi", "Kimi", ()),
+    "opencode-go": ("opencode", "OpenCodeGo", ()),
+    "opencode": ("opencode", "OpenCode", ()),
+    "dsh": ("dsh", "Dsh", ()),
+}
 
-def _builtins() -> dict[str, Adapter]:
-    from .claude_api import ClaudeApi
-    from .codex import Codex
-    from .dsh import Dsh
-    from .kimi import Kimi
-    from .openai import OpenAI
-    from .opencode import OpenCode, OpenCodeGo
 
-    engines: list[Adapter] = [
-        ClaudeApi("sonnet-api", "sonnet"),
-        ClaudeApi("haiku-api", "haiku"),
-        ClaudeApi("opus-api", "opus"),
-        ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2"),
-        ClaudeApi("haiku-api2", "haiku", "ANTHROPIC_API_KEY_2"),
-        ClaudeApi("opus-api2", "opus", "ANTHROPIC_API_KEY_2"),
-        Codex(),
-        OpenAI(),
-        Kimi(),
-        OpenCodeGo(),
-        OpenCode(),
-        Dsh(),
-    ]
+def _make(name: str) -> Adapter:
+    module, cls, args = BUILTINS[name]
+    adapter = getattr(importlib.import_module(f".{module}", __package__), cls)(*args)
+    if adapter.name != name:
+        raise TypeError(f"built-in {module}.{cls} is named {adapter.name!r}, not {name!r}")
+    return adapter
+
+
+def _builtins(make=_make) -> dict[str, Adapter]:
+    engines = {name: make(name) for name in BUILTINS}
     if os.environ.get("SUBTASK_DEMO") == "1":
         from .demo import Demo
 
-        engines.append(Demo())
-    return {e.name: e for e in engines}
+        demo = Demo()
+        engines[demo.name] = demo
+    return engines
+
+
+@cache
+def _builtin(name: str) -> Adapter:
+    """The registry's own instance of one built-in: get() and all_engines() return the same object."""
+    return _make(name)
 
 
 def _load(spec: str) -> Adapter:
@@ -89,7 +102,7 @@ def _entry_points() -> list[str]:
 
 @cache
 def _all() -> tuple[dict[str, Adapter], tuple[str, ...]]:
-    engines = _builtins()
+    engines = _builtins(_builtin)
     errors: list[str] = []
     specs = [s for s in os.environ.get("SUBTASK_ENGINE_PLUGINS", "").split(",") if s.strip()]
     try:
@@ -118,6 +131,9 @@ def plugin_errors() -> tuple[str, ...]:
 
 
 def get(name: str) -> Adapter | None:
+    # A plugin can never take a built-in name (_all refuses it), so a built-in skips loading the rest.
+    if name in BUILTINS:
+        return _builtin(name)
     return all_engines().get(name)
 
 
@@ -127,3 +143,4 @@ def names() -> list[str]:
 
 def reset() -> None:
     _all.cache_clear()
+    _builtin.cache_clear()
