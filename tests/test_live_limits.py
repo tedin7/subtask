@@ -173,48 +173,43 @@ def _kimi_cred(path, token, expires_in):
     )
 
 
-def test_kimi_expired_token_is_renewed_by_the_cli_then_reread(ll, monkeypatch, tmp_path):
-    cred_dir = tmp_path / "cred"
-    cred_dir.mkdir()
-    cred = cred_dir / "k.json"
-    _kimi_cred(cred, "old", -100)
-    monkeypatch.setattr(ll, "KIMI_CREDENTIALS", cred_dir)
-    calls = []
+def test_kimi_expired_token_uses_stale_reading_without_starting_cli(ll, monkeypatch, tmp_path):
+    import subprocess
 
-    def fake_run(cmd, **kw):
-        calls.append(cmd)
-        _kimi_cred(cred, "new", 900)  # what the CLI does itself
-
-    monkeypatch.setattr(ll.subprocess, "run", fake_run)
-    seen = {}
-
-    def get(url, headers):
-        seen["auth"] = headers["Authorization"]
-        return {"usage": {"limit": 100, "used": 25}}
-
-    monkeypatch.setattr(ll, "_get", get)
-    assert ll.read_kimi()["used_percent"] == 25.0
-    assert seen["auth"] == "Bearer new" and calls == [ll.KIMI_REFRESH_CMD]
-
-
-def test_kimi_valid_token_does_not_call_the_cli(ll, monkeypatch, tmp_path):
-    cred_dir = tmp_path / "cred"
-    cred_dir.mkdir()
-    _kimi_cred(cred_dir / "k.json", "tok", 600)
-    monkeypatch.setattr(ll, "KIMI_CREDENTIALS", cred_dir)
-    monkeypatch.setattr(ll.subprocess, "run", lambda *a, **k: pytest.fail("CLI must not run"))
-    monkeypatch.setattr(ll, "_get", lambda url, headers: {"usage": {"limit": 10, "used": 1}})
-    assert ll.read_kimi()["used_percent"] == 10.0
-
-
-def test_kimi_still_expired_after_cli_says_login(ll, monkeypatch, tmp_path):
     cred_dir = tmp_path / "cred"
     cred_dir.mkdir()
     _kimi_cred(cred_dir / "k.json", "old", -100)
     monkeypatch.setattr(ll, "KIMI_CREDENTIALS", cred_dir)
-    monkeypatch.setattr(ll.subprocess, "run", lambda *a, **k: None)
-    with pytest.raises(RuntimeError, match="kimi login"):
-        ll.read_kimi()
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("CLI must not run"))
+    monkeypatch.setattr(ll, "_get", lambda *a, **k: pytest.fail("expired token must not be used"))
+    previous = {"group": "kimi", "status": "live", "ts": 1, "used_percent": 25}
+    result = ll.read_group("kimi", force=True, cache={"kimi": previous})
+    assert result["status"] == "stale"
+    assert result["used_percent"] == 25
+    assert "expired" in result["note"]
+
+
+def test_kimi_expired_token_without_history_uses_configured_limit(ll, monkeypatch, tmp_path):
+    cred_dir = tmp_path / "cred"
+    cred_dir.mkdir()
+    _kimi_cred(cred_dir / "k.json", "old", -100)
+    monkeypatch.setattr(ll, "KIMI_CREDENTIALS", cred_dir)
+    result = ll.read_group("kimi", force=True, cache={})
+    assert result["status"] == "configured"
+    assert result["limit_usd"] == 60
+    assert "expired" in result["note"]
+
+
+def test_kimi_valid_token_does_not_call_the_cli(ll, monkeypatch, tmp_path):
+    import subprocess
+
+    cred_dir = tmp_path / "cred"
+    cred_dir.mkdir()
+    _kimi_cred(cred_dir / "k.json", "tok", 600)
+    monkeypatch.setattr(ll, "KIMI_CREDENTIALS", cred_dir)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("CLI must not run"))
+    monkeypatch.setattr(ll, "_get", lambda url, headers: {"usage": {"limit": 10, "used": 1}})
+    assert ll.read_kimi()["used_percent"] == 10.0
 
 
 def test_openai_cost_report_reads_the_real_bill_with_the_admin_key(ll, monkeypatch, tmp_path):

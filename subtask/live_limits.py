@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -201,11 +200,6 @@ def read_codex() -> dict:
     }
 
 
-# `kimi session list`, `provider list` and `doctor` do not touch the token (tested 2026-11-01); the shortest prompt does.
-KIMI_REFRESH_CMD = ["kimi", "-p", "ok"]
-KIMI_REFRESH_TIMEOUT = 90
-
-
 def _kimi_token() -> str:
     """Valid access token from the CLI's credential files, or '' (read only)."""
     for path in sorted(KIMI_CREDENTIALS.glob("*.json")):
@@ -216,30 +210,6 @@ def _kimi_token() -> str:
         if cred.get("access_token") and (_num(cred.get("expires_at")) or 0) > time.time():
             return cred["access_token"]
     return ""
-
-
-def _kimi_has_refresh_token() -> bool:
-    for path in KIMI_CREDENTIALS.glob("*.json"):
-        try:
-            if json.loads(path.read_text()).get("refresh_token"):
-                return True
-        except (OSError, ValueError):
-            continue
-    return False
-
-
-def _kimi_cli_refresh() -> None:
-    """Let the kimi CLI renew its own token (it uses its refresh_token); we never write the file."""
-    try:
-        subprocess.run(
-            KIMI_REFRESH_CMD,
-            capture_output=True,
-            timeout=KIMI_REFRESH_TIMEOUT,
-            check=False,
-            stdin=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
 
 
 def _kimi_percent(data: dict) -> float | None:
@@ -256,13 +226,10 @@ def _kimi_percent(data: dict) -> float | None:
 
 
 def read_kimi() -> dict:
-    """Kimi Code plan: usages endpoint with the CLI's own OAuth token (the CLI renews it, we never write it)."""
+    """Read usage with an unexpired CLI token, without launching a prompt to renew it."""
     token = _kimi_token()
-    if not token and _kimi_has_refresh_token():
-        _kimi_cli_refresh()
-        token = _kimi_token()
     if not token:
-        raise RuntimeError("kimi login expired and the CLI could not renew it: run `kimi login`")
+        raise RuntimeError("kimi token missing or expired; usage unavailable until the CLI renews it")
     data = _get("https://api.kimi.ai/coding/v1/usages", {"Authorization": f"Bearer {token}"})
     percent = _kimi_percent(data)
     if percent is None:
