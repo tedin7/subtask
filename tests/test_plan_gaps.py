@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from .conftest import wait_final
 from .test_worktree_verify import GIT, SAY, _repo
 
@@ -38,9 +36,7 @@ def test_result_always_carries_cost_and_budget_remaining(home, monkeypatch):
 
 
 def test_engine_stats_of_the_repo_steer_the_auto_choice(home):
-    from subtask import config, policy, router
-
-    from subtask import telemetry
+    from subtask import policy, router, telemetry
 
     for i in range(6):
         telemetry.record(

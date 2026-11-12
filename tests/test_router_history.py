@@ -43,7 +43,9 @@ def test_other_repo_engine_unverified_and_no_repo_are_ignored(home):
     _row("a", repo="/other")
     _row("b", engine="other")
     _row("c", ok=None)
-    telemetry.record({"job": "d", "engine": "fake", "kind": "code", "attempt_kind": "start", "verified": True})
+    telemetry.record(
+        {"job": "d", "engine": "fake", "kind": "code", "attempt_kind": "start", "verified": True}
+    )
     assert router._repo_rate(REPO, "fake", "code") == (0, 0)
     assert router._repo_rate(None, "fake", "code") == (0, 0)
 
