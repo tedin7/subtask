@@ -190,6 +190,28 @@ def finish(job_id: str, attempt: int, *, api_key: str | None = None) -> None:
                 _record(job_id, attempt, state="unknown", reason="interrupted", finished=time.time())
 
 
+def _has_no_commits(job_id: str) -> bool:
+    """True only when the recorded branch provably sits on its base (no delivered commit).
+
+    Any missing field or Git failure answers False: Jev then runs as before.
+    """
+    from . import delivery_review
+
+    spec = jobs.read_json(jobs.job_dir(job_id) / "spec.json")
+    if not isinstance(spec, dict):
+        return False
+    fields = [spec.get(key) for key in ("repo", "branch", "base")]
+    if not all(isinstance(value, str) and value for value in fields):
+        return False
+    repo, branch, base = fields
+    try:
+        head = delivery_review._git(repo, "rev-parse", "--verify", "--end-of-options", f"{branch}^{{commit}}")
+        start = delivery_review._git(repo, "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}")
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return False
+    return head == start
+
+
 def perform(job_id: str, attempt: int) -> None:
     """One claim per attempt. The existing review intent also deduplicates provider submissions."""
     from . import delivery_review, jev_config
@@ -213,6 +235,10 @@ def perform(job_id: str, attempt: int) -> None:
     try:
         if jev_config.load().get("mode") != "auto":
             _record(job_id, attempt, state="skipped", reason="disabled", finished=time.time())
+            return
+        if _has_no_commits(job_id):
+            # Tommaso 09/11: a delivery without commits has nothing to review; save the spend.
+            _record(job_id, attempt, state="skipped", reason="no_commits", finished=time.time())
             return
         # Registered coordinator contracts are resolved by delivery_review. Legacy jobs
         # retain unverified metadata; no original request is invented from worker text.

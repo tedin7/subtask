@@ -405,3 +405,44 @@ def test_refused_retry_exposes_automatic_review_without_a_wait_gap(delivery, mon
     assert not status["retry_pending"]
     assert auto_review.is_pending(status)
     assert "still running" in core.wait([job], timeout=0)
+
+
+def _git_repo(path):
+    def run(*args):
+        return subprocess.run(
+            ["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            check=True,
+            capture_output=True,
+        )
+
+    path.mkdir()
+    run("init", "-q", "-b", "main")
+    (path / "a.txt").write_text("a")
+    run("add", "a.txt")
+    run("commit", "-q", "-m", "base")
+    run("branch", "job")
+    return run
+
+
+@pytest.mark.parametrize("with_commit", [False, True])
+def test_job_without_commits_skips_jev(delivery, monkeypatch, tmp_path, with_commit):
+    from subtask import auto_review, delivery_review, jobs
+
+    repo = tmp_path / "repo"
+    run = _git_repo(repo)
+    if with_commit:
+        run("checkout", "-q", "job")
+        (repo / "b.txt").write_text("b")
+        run("add", "b.txt")
+        run("commit", "-q", "-m", "work")
+    spec = jobs.read_json(delivery / "spec.json")
+    jobs.write_json(delivery / "spec.json", {**spec, "repo": str(repo), "branch": "job", "base": "main"})
+    calls = []
+    monkeypatch.setattr(delivery_review, "_request", lambda packet, key: calls.append(1) or answer(packet))
+    auto_review.perform("st-auto-review", 1)
+    entry = jobs.status("st-auto-review")["jev_review"]
+    if with_commit:
+        assert entry.get("reason") != "no_commits"
+    else:
+        assert entry["state"] == "skipped" and entry["reason"] == "no_commits"
+        assert calls == []
