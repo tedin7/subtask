@@ -13,7 +13,7 @@ import subtask as _package
 SOURCE = str(Path(_package.__file__).parents[1])
 
 
-def _preview(*args, retention=None):
+def _preview(*args, retention=None, cwd=None):
     env = {k: v for k, v in os.environ.items() if k != "SUBTASK_JOB_RETENTION_DAYS"}
     env["PYTHONPATH"] = SOURCE
     if retention is not None:
@@ -24,6 +24,7 @@ def _preview(*args, retention=None):
         text=True,
         check=True,
         env=env,
+        cwd=cwd,
     )
     return done.stdout
 
@@ -52,3 +53,12 @@ def test_cli_default_stays_30_days_without_env(home):
 def test_explicit_days_win_over_env(home):
     _old_job(home, 20)
     assert "would remove 0 job folders" in _preview("--days", "30", retention="14")
+
+
+def test_preview_outside_repository_explains_zero_is_not_total_jobs(home, tmp_path):
+    _old_job(home, 20)
+    output = _preview("--days", "30", cwd=tmp_path)
+    assert "would remove 0 job folders" in output
+    assert "all repositories" in output
+    assert "finished jobs older than 30 days" in output
+    assert "not the total number of jobs" in output

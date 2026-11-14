@@ -317,7 +317,11 @@ def run(days: int = RETENTION_DAYS, apply: bool = False) -> str:
         removed += 1
     verb = "removed" if apply else "would remove"
     head = f"{verb} {removed} job folders, kept {kept}; {verb} {len(old_telemetry)} telemetry files"
+    scope = (
+        f"scope: all repositories; finished jobs older than {days} days only. "
+        "Job counts are not the total number of jobs."
+    )
     return "\n".join(
-        [head, "disk usage: run subtask du (may take time)", *lines[:20]]
+        [head, scope, "disk usage: run subtask du (may take time)", *lines[:20]]
         + ([] if apply else ["(dry run: add --apply to delete)"])
     )
