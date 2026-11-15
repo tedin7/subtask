@@ -15,6 +15,7 @@ def _repo(tmp_path):
     (tmp_path / "a.py").write_text("def f():\n    return 1\n")
     git("add", ".")
     git("commit", "-qm", "a")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
     git("checkout", "-qb", "work")
     (tmp_path / "a.py").write_text("def f():\n    return 2\n")
     git("commit", "-qam", "b")
@@ -51,4 +52,20 @@ def test_target_sha_is_used(tmp_path):
 def test_long_diff_is_cut_by_file_with_a_note(tmp_path, monkeypatch):
     _repo(tmp_path)
     monkeypatch.setattr(review_brief, "MAX_DIFF", 10)
-    assert "TRUNCATED" in review_brief.augment("t", str(tmp_path), None)
+    out = review_brief.augment("t", str(tmp_path), None)
+    assert "[TRUNCATED" not in out and "cut inside the first file" in out  # one file: kept, cut
+
+
+def test_cut_keeps_whole_files_and_lists_the_rest(monkeypatch):
+    monkeypatch.setattr(review_brief, "MAX_DIFF", 60)
+    diff = "diff --git a/x b/x\n+1\n" + "diff --git a/y b/y\n" + "+2\n" * 50
+    out = review_brief._cut(diff)
+    assert (
+        "a/x b/x" in out and "TRUNCATED" in out and "[TRUNCATED" in out and out.rstrip().endswith("a/y b/y")
+    )
+
+
+def test_no_remote_means_no_guess(tmp_path):
+    git = _repo(tmp_path)
+    git("update-ref", "-d", "refs/remotes/origin/main")
+    assert review_brief._upstream(str(tmp_path)) is None

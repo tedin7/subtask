@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import subprocess
 
-MAX_DIFF = 120_000
+MAX_DIFF = 50_000  # the brief travels as one argv on some engines: Linux refuses one argument over 128 KiB
 MAX_NOTE = 4_000
 MARK = "<subtask_review_diff>"
 RULES = """How to review, to finish early:
@@ -18,7 +18,8 @@ RULES = """How to review, to finish early:
 2. Open other files only to confirm or rule out a precise suspicion (a caller, a definition).
 3. Batch: one shell command with several grep or sed calls beats many small commands.
 4. Do not wander around the repository. Run a test only to confirm a precise suspicion.
-5. Answer as soon as the suspicions are checked."""
+5. Answer as soon as the suspicions are checked.
+Only committed changes are shown."""
 
 
 def _git(root: str, *args: str) -> str | None:
@@ -37,11 +38,11 @@ def _git(root: str, *args: str) -> str | None:
 
 
 def _upstream(root: str) -> str | None:
-    """The default branch to compare with: origin/HEAD, then origin/main, origin/master, main, master."""
+    """The default branch to compare with: origin/HEAD, then origin/main, origin/master. Never a local guess."""
     head = (_git(root, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD") or "").strip()
     for ref in [head] if head else []:
         return ref
-    for ref in ("origin/main", "origin/master", "main", "master"):
+    for ref in ("origin/main", "origin/master"):
         if _git(root, "rev-parse", "--verify", "-q", ref + "^{commit}") is not None:
             return ref
     return None
@@ -59,10 +60,21 @@ def _cut(diff: str) -> str:
             size += len(text)
         else:
             skipped.append(piece.split("\n", 1)[0])
-    note = "\n".join(skipped)[:MAX_NOTE]
+    if not kept:  # the first file alone is too big: keep its start, never an empty diff
+        kept, skipped = [diff[:MAX_DIFF] + "\n[cut inside the first file]\n"], skipped[1:]
+    if not skipped:
+        return "".join(kept)
+    note, size = [], 0
+    for name in skipped:
+        if size + len(name) > MAX_NOTE:
+            note.append(f"... and {len(skipped) - len(note)} more files")
+            break
+        note.append(name)
+        size += len(name) + 1
+    note = "\n".join(note)
     return "".join(kept) + (
         "\n[TRUNCATED: these files are NOT above. Read their diff before the verdict; without them the verdict "
-        "is 'defects']\n" + note
+        "is 'rejected']\n" + note
     )
 
 
