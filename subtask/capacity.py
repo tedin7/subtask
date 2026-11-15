@@ -7,8 +7,11 @@ engines, and it says so. Quota exhaustion seen in a real run (e.g. Codex
 
 from __future__ import annotations
 
+import fcntl
 import re
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from . import config, jobs
 from .engines import registry
@@ -24,21 +27,36 @@ def _hints():
     return config.HOME / "quota-hints.json"
 
 
+@contextmanager
+def _hints_locked() -> Iterator[None]:
+    """Workers read-modify-write one shared file: without the lock one writer drops another's block."""
+    config.HOME.mkdir(parents=True, exist_ok=True)
+    with (config.HOME / "quota-hints.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def note_exhausted(engine: str, until: float | None, message: str) -> None:
     """Record that a run hit the engine's quota (from the worker)."""
-    config.HOME.mkdir(parents=True, exist_ok=True)
-    hints = jobs.read_json(_hints())
-    hints[engine] = {"seen": time.time(), "until": until, "message": message[:200]}
-    jobs.write_json(_hints(), hints)
+    with _hints_locked():
+        hints = jobs.read_json(_hints())
+        hints[engine] = {"seen": time.time(), "until": until, "message": message[:200]}
+        jobs.write_json(_hints(), hints)
     _cache().unlink(missing_ok=True)
 
 
-def clear_quota_hint(engine: str) -> None:
-    """Forget a quota block after a successful run on that engine (a block with no reset time never expires)."""
-    hints = jobs.read_json(_hints())
-    if engine in hints:
+def clear_quota_hint(engine: str, started: float) -> None:
+    """Forget a quota block after a successful run that started after the block was recorded.
+
+    A block with no reset time never expires on its own; a run that began before the block only
+    proves the quota was there earlier, so it must not erase newer evidence."""
+    with _hints_locked():
+        hints = jobs.read_json(_hints())
+        hint = hints.get(engine)
+        if not hint or float(hint.get("seen") or 0) >= started:
+            return
         jobs.write_json(_hints(), {k: v for k, v in hints.items() if k != engine})
-        _cache().unlink(missing_ok=True)
+    _cache().unlink(missing_ok=True)
 
 
 _PROVIDER_BLOCKS = (
@@ -101,10 +119,12 @@ def clear_provider_block(adapter) -> None:
     if key:
         config.HOME.mkdir(parents=True, exist_ok=True)
         jobs.write_json(_ok_file(), {**jobs.read_json(_ok_file()), key: time.time()})
-    hints = jobs.read_json(_hints())
-    names = [n for n in _same_key(adapter) if n in hints]
+    with _hints_locked():
+        hints = jobs.read_json(_hints())
+        names = [n for n in _same_key(adapter) if n in hints]
+        if names:
+            jobs.write_json(_hints(), {k: v for k, v in hints.items() if k not in names})
     if names:
-        jobs.write_json(_hints(), {k: v for k, v in hints.items() if k not in names})
         _cache().unlink(missing_ok=True)
 
 
