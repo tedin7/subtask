@@ -351,6 +351,10 @@ def start(
             stop(breaker)
         return f"breaker {broke}\nbuilder {built}"
     task += _lessons(repo or cwd, files, context_refs)
+    if kind == "review":
+        from . import review_brief
+
+        task = review_brief.augment(task, repo or cwd, base)
     level = policy or (None if sandbox else "worktree")
     try:
         wanted = _policy_demand(readonly, level, untrusted)

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Review jobs get the branch diff (upstream...base, whole functions) and few-step rules in the brief: the
+  same DeepSeek review went from 14 minutes and 34 steps to 7 minutes and 20 steps.
+
 ### Added
 - `subtask gc --branches [--apply]` deletes local `subtask/st-*` branches already contained in the remote default branch (origin/HEAD), in every repo the jobs used. It keeps branches with a worktree, with a running job, or with own commits, logs each deleted sha to `gc-branches.log` (F-11589).
 
