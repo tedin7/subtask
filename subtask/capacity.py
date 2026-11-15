@@ -33,6 +33,14 @@ def note_exhausted(engine: str, until: float | None, message: str) -> None:
     _cache().unlink(missing_ok=True)
 
 
+def clear_quota_hint(engine: str) -> None:
+    """Forget a quota block after a successful run on that engine (a block with no reset time never expires)."""
+    hints = jobs.read_json(_hints())
+    if engine in hints:
+        jobs.write_json(_hints(), {k: v for k, v in hints.items() if k != engine})
+        _cache().unlink(missing_ok=True)
+
+
 _PROVIDER_BLOCKS = (
     (re.compile(r"credit balance is too low", re.IGNORECASE), "provider credit exhausted"),
     (

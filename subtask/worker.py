@@ -326,6 +326,8 @@ def main() -> int:
             from .engines.codex import parse_reset
 
             capacity.note_exhausted(spec["engine"], parse_reset(outcome.result), outcome.result[:200])
+        elif ok and not stopped:
+            capacity.clear_quota_hint(spec["engine"])  # a real run proves the quota is back
         if adapter and adapter.family == "api" and not stopped:
             if ok:
                 capacity.clear_provider_block(adapter)

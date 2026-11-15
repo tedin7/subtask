@@ -100,6 +100,30 @@ def test_quota_exhaustion_seen_in_a_run_excludes_the_engine(home, monkeypatch):
         importlib.reload(router)
 
 
+def test_successful_run_clears_an_open_ended_quota_block(home, monkeypatch):
+    """A quota hint with no reset time (subscription out of funds) used to stay forever: a CLI
+    engine that ran fine again after the user topped up still read "free 0%" (opencode-go 15/11)."""
+    from subtask import capacity, core
+
+    capacity.note_exhausted("fake", None, "Upstream request failed: Insufficient account funds")
+    assert capacity.snapshot(refresh=True)["fake"]["value"] == 0.0
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'echo \'{"say":"ok"}\'')
+    job = core.start("x", engine="fake", cwd=str(home), max_usd=1).split()[0]
+    assert wait_final(job)["state"] == "done"
+    assert capacity._hint("fake") is None
+    assert capacity.snapshot(refresh=True)["fake"]["value"] != 0.0
+
+
+def test_failed_run_keeps_the_quota_block(home, monkeypatch):
+    from subtask import capacity, core
+
+    capacity.note_exhausted("fake", None, "Insufficient account funds")
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", 'echo \'{"error":"boom"}\'; exit 1')
+    job = core.start("x", engine="fake", cwd=str(home), max_usd=1).split()[0]
+    assert wait_final(job)["state"] == "failed"
+    assert capacity._hint("fake") is not None
+
+
 def test_routing_explains_every_term_and_flags_assumptions(home):
     from subtask import policy, router
 
