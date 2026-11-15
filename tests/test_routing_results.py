@@ -124,6 +124,62 @@ def test_failed_run_keeps_the_quota_block(home, monkeypatch):
     assert capacity._hint("fake") is not None
 
 
+def test_a_run_that_started_before_the_block_cannot_clear_it(home, monkeypatch):
+    """A job still running when a *newer* run reports quota must not erase that block when it ends:
+    its success only proves the quota was there before the block was recorded."""
+    from subtask import capacity, core, jobs
+
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", "sleep 3; echo '{\"say\":\"ok\"}'")
+    older = core.start("x", engine="fake", cwd=str(home), max_usd=1).split()[0]
+    wait_until(lambda: jobs.status(older).get("state") == "running")
+    # A parallel job on the same engine hits the limit with a reset time an hour away.
+    capacity.note_exhausted("fake", time.time() + 3600, "usage limit, resets in 1h")
+    assert wait_final(older, 30)["state"] == "done"
+    assert capacity._hint("fake") is not None  # newer evidence, must survive the stale success
+
+
+def test_a_zero_exit_run_that_reports_quota_does_not_clear_the_block(home, monkeypatch):
+    """`ok` only means exit 0 plus some text: a CLI that prints the quota error on stdout and
+    exits 0 proves nothing, yet the worker reads it as "the quota is back"."""
+    from subtask import capacity, core
+
+    capacity.note_exhausted("fake", None, "Insufficient account funds")
+    monkeypatch.setenv("SUBTASK_FAKE_SCRIPT", "echo 'Error: usage limit exceeded, resets in 3h'")
+    job = core.start("x", engine="fake", cwd=str(home), max_usd=1).split()[0]
+    assert wait_final(job)["state"] == "done"  # the run is reported as a success
+    assert capacity._hint("fake") is not None
+
+
+def test_clearing_one_engine_does_not_lose_a_block_written_meanwhile(home, monkeypatch):
+    """quota-hints.json is one file for every engine, read-modify-written with no lock: a clear
+    for engine A rewrites the file from a stale read and silently drops a block for engine B."""
+    import threading
+
+    from subtask import capacity, jobs
+
+    capacity.note_exhausted("alpha", None, "no funds")
+    hints = capacity._hints()
+    real_read = jobs.read_json
+    read_done, may_write = threading.Event(), threading.Event()
+
+    def read_json(path, default=None):
+        data = real_read(path, default)
+        if path == hints and threading.current_thread().name == "clear":
+            read_done.set()
+            assert may_write.wait(5)
+        return data
+
+    monkeypatch.setattr(jobs, "read_json", read_json)
+    clearer = threading.Thread(target=capacity.clear_quota_hint, args=("alpha",), name="clear")
+    clearer.start()
+    assert read_done.wait(5)
+    capacity.note_exhausted("beta", None, "quota")  # another worker, same file, in between
+    may_write.set()
+    clearer.join(5)
+    assert not clearer.is_alive()
+    assert capacity._hint("beta") is not None
+
+
 def test_routing_explains_every_term_and_flags_assumptions(home):
     from subtask import policy, router
 
