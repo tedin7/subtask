@@ -103,3 +103,17 @@ def test_plugin_shows_invariants_oracle_bisect_and_fanout(tmp_path):
         "bis-1 bisect running · round 2 · 8/32 tested",
     ):
         assert want in out.stdout, (want, out.stdout)
+
+
+@pytest.mark.skipif(not shutil.which("bun"), reason="needs bun to run the TypeScript plugin")
+def test_plugin_board_is_off_inside_a_subtask_job(tmp_path):
+    """15/11/2026: every job's OpenCode polled `subtask board` every 3 s (about one core with 5 jobs)."""
+    script = tmp_path / "wanted.ts"
+    script.write_text(
+        f'import {{ boardWanted }} from "{ROOT / "plugins/opencode/subtask-progress.ts"}"\n'
+        'console.log(JSON.stringify([boardWanted({}), boardWanted({ SUBTASK_ID: "st-1" }),'
+        ' boardWanted({ SUBTASK_BOARD_TICK_MS: "0" }), boardWanted({ SUBTASK_BOARD_TICK_MS: "5000" })]))\n'
+    )
+    out = subprocess.run(["bun", str(script)], capture_output=True, text=True, timeout=60, check=False)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [True, False, False, True]

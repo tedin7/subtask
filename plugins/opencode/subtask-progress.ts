@@ -22,6 +22,16 @@ const FILE = join(DIR, "opencode-tool-timing.jsonl")
 const BOARD = join(DIR, "opencode-board.txt")
 const BIN = process.env.SUBTASK_BIN ?? "subtask"
 const TICK_MS = Number(process.env.SUBTASK_BOARD_TICK_MS ?? 3000)
+
+// The board is for a person watching an interactive OpenCode. A job that subtask itself runs (SUBTASK_ID is set)
+// must not keep it: each job's OpenCode ran `subtask board --json` every TICK_MS while any job was busy, so N jobs
+// meant N boards every 3 s (measured 15/11/2026: 50 boards in 30 s, 0.56 s of CPU each, about one core).
+// SUBTASK_BOARD_TICK_MS=0 turns it off everywhere. The timing lines stay on.
+export function boardWanted(env: Record<string, string | undefined>): boolean {
+  if (env.SUBTASK_ID) return false
+  return Number(env.SUBTASK_BOARD_TICK_MS ?? 3000) > 0
+}
+const BOARD_ON = boardWanted(process.env)
 const PREFIX = process.env.SUBTASK_TIMING_PREFIX ?? ""
 const BUILTIN = new Set(["bash", "shell", "read", "write", "edit", "patch", "glob", "grep", "list", "task", "todowrite", "todoread", "webfetch", "question", "execute", "search"])
 const ACTIVE = new Set(["queued", "running"])
@@ -108,12 +118,12 @@ export default {
   id: "subtask.tool-timing",
   setup: async (ctx: any) => {
     mkdirSync(DIR, { recursive: true })
-    refresh()
+    if (BOARD_ON) refresh()
     await ctx.tool.hook("execute.before", (e: any) => {
       if (watched(String(e.tool))) started.set(key(e), Date.now())
     })
     await ctx.tool.hook("execute.after", (e: any) => {
-      if (String(e.tool).startsWith("subtask_")) refresh()
+      if (BOARD_ON && String(e.tool).startsWith("subtask_")) refresh()
       const t0 = started.get(key(e))
       if (t0 === undefined) return
       started.delete(key(e))
