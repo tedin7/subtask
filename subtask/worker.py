@@ -10,6 +10,7 @@ the reservation exactly once, releases the slot, and records telemetry.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import signal
@@ -421,7 +422,28 @@ def _isolated_vars(job_id: str, spec: dict, folder: Path, level: str | None) -> 
         tmp = folder / "tmp"
         tmp.mkdir(exist_ok=True)
         out["TMPDIR"] = str(tmp)
+    out.update(_shared_cargo_target(spec, level))
     return out
+
+
+def _shared_cargo_target(spec: dict, level: str | None) -> dict[str, str]:
+    """One Cargo build folder per repository, shared by its job worktrees.
+
+    Each Rust worktree otherwise grows its own target/ (3.7 GB on arvx). Cargo locks the
+    folder, so parallel jobs build in turn instead of colliding. Only for the unsandboxed
+    worktree level: sandbox and isolated jobs may not write outside their worktree.
+    SUBTASK_SHARED_CARGO_TARGET=0 turns it off.
+    """
+    if level != "worktree" or os.environ.get("SUBTASK_SHARED_CARGO_TARGET", "1") == "0":
+        return {}
+    repo, cwd = spec.get("repo"), spec.get("cwd")
+    if not repo or not cwd or not Path(cwd, "Cargo.toml").is_file():
+        return {}
+    root = Path(repo).resolve()
+    key = hashlib.sha256(str(root).encode()).hexdigest()[:10]
+    target = config.HOME / "cargo-target" / f"{root.name}-{key}"
+    target.mkdir(parents=True, exist_ok=True)
+    return {"CARGO_TARGET_DIR": str(target)}
 
 
 def _telemetry(
