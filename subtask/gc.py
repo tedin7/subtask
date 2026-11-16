@@ -80,10 +80,29 @@ def _cargo_target(path: Path, parts: tuple[str, ...]) -> bool:
         return False
 
 
+def _check_report_dir(path: Path, parts: tuple[str, ...]) -> bool:
+    """F-15075: top-level `artifacts/` that the repo's own scripts/check.sh writes its reports to.
+
+    The name alone is not enough (it can hold hand-made files), so the copy must carry a
+    check.sh that names `artifacts/`: then check.sh recreates the reports on its next run.
+    """
+    if parts != ("artifacts",):
+        return False
+    try:
+        script = path / "scripts" / "check.sh"
+        if script.is_symlink() or not script.is_file():
+            return False
+        return "artifacts/" in script.read_text(errors="replace")
+    except OSError:
+        return False
+
+
 def _regenerable(path: Path, line: str) -> bool:
-    """An ignored entry whose name is a known cache, or a Cargo target signed with its tag."""
+    """An ignored entry whose name is a known cache, a signed Cargo target or check.sh's report dir."""
     parts = Path(line.rstrip("/")).parts
-    return bool(parts) and (bool(set(parts) & REGENERABLE) or _cargo_target(path, parts))
+    return bool(parts) and (
+        bool(set(parts) & REGENERABLE) or _cargo_target(path, parts) or _check_report_dir(path, parts)
+    )
 
 
 def _git(path: str, *args: str) -> subprocess.CompletedProcess | None:

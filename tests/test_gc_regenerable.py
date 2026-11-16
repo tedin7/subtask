@@ -79,6 +79,40 @@ def test_target_without_the_cargo_tag_is_user_work(tmp_path):
     assert (wt / "target" / "notes.txt").is_file()
 
 
+def _artifacts(wt: Path, check_sh: str | None) -> None:
+    (wt / ".gitignore").write_text("node_modules/\nbuild/\ntarget/\n/artifacts/\n")
+    if check_sh is not None:
+        (wt / "scripts").mkdir()
+        (wt / "scripts" / "check.sh").write_text(check_sh)
+    (wt / "artifacts").mkdir()
+    (wt / "artifacts" / "audit.json").write_text("{}")
+
+
+def test_check_sh_report_dir_is_regenerable(tmp_path):
+    """F-15075: arvx's `artifacts/` (written by scripts/check.sh) must not pin a copy forever."""
+    from subtask import gc
+
+    _repo, wt = _worktree(tmp_path)
+    _artifacts(wt, "python3 t.py --report artifacts/audit.json\n")
+    _git("-C", str(wt), "add", ".gitignore", "scripts")
+    _git("-C", str(wt), "commit", "-qm", "c")
+    assert gc.worktree_clean(str(wt)) is True
+    assert gc.prune_regenerable(str(wt)) == ["artifacts"]
+    assert not (wt / "artifacts").exists()
+
+
+def test_artifacts_without_check_sh_is_user_work(tmp_path):
+    from subtask import gc
+
+    _repo, wt = _worktree(tmp_path)
+    _artifacts(wt, None)
+    _git("-C", str(wt), "add", ".gitignore")
+    _git("-C", str(wt), "commit", "-qm", "c")
+    assert gc.worktree_clean(str(wt)) is False
+    assert gc.prune_regenerable(str(wt)) == []
+    assert (wt / "artifacts" / "audit.json").is_file()
+
+
 def test_prune_keeps_other_ignored_files(tmp_path):
     from subtask import gc
 
