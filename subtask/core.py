@@ -904,6 +904,27 @@ def consensus(
     return groups.create(rounds + [synth], label="consensus")
 
 
+_NO_SLOT = "already running"
+
+
+def _queue_rest(rest: list, out: list, receipt) -> bool:
+    """T-1000833: no free slot for a plain batch: the tasks left wait in a group that starts them as slots free.
+
+    Without this every task past MAX_RUNNING was refused and lost, so callers had to launch in small batches.
+    """
+    if not all(isinstance(t, dict) for t in rest):
+        return False
+    from . import groups
+
+    out.pop()  # the refusal of the first queued task: the group retries it
+    if receipt is not None:
+        receipt["items"].pop()
+        receipt["refused_tasks"] -= 1
+    queued = groups.create([dict(t) for t in rest], _launch_receipt=receipt)
+    out.append(f"{len(rest)} more queued, no free slot yet: {queued}")
+    return True
+
+
 def _launch_many(tasks: list[dict], progress=None, receipt=None, checkpoint=None) -> str:
     """Preserve legacy text and optionally record launches from the spawn boundary."""
     if receipt is not None:
@@ -926,6 +947,8 @@ def _launch_many(tasks: list[dict], progress=None, receipt=None, checkpoint=None
         item = {"index": i, "accepted": False, "worker_started": False}
         if not isinstance(spec, dict):
             out.append(f"bad task: expected an object, got {type(spec).__name__}")
+        elif out and _NO_SLOT in out[-1] and _queue_rest(tasks[i - 2 :], out, receipt):
+            break
         else:
             if progress is not None:
                 progress.phase(f"starting {i}/{len(tasks)}")
