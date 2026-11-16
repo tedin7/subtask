@@ -15,7 +15,7 @@ def _worktree(tmp_path: Path) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git("init", "-q", str(repo))
-    (repo / ".gitignore").write_text("node_modules/\nbuild/\n")
+    (repo / ".gitignore").write_text("node_modules/\nbuild/\ntarget/\n")
     (repo / "f").write_text("x\n")
     _git("-C", str(repo), "add", ".")
     _git("-C", str(repo), "commit", "-qm", "i")
@@ -30,7 +30,7 @@ def test_ignored_node_modules_does_not_block_cleanup(tmp_path):
     repo, wt = _worktree(tmp_path)
     (wt / "node_modules" / "pkg").mkdir(parents=True)
     (wt / "node_modules" / "pkg" / "i.js").write_text("x")
-    assert gc._worktree_clean(str(wt)) is True
+    assert gc.worktree_clean(str(wt)) is True
     # git itself must agree that it can remove such a copy
     _git("-C", str(repo), "worktree", "remove", str(wt))
     assert not wt.exists()
@@ -42,13 +42,54 @@ def test_other_ignored_files_dirty_tree_and_missing_dir_still_block(tmp_path):
     _repo, wt = _worktree(tmp_path)
     (wt / "build").mkdir()
     (wt / "build" / "out.bin").write_text("x")
-    assert gc._worktree_clean(str(wt)) is False  # ignored but not regenerable: could be work
+    assert gc.worktree_clean(str(wt)) is False  # ignored but not regenerable: could be work
     (wt / "build" / "out.bin").unlink()
     (wt / "build").rmdir()
-    assert gc._worktree_clean(str(wt)) is True
+    assert gc.worktree_clean(str(wt)) is True
     (wt / "new.txt").write_text("x")
-    assert gc._worktree_clean(str(wt)) is False  # untracked
-    assert gc._worktree_clean(str(tmp_path / "gone")) is None
+    assert gc.worktree_clean(str(wt)) is False  # untracked
+    assert gc.worktree_clean(str(tmp_path / "gone")) is None
+
+
+def test_cargo_target_does_not_block_cleanup_or_keep_bytes(tmp_path):
+    """T-1000599: a Rust build cache is regenerable and must not pin a 4 GB copy."""
+    from subtask import gc
+
+    repo, wt = _worktree(tmp_path)
+    tag = "Signature: 8a477f597d28d172789f06886806bc55\n# This file is a cache directory tag created by cargo.\n"
+    (wt / "target" / "debug").mkdir(parents=True)
+    (wt / "target" / "CACHEDIR.TAG").write_text(tag)
+    (wt / "target" / "debug" / "binary").write_bytes(b"x" * 4096)
+    assert gc.worktree_clean(str(wt)) is True
+    assert gc.prune_regenerable(str(wt)) == ["target"]
+    assert not (wt / "target").exists()
+    assert (wt / "f").read_text() == "x\n"  # tracked files stay
+    _git("-C", str(repo), "worktree", "remove", str(wt))
+    assert not wt.exists()
+
+
+def test_target_without_the_cargo_tag_is_user_work(tmp_path):
+    from subtask import gc
+
+    _repo, wt = _worktree(tmp_path)
+    (wt / "target").mkdir()
+    (wt / "target" / "notes.txt").write_text("hand written")
+    assert gc.worktree_clean(str(wt)) is False
+    assert gc.prune_regenerable(str(wt)) == []
+    assert (wt / "target" / "notes.txt").is_file()
+
+
+def test_prune_keeps_other_ignored_files(tmp_path):
+    from subtask import gc
+
+    _repo, wt = _worktree(tmp_path)
+    (wt / "node_modules" / "pkg").mkdir(parents=True)
+    (wt / "node_modules" / "pkg" / "i.js").write_text("x")
+    (wt / "build").mkdir()
+    (wt / "build" / "out.bin").write_text("hand written")
+    assert gc.prune_regenerable(str(wt)) == ["node_modules"]
+    assert not (wt / "node_modules").exists()
+    assert (wt / "build" / "out.bin").is_file()
 
 
 def test_git_timeout_is_not_a_clean_tree(tmp_path, monkeypatch):
@@ -63,7 +104,7 @@ def test_git_timeout_is_not_a_clean_tree(tmp_path, monkeypatch):
         return real(cmd, *a, **k)
 
     monkeypatch.setattr(gc.subprocess, "run", slow)
-    assert gc._worktree_clean(str(wt)) is False
+    assert gc.worktree_clean(str(wt)) is False
 
 
 def test_gc_keeps_uncollected_ignored_reports(home, tmp_path, monkeypatch):
@@ -87,7 +128,7 @@ def test_gc_keeps_uncollected_ignored_reports(home, tmp_path, monkeypatch):
     assert folder.exists()
     assert report.read_text() == "uncollected report"
     report.unlink()
-    assert gc._worktree_clean(str(wt)) is True
+    assert gc.worktree_clean(str(wt)) is True
 
 
 def test_new_copies_exclude_reports(tmp_path):

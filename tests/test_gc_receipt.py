@@ -28,7 +28,7 @@ def test_gc_removes_copy_with_collection_receipt(home, tmp_path):
     wt, reports, report = _job_with_reports(home, tmp_path, "st-receipt")
     os.utime(report, ns=(1_000_000_000, 1_000_000_000))
     (reports / ".collected").write_text("2026-11-03T10:00:00 -> /somewhere/CONSEGNA.md\n")
-    assert gc._worktree_clean(str(wt)) is True
+    assert gc.worktree_clean(str(wt)) is True
     gc.run(days=30, apply=True)
     assert not wt.exists()
 
@@ -37,7 +37,7 @@ def test_gc_keeps_copy_without_receipt(home, tmp_path):
     from subtask import gc
 
     wt, _reports, report = _job_with_reports(home, tmp_path, "st-noreceipt")
-    assert gc._worktree_clean(str(wt)) is False
+    assert gc.worktree_clean(str(wt)) is False
     gc.run(days=30, apply=True)
     assert wt.exists() and report.exists()
 
@@ -49,7 +49,7 @@ def test_gc_keeps_copy_when_receipt_is_older_than_report(home, tmp_path):
     receipt = reports / ".collected"
     receipt.write_text("old")
     os.utime(receipt, ns=(1_000_000_000, 1_000_000_000))
-    assert gc._worktree_clean(str(wt)) is False
+    assert gc.worktree_clean(str(wt)) is False
     gc.run(days=30, apply=True)
     assert wt.exists() and report.exists()
 
@@ -59,4 +59,4 @@ def test_receipt_must_be_a_regular_file(home, tmp_path):
 
     wt, reports, report = _job_with_reports(home, tmp_path, "st-linkreceipt")
     (reports / ".collected").symlink_to(report)
-    assert gc._worktree_clean(str(wt)) is False
+    assert gc.worktree_clean(str(wt)) is False

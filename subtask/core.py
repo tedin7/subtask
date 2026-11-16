@@ -1292,16 +1292,15 @@ def cleanup(job_id: str) -> str:
         return f"{job_id}: nothing to clean"
     if not Path(sp["cwd"]).exists():
         return f"{job_id}: worktree already gone, branch {sp['branch']} kept"
-    dirty = subprocess.run(
-        ["git", "-C", sp["cwd"], "status", "--porcelain", "--ignored"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if dirty.returncode != 0:
-        return f"{job_id}: git status failed, worktree kept ({dirty.stderr.strip()[:200]})"
-    if dirty.stdout.strip():
-        return f"{job_id}: worktree has uncommitted or ignored files, not removed ({sp['cwd']})"
+    from . import gc  # local import: gc imports jobs and config, never core
+
+    pruned = gc.prune_regenerable(sp["cwd"])
+    clean = gc.worktree_clean(sp["cwd"])
+    if clean is None:
+        return f"{job_id}: worktree already gone, branch {sp['branch']} kept"
+    if not clean:
+        freed = f"; build output removed: {', '.join(pruned[:5])}" if pruned else ""
+        return f"{job_id}: worktree has uncommitted or ignored files, not removed ({sp['cwd']}){freed}"
     blocker = worktree_guard.removal_blocker(sp)
     if blocker:
         return f"{job_id}: {blocker}"
