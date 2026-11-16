@@ -64,6 +64,47 @@ def test_cleanup_removes_worktree_without_commits(home, tmp_path):
     assert not Path(jobs.spec(job)["cwd"]).exists()
 
 
+def _cargo_script(*extra: str) -> str:
+    steps = [
+        "mkdir -p target/debug node_modules/pkg",
+        "printf 'Signature: 8a477f597d28d172789f06886806bc55\\n' > target/CACHEDIR.TAG",
+        "head -c 4096 /dev/zero > target/debug/blob",
+        "echo x > node_modules/pkg/i.js",
+        *extra,
+        "echo done",
+    ]
+    return "; ".join(steps)
+
+
+def test_cleanup_frees_build_output_of_a_kept_copy(home, tmp_path):
+    """T-1000599: a 4 GB Cargo target/ must not stay in a copy kept for its commit."""
+    from subtask import core, jobs
+
+    repo = _repo(tmp_path / "repo")
+    (repo / ".gitignore").write_text("target/\nnode_modules/\n")
+    subprocess.run([*GIT, "-C", str(repo), "add", ".gitignore"], check=True)
+    subprocess.run([*GIT, "-C", str(repo), "commit", "-qm", "ignore"], check=True)
+    job = _job(home, repo, _cargo_script("echo wip > wip.txt"))
+    out = core.cleanup(job)
+    cwd = Path(jobs.spec(job)["cwd"])
+    assert "not removed" in out and "build output removed" in out
+    assert (cwd / "wip.txt").is_file()  # untracked work is never touched
+    assert not (cwd / "target").exists()
+    assert not (cwd / "node_modules").exists()
+
+
+def test_cleanup_removes_a_copy_whose_only_extra_is_build_output(home, tmp_path):
+    from subtask import core, jobs
+
+    repo = _repo(tmp_path / "repo")
+    (repo / ".gitignore").write_text("target/\nnode_modules/\n")
+    subprocess.run([*GIT, "-C", str(repo), "add", ".gitignore"], check=True)
+    subprocess.run([*GIT, "-C", str(repo), "commit", "-qm", "ignore"], check=True)
+    job = _job(home, repo, _cargo_script())
+    assert "worktree removed" in core.cleanup(job)
+    assert not Path(jobs.spec(job)["cwd"]).exists()
+
+
 def test_cleanup_shows_git_failure_and_keeps_worktree(home, tmp_path, monkeypatch):
     from subtask import core, jobs, worktree_guard
 

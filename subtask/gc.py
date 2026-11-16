@@ -2,7 +2,7 @@
 
 Removable: folders of finished jobs older than the retention, whose worktree is
 already gone or clean (no uncommitted files; ignored files only if regenerable,
-like node_modules), telemetry older
+like node_modules or Cargo's `target/`), telemetry older
 than its retention. Never removed: active jobs, dirty worktrees. Branches: only with `--branches`,
 and only those already contained in the remote default branch (see branch_plan).
 """
@@ -60,7 +60,30 @@ REGENERABLE = frozenset(
     {"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",
      ".next", ".turbo", ".cache"}
 )  # fmt: skip
+# Cargo writes this signature at the top of every `target/`: it marks a regenerable build cache.
+# T-1000599: an arvx copy kept 3.7 GB of Rust binaries and could never be reclaimed without it.
+CARGO_TAG = "Signature: 8a477f597d28d172789f06886806bc55"
 GIT_TIMEOUT = 60
+
+
+def _cargo_target(path: Path, parts: tuple[str, ...]) -> bool:
+    """True for a `target/` directory signed by Cargo, which a build recreates."""
+    if "target" not in parts:
+        return False
+    target = path.joinpath(*parts)
+    try:
+        if target.is_symlink() or not target.is_dir():
+            return False
+        tag = target / "CACHEDIR.TAG"
+        return not tag.is_symlink() and tag.read_text(errors="replace").startswith(CARGO_TAG)
+    except OSError:
+        return False
+
+
+def _regenerable(path: Path, line: str) -> bool:
+    """An ignored entry whose name is a known cache, or a Cargo target signed with its tag."""
+    parts = Path(line.rstrip("/")).parts
+    return bool(parts) and (bool(set(parts) & REGENERABLE) or _cargo_target(path, parts))
 
 
 def _git(path: str, *args: str) -> subprocess.CompletedProcess | None:
@@ -109,12 +132,12 @@ def _reports_collected(reports: Path) -> bool:
         return False
 
 
-def _worktree_clean(path: str) -> bool | None:
+def worktree_clean(path: str) -> bool | None:
     """None: gone. True: nothing to lose. False: dirty, unknown or user ignored files.
 
     Plain `git status --ignored` walks every node_modules (15+ minutes over 800 copies) and
     treats them as work. Here ignored folders are only listed, never entered, and the
-    regenerable ones (node_modules, .venv, caches) do not count.
+    regenerable ones (node_modules, .venv, caches, Cargo target) do not count.
     """
     if not Path(path).exists():
         return None
@@ -131,9 +154,37 @@ def _worktree_clean(path: str) -> bool | None:
         parts = Path(line.rstrip("/")).parts
         if parts[:1] == (".reports",):
             continue  # already judged by _reports_collected
-        if not parts or not (set(parts) & REGENERABLE):
+        if not _regenerable(Path(path), line):
             return False
     return True
+
+
+def prune_regenerable(path: str) -> list[str]:
+    """Delete the ignored build folders of a job copy that cleanup keeps (T-1000599).
+
+    A finished copy is often kept for its branch, and the build output inside it (Cargo
+    `target/`, node_modules, caches) can be gigabytes that a later build recreates anyway.
+    Only entries accepted by `_regenerable` are removed: nothing tracked, untracked or
+    otherwise ignored is touched. Returns the removed names.
+    """
+    root = Path(os.path.realpath(path))
+    ignored = _git(str(root), "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
+    if ignored is None or ignored.returncode != 0:
+        return []
+    removed = []
+    for line in ignored.stdout.splitlines():
+        if not _regenerable(root, line):
+            continue
+        target = root.joinpath(*Path(line.rstrip("/")).parts)
+        real = Path(os.path.realpath(target))
+        if target.is_symlink() or not target.is_dir() or real == root or not real.is_relative_to(root):
+            continue
+        try:
+            shutil.rmtree(target)
+        except OSError:
+            continue
+        removed.append(line.rstrip("/"))
+    return removed
 
 
 def plan(days: int = RETENTION_DAYS) -> list[dict]:
@@ -151,7 +202,7 @@ def plan(days: int = RETENTION_DAYS) -> list[dict]:
             continue
         item = {"job": job_id, "folder": str(folder), "worktree": None}
         if sp.get("branch") and sp.get("cwd"):
-            clean = _worktree_clean(sp["cwd"])
+            clean = worktree_clean(sp["cwd"])
             if clean is False:
                 item["skip"] = "worktree has uncommitted or ignored files"
             elif clean:
@@ -171,7 +222,7 @@ def _changed_since_plan(item: dict, days: int) -> str | None:
         return "job is active again"
     if float(st.get("updated") or 0) > time.time() - days * 86400:
         return "job was updated after the plan"
-    if item["worktree"] and _worktree_clean(item["worktree"]) is False:
+    if item["worktree"] and worktree_clean(item["worktree"]) is False:
         return "worktree has uncommitted or ignored files"
     return None
 
