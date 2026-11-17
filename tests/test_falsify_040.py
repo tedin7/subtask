@@ -75,7 +75,7 @@ def test_unicode_test_file_deletion_not_detected(tmp_path):
 
 
 def test_importorskip_not_seen_as_skip(tmp_path):
-    """invariants.py:30 SKIP misses pytest.importorskip(...) at module level, which skips a whole test file."""
+    """A module-level pytest.importorskip(...) skips a whole test file: invariants.py SKIP (line 30) must see it."""
     repo = tmp_path / "r"
     base = _repo(repo, {"tests/test_a.py": "def test_a():\n    assert 1\n"})
     (repo / "tests" / "test_a.py").write_text(
