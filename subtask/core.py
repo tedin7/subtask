@@ -50,21 +50,28 @@ def _git(repo: str, *args: str) -> str:
 
 
 def _fresh_base(repo: str, base: str, note=None) -> str:
-    """Refresh origin, then move a plain HEAD base forward to its upstream (T-20137).
+    """Refresh the tracked remote, then move a plain HEAD base forward to its upstream.
 
     Best effort: no remote, no network or a diverged branch leave the base untouched.
     Only a fast-forward is followed, so local commits are never skipped; when the
     branch diverged from its upstream the base stays and `note(msg)` is called (T-20370).
     """
     try:
+        branch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
+        remote = _git(repo, "config", "--get", f"branch.{branch}.remote")
+    except (subprocess.SubprocessError, OSError):
+        return base
+    try:
         subprocess.run(
-            ["git", "-C", repo, "fetch", "-q", "origin"],
+            ["git", "-C", repo, "fetch", "-q", "--", remote],
             capture_output=True,
             text=True,
             check=True,
             timeout=60,
         )
     except (subprocess.SubprocessError, OSError):
+        if note is not None:
+            note(f"fetch {remote} fallito: base non aggiornata")
         return base
     try:
         head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}")

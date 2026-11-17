@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
 from .conftest import wait_final
 
 GIT = "git -c user.name=t -c user.email=t@t"
@@ -330,6 +332,61 @@ def test_fresh_base_warns_when_diverged_and_stays_quiet_otherwise(home):
     subprocess.run([*commit, str(origin), "commit", "-q", "--allow-empty", "-m", "theirs"], check=True)
     assert core._fresh_base(str(clone), "HEAD", notes.append) == "HEAD"
     assert len(notes) == 1 and "diverged" in notes[0] and local[:9] in notes[0]
+
+
+@pytest.mark.parametrize("scenario", ["equal", "behind", "ahead", "diverged", "explicit", "fetch_failure"])
+def test_fresh_base_follows_configured_remote(tmp_path, scenario):
+    from subtask import core
+
+    remote = _repo(tmp_path / "remote")
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", "-o", "newserver", str(remote), str(clone)], check=True)
+    root = _git(clone, "rev-parse", "HEAD").strip()
+
+    def commit(repo):
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-C",
+                str(repo),
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                f"new in {repo.name}",
+            ],
+            check=True,
+        )
+
+    if scenario in ("ahead", "diverged"):
+        commit(clone)
+    local = _git(clone, "rev-parse", "HEAD").strip()
+    if scenario in ("behind", "diverged", "explicit", "fetch_failure"):
+        commit(remote)
+    newest = _git(remote, "rev-parse", "HEAD").strip()
+    if scenario == "fetch_failure":
+        _git(clone, "remote", "set-url", "newserver", str(tmp_path / "missing"))
+    notes = []
+    base = root if scenario == "explicit" else "HEAD"
+    if scenario == "explicit":
+        commit(clone)
+    result = core._fresh_base(str(clone), base, notes.append)
+    if scenario == "behind":
+        assert result == newest
+    else:
+        assert result == base
+    if scenario == "diverged":
+        assert len(notes) == 1 and "diverged" in notes[0] and local[:9] in notes[0]
+    elif scenario == "fetch_failure":
+        assert len(notes) == 1 and "fetch newserver fallito: base non aggiornata" in notes[0]
+    else:
+        assert notes == []
+    if scenario in ("behind", "diverged", "explicit"):
+        assert _git(clone, "rev-parse", "@{upstream}").strip() == newest
 
 
 def test_readonly_explicit_worktree_is_honored(home, monkeypatch):
