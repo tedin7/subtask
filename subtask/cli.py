@@ -58,6 +58,7 @@ class _Parser(argparse.ArgumentParser):
 def main() -> int:
     p = _Parser(prog="subtask", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     from .install import commands as install_commands  # after the parser line: bench/jev_real_cases edits it
+
     p.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__} (commit {installed_commit()})"
     )
