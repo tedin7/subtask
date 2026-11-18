@@ -88,17 +88,37 @@ def _artifacts(wt: Path, check_sh: str | None) -> None:
     (wt / "artifacts" / "audit.json").write_text("{}")
 
 
-def test_check_sh_report_dir_is_regenerable(tmp_path):
-    """F-15075: arvx's `artifacts/` (written by scripts/check.sh) must not pin a copy forever."""
+def test_check_sh_naming_artifacts_does_not_make_it_deletable(tmp_path):
+    """T-1002124: a script that names `artifacts/` is not proof that the folder holds nothing to keep."""
     from subtask import gc
 
     _repo, wt = _worktree(tmp_path)
     _artifacts(wt, "python3 t.py --report artifacts/audit.json\n")
     _git("-C", str(wt), "add", ".gitignore", "scripts")
     _git("-C", str(wt), "commit", "-qm", "c")
-    assert gc.worktree_clean(str(wt)) is True
-    assert gc.prune_regenerable(str(wt)) == ["artifacts"]
-    assert not (wt / "artifacts").exists()
+    assert gc.worktree_clean(str(wt)) is False
+    assert gc.prune_regenerable(str(wt)) == []
+    assert (wt / "artifacts" / "audit.json").is_file()
+
+
+def test_ignored_notes_and_proofs_survive_prune_while_caches_go(tmp_path):
+    """T-1002124: the copy stays, so notes and proofs next to the caches stay; only the caches are pruned."""
+    from subtask import gc
+
+    _repo, wt = _worktree(tmp_path)
+    (wt / ".gitignore").write_text("node_modules/\nbuild/\ntarget/\nnotes/\nproofs/\n")
+    _git("-C", str(wt), "add", ".gitignore")
+    _git("-C", str(wt), "commit", "-qm", "c")
+    (wt / "node_modules" / "pkg").mkdir(parents=True)
+    (wt / "node_modules" / "pkg" / "i.js").write_text("x")
+    (wt / "notes").mkdir()
+    (wt / "notes" / "decision.md").write_text("keep me")
+    (wt / "proofs").mkdir()
+    (wt / "proofs" / "run.log").write_text("keep me too")
+    assert gc.prune_regenerable(str(wt)) == ["node_modules"]
+    assert (wt / "notes" / "decision.md").read_text() == "keep me"
+    assert (wt / "proofs" / "run.log").read_text() == "keep me too"
+    assert gc.worktree_clean(str(wt)) is False
 
 
 def test_artifacts_without_check_sh_is_user_work(tmp_path):
