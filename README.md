@@ -166,6 +166,8 @@ It scans jobs from all repositories, regardless of the current directory. Its co
 jobs older than the retention period, not the total number of jobs.
 `gc` does not calculate file sizes, so its output reports folder counts rather than reclaimed bytes.
 Run `subtask du` separately for disk usage; scanning large stores can take time.
+The command reuses a completed measurement for one hour and displays its UTC time;
+use `subtask du --refresh` to scan again. The first scan can still be slow.
 A copy with files in `.reports` is kept until a collector leaves a receipt, the regular file `.reports/.collected` (any content; its mtime must be at least that of the newest report). Empty `.reports` needs no receipt.
 
 ## Progress in the chat

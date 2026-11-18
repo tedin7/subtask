@@ -20,6 +20,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import UTC
 from pathlib import Path
 
 from . import __version__, core
@@ -138,7 +139,10 @@ def main() -> int:
         action="store_true",
         help="only delete local subtask/st-* branches already in origin/HEAD",
     )
-    sub.add_parser("du")
+    du_parser = sub.add_parser("du")
+    du_parser.add_argument(
+        "--refresh", action="store_true", help="scan again instead of using a recent cached measurement"
+    )
     sub.add_parser("roi")
     ro = sub.add_parser("routing")
     ro.add_argument("action", choices=["explain", "calibrate"])
@@ -257,8 +261,21 @@ def main() -> int:
     elif a.cmd == "du":
         from . import gc
 
-        for name, size in gc.du_parts():
+        cached = None if a.refresh else gc.read_du_cache()
+        if cached:
+            from datetime import datetime
+
+            print(f"cached measurement: {datetime.fromtimestamp(cached[0], UTC).isoformat()}", flush=True)
+            parts = cached[1].items()
+        else:
+            print("scanning disk usage", flush=True)
+            parts = gc.du_parts()
+        measured_parts = {}
+        for name, size in parts:
             print(f"{name}: {size / 1e6:.1f} MB", flush=True)
+            measured_parts[name] = size
+        if cached is None:
+            gc.write_du_cache(measured_parts)
         out = ""
     elif a.cmd == "roi":
         from . import roi
