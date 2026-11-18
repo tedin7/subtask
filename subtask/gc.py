@@ -14,7 +14,9 @@ import re
 import shutil
 import stat
 import subprocess
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import config, jobs, telemetry, worktree_guard
@@ -22,14 +24,54 @@ from . import config, jobs, telemetry, worktree_guard
 RETENTION_DAYS = int(os.environ.get("SUBTASK_JOB_RETENTION_DAYS", "30"))
 
 
-def _size(path: Path) -> int:
-    """Bytes on disk: a file with many hard links counts once, a sparse file only for its blocks."""
+DU_WORKERS = 16
+
+
+def _walk_size(path: Path, linked: set[tuple[int, int]], lock: threading.Lock) -> int:
+    """Bytes on disk below one directory: hard-linked files count once (inodes shared across threads)."""
     total = 0
+    stack = [str(path)]
+    while stack:
+        try:
+            entries = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with entries:
+            for entry in entries:
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+                        continue
+                except OSError:
+                    continue
+                if info.st_nlink > 1:
+                    inode = (info.st_dev, info.st_ino)
+                    with lock:
+                        if inode in linked:
+                            continue
+                        linked.add(inode)
+                total += info.st_blocks * 512
+    return total
+
+
+def _size(path: Path) -> int:
+    """Bytes on disk: a file with many hard links counts once, a sparse file only for its blocks.
+
+    T-1002622: with thousands of job folders a serial walk waits on one disk read at a time and
+    ran past 120 s; the first-level folders are walked by a pool of threads (reads release the GIL).
+    """
     linked: set[tuple[int, int]] = set()
-    for root, _dirs, files in os.walk(path):
-        for name in files:
+    lock = threading.Lock()
+    total = 0
+    subdirs: list[Path] = []
+    try:
+        for entry in os.scandir(path):
             try:
-                info = (Path(root) / name).lstat()
+                if entry.is_dir(follow_symlinks=False):
+                    subdirs.append(Path(entry.path))
+                    continue
+                info = entry.stat(follow_symlinks=False)
             except OSError:
                 continue
             if info.st_nlink > 1:
@@ -38,17 +80,27 @@ def _size(path: Path) -> int:
                     continue
                 linked.add(inode)
             total += info.st_blocks * 512
+    except OSError:
+        return 0
+    with ThreadPoolExecutor(max_workers=DU_WORKERS) as pool:
+        total += sum(pool.map(lambda d: _walk_size(d, linked, lock), subdirs))
     return total
 
 
-def du() -> dict:
+def du_parts():
+    """Yield (name, bytes) one folder at a time, so a slow disk shows progress instead of silence (T-1002622)."""
     parts = {
         "jobs": config.JOBS,
         "worktrees": config.WORKTREES,
         "ledger": config.HOME / "ledger",
         "telemetry": config.HOME / "telemetry",
     }
-    return {name: _size(path) if path.exists() else 0 for name, path in parts.items()}
+    for name, path in parts.items():
+        yield name, _size(path) if path.exists() else 0
+
+
+def du() -> dict:
+    return dict(du_parts())
 
 
 # T-7258b: ".reports" holds job reports. Nothing in the copy records that the coordinator

@@ -37,3 +37,16 @@ def test_symlink_target_is_not_counted(tmp_path):
     (inside / "link").symlink_to(outside / "big")
 
     assert gc._size(inside) < 8192
+
+
+def test_hard_links_across_job_folders_count_once(tmp_path):
+    """T-1002622: folders are walked in parallel; a file linked from two of them is still counted once."""
+    from subtask import gc
+
+    for name in ("job1", "job2", "job3"):
+        (tmp_path / name / "deep").mkdir(parents=True)
+    (tmp_path / "job1" / "deep" / "f").write_bytes(b"x" * 8192)
+    os.link(tmp_path / "job1" / "deep" / "f", tmp_path / "job2" / "deep" / "f")
+    os.link(tmp_path / "job1" / "deep" / "f", tmp_path / "job3" / "f")
+
+    assert gc._size(tmp_path) == (tmp_path / "job1" / "deep" / "f").stat().st_blocks * 512

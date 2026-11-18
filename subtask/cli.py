@@ -257,7 +257,9 @@ def main() -> int:
     elif a.cmd == "du":
         from . import gc
 
-        out = "\n".join(f"{k}: {v / 1e6:.1f} MB" for k, v in gc.du().items())
+        for name, size in gc.du_parts():
+            print(f"{name}: {size / 1e6:.1f} MB", flush=True)
+        out = ""
     elif a.cmd == "roi":
         from . import roi
 
@@ -294,7 +296,8 @@ def main() -> int:
         out = core.limits(force=a.force)
     else:
         out = core.spend()
-    print(out)
+    if out:
+        print(out)
     return 0
 
 
