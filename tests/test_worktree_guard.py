@@ -128,3 +128,25 @@ def test_gc_skips_worktree_with_unique_commit(home, tmp_path):
     item = next(i for i in gc.plan(days=-1) if i["job"] == job)
     assert "commit" in item["skip"] and item["worktree"] is None
     assert Path(jobs.spec(job)["cwd"]).is_dir()
+
+
+def test_cleanup_command_keeps_proofs_named_by_a_script_and_prunes_only_caches(home, tmp_path):
+    """T-1002124: finished job, copy kept (not clean): `artifacts/` named by scripts/check.sh survives, caches go."""
+    from subtask import core, jobs
+
+    repo = _repo(tmp_path / "repo")
+    (repo / ".gitignore").write_text("node_modules/\n/artifacts/\n")
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "check.sh").write_text("python3 t.py --report artifacts/audit.json\n")
+    subprocess.run([*GIT, "-C", str(repo), "add", "."], check=True)
+    subprocess.run([*GIT, "-C", str(repo), "commit", "-qm", "g"], check=True)
+    job = _job(
+        home,
+        repo,
+        "mkdir -p artifacts node_modules/p; echo proof > artifacts/audit.json; echo x > node_modules/p/i.js; echo done",
+    )
+    cwd = Path(jobs.spec(job)["cwd"])
+    out = core.cleanup(job)
+    assert "not removed" in out
+    assert (cwd / "artifacts" / "audit.json").read_text() == "proof\n"
+    assert not (cwd / "node_modules").exists()
