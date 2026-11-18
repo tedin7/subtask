@@ -9,6 +9,7 @@ and only those already contained in the remote default branch (see branch_plan).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -25,6 +26,34 @@ RETENTION_DAYS = int(os.environ.get("SUBTASK_JOB_RETENTION_DAYS", "30"))
 
 
 DU_WORKERS = 16
+DU_CACHE_SECONDS = 3600
+
+
+def read_du_cache() -> tuple[float, dict[str, int]] | None:
+    """Return a recent complete measurement; ignore damaged or obsolete cache files."""
+    try:
+        data = json.loads((config.HOME / "du-cache.json").read_text())
+        measured = data["measured"]
+        parts = data["parts"]
+        if (
+            type(measured) not in (int, float)
+            or not 0 <= time.time() - measured < DU_CACHE_SECONDS
+            or not isinstance(parts, dict)
+            or set(parts) != {"jobs", "worktrees", "ledger", "telemetry"}
+            or any(type(value) is not int or value < 0 for value in parts.values())
+        ):
+            return None
+        return measured, parts
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+def write_du_cache(parts: dict[str, int]) -> None:
+    """A failed cache write must not prevent reporting a measurement."""
+    try:
+        jobs.write_json(config.HOME / "du-cache.json", {"measured": time.time(), "parts": parts})
+    except OSError:
+        pass
 
 
 def _walk_size(path: Path, linked: set[tuple[int, int]], lock: threading.Lock) -> int:
