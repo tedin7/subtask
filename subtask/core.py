@@ -24,6 +24,7 @@ from . import (
     events,
     jobs,
     ledger,
+    memcap,
     policy,
     procid,
     router,
@@ -108,7 +109,7 @@ def _fresh_base(repo: str, base: str, note=None) -> str:
 def _spawn(job_id: str, *extra: str) -> dict:
     with (jobs.job_dir(job_id) / "worker.log").open("a") as log:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "subtask.worker", job_id, *extra],
+            memcap.cap_argv([sys.executable, "-m", "subtask.worker", job_id, *extra]),
             stdout=log,
             stderr=log,
             stdin=subprocess.DEVNULL,
