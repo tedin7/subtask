@@ -85,6 +85,11 @@ def prompt_for(arm: str, ctx: str, idx: int, cmd: str) -> str:
     return head + "\n\n"
 
 
+def user_message(prompt: str, ctx: str) -> str:
+    """Static session record first, variable question last so prompt caching hits across questions."""
+    return "RECORD:\n" + ctx + "\n\n" + prompt
+
+
 def run_model(prompt: str, ctx: str, model: str, cwd: Path, tools: bool, timeout: int) -> dict:
     """One question to Claude through the same SDK and key helper that subtask's claude-api engine uses."""
     import asyncio
@@ -101,7 +106,7 @@ def run_model(prompt: str, ctx: str, model: str, cwd: Path, tools: bool, timeout
             env=claude_api.api_env(),
         )  # fmt: skip
         text, res = "", {"cost": 0.0, "tokens": {}, "tool_calls": 0, "rc": 1}
-        async for m in query(prompt=prompt + "\n\nRECORD:\n" + ctx, options=options):
+        async for m in query(prompt=user_message(prompt, ctx), options=options):
             if isinstance(m, ResultMessage):
                 text = m.result or ""
                 u = {k: v for k, v in (m.usage or {}).items() if isinstance(v, int)}

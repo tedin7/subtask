@@ -25,3 +25,12 @@ def test_summary_drops_a_proof_in_the_middle_full_keeps_it():
     assert "boom" in live.context_for("full", calls, "j", "j.jsonl")
     assert "boom" not in live.context_for("summary", calls, "j", "j.jsonl")
     assert cc.is_proof(calls[20])
+
+
+def test_user_message_puts_static_record_before_variable_question():
+    ctx = "#1 cmd A\n#2 cmd B"
+    m1 = live.user_message(live.prompt_for("full", ctx, 1, "cmd A"), ctx)
+    m2 = live.user_message(live.prompt_for("full", ctx, 2, "cmd B"), ctx)
+    prefix = "RECORD:\n" + ctx + "\n\n"
+    assert m1.startswith(prefix) and m2.startswith(prefix)
+    assert m1.index(ctx) < m1.index("call #1")
