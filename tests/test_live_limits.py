@@ -293,3 +293,8 @@ def test_kimi_falls_back_to_the_window_detail(ll, monkeypatch, tmp_path):
     reply = {"limits": [{"detail": {"limit": "100", "used": "7"}}]}
     monkeypatch.setattr(ll, "_get", lambda url, headers: reply)
     assert ll.read_kimi()["used_percent"] == 7.0
+
+
+def test_missing_second_account_key_names_the_admin_key_to_set(ll):
+    with pytest.raises(RuntimeError, match="ANTHROPIC_ADMIN_KEY_2 or ANTHROPIC_API_KEY_2"):
+        ll.read_claude_api2()

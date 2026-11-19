@@ -116,7 +116,7 @@ def read_claude_api(key_name: str = "ANTHROPIC_API_KEY") -> dict:
     admin_name = key_name.replace("ANTHROPIC_API_KEY", "ANTHROPIC_ADMIN_KEY")
     key = secrets.get(admin_name, "") or secrets.get(key_name, "")
     if not key:
-        raise RuntimeError(f"no {key_name} in the env file")
+        raise RuntimeError(f"no {admin_name} or {key_name} in the env file")
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
     try:
         return _claude_month_spend(headers)

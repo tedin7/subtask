@@ -13,6 +13,8 @@ calls (a fixed rule, no randomness). Three ways to carry the session are compare
 Measured per arm: tokens carried (chars / 4), exact evidence recovered (the output bytes match the
 stored sha256), tokens per recovered proof, and the extra tokens a recovery costs. A recovery
 through a pointer is real: the proof is read back from the file and checked against the hash.
+Note: chars / 4 underestimates real sessions by about 2.3x (191k real vs 84k estimated), the same for
+every arm, so compare arms by ratio, not by absolute tokens (docs/proposals-comparison-20261119.md).
 What is NOT measured: whether a model solves the task better with one arm (that needs model runs).
 
 Run: python bench/context_compaction.py [--jobs N] [--json]
