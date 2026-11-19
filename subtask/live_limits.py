@@ -110,10 +110,25 @@ def _claude_cost_page(data: dict) -> float:
 def read_claude_api(key_name: str = "ANTHROPIC_API_KEY") -> dict:
     """Month-to-date spend from the Admin API cost report. Anthropic exposes no spend-limit call,
     so the limit stays the configured one."""
-    key = config.load_secrets().get(key_name, "")
+    secrets = config.load_secrets()
+    # The cost report accepts only an Admin API key (sk-ant-admin...); the run key cannot read it
+    # (T-1003143). ANTHROPIC_ADMIN_KEY[_2] holds the admin key; without it the run key is tried.
+    admin_name = key_name.replace("ANTHROPIC_API_KEY", "ANTHROPIC_ADMIN_KEY")
+    key = secrets.get(admin_name, "") or secrets.get(key_name, "")
     if not key:
         raise RuntimeError(f"no {key_name} in the env file")
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+    try:
+        return _claude_month_spend(headers)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403) and not key.startswith("sk-ant-admin"):
+            raise RuntimeError(
+                f"cost report needs an Admin API key: set {admin_name} (the run key {key_name} is rejected, HTTP {exc.code})"
+            ) from None
+        raise
+
+
+def _claude_month_spend(headers: dict) -> dict:
     start = _month_start()
     # The report holds closed UTC days only: ending_at must be after starting_at, so on day 1 of the
     # month there is nothing to ask (HTTP 400 "ending date must be after starting date").

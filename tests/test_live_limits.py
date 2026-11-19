@@ -255,6 +255,31 @@ def test_claude_api2_has_its_own_reader_and_key(ll, monkeypatch, tmp_path):
     assert r["status"] == "live" and r["spent_usd"] == 2.5 and set(seen) == {"sk-ant-two"}
 
 
+def test_claude_cost_report_prefers_admin_key_and_explains_a_rejected_run_key(ll, monkeypatch, tmp_path):
+    """T-1003143: the report needs an Admin key; a run key gets a 401 that must name the fix."""
+    import urllib.error
+
+    env = tmp_path / "env"
+    _pin_day(ll, monkeypatch, 5)
+    seen = []
+
+    def get(url, headers):
+        seen.append(headers["x-api-key"])
+        return {"data": [{"results": [{"amount": "100"}]}]}
+
+    monkeypatch.setattr(ll, "_get", get)
+    env.write_text("ANTHROPIC_API_KEY=sk-ant-run\nANTHROPIC_ADMIN_KEY=sk-ant-admin01-x\n")
+    assert ll.read_claude_api()["spent_usd"] == 1.0 and seen == ["sk-ant-admin01-x"]
+
+    def rejected(url, headers):
+        raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, None)
+
+    monkeypatch.setattr(ll, "_get", rejected)
+    env.write_text("ANTHROPIC_API_KEY=sk-ant-run\n")
+    with pytest.raises(RuntimeError, match="ANTHROPIC_ADMIN_KEY"):
+        ll.read_claude_api()
+
+
 def test_unknown_group_and_missing_key_do_not_raise_keyerror(ll):
     assert "KeyError" not in ll.read_group("nope", force=True)["note"]
     assert "ANTHROPIC_API_KEY_2" in ll.read_group("claude-api2", force=True)["note"]
