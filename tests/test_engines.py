@@ -187,3 +187,25 @@ def test_cli_failure_without_output_reports_stderr_reason(tmp_path):
     assert "429 usage limit" in out.result
     assert "old attempt" not in out.result
     assert out.quota_exhausted
+
+
+def test_claude_api_settings_and_env_disable_plugins_and_unused_claude_mds(home, tmp_path):
+    from subtask.engines import claude_api
+
+    cfg = json.loads(claude_api.settings(sandbox=False, git_dir=None))
+    assert cfg["enabledPlugins"]["subtask@subtask"] is False
+    assert cfg["enabledPlugins"]["basedpyright@claude-code-lsps"] is False
+
+    empty_dir = tmp_path / "empty_judge"
+    empty_dir.mkdir()
+    env_ro = claude_api.api_env(readonly=True, cwd=str(empty_dir))
+    assert env_ro["FORCE_PROMPT_CACHING_5M"] == "1"
+    assert env_ro["CLAUDE_CODE_DISABLE_1M_CONTEXT"] == "1"
+    assert env_ro["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] == "80"
+    assert env_ro["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] == "1"
+
+    repo_with_md = tmp_path / "with_md"
+    repo_with_md.mkdir()
+    (repo_with_md / "CLAUDE.md").write_text("# Project rules\n")
+    env_with_md = claude_api.api_env(readonly=True, cwd=str(repo_with_md))
+    assert "CLAUDE_CODE_DISABLE_CLAUDE_MDS" not in env_with_md

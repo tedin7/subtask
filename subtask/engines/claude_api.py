@@ -13,6 +13,13 @@ from .base import Adapter, Capabilities, Capacity, Outcome, RunContext, describe
 
 KEY_2 = "ANTHROPIC_API_KEY_2"  # second Claude Platform key, own limit group claude-api2
 READONLY_TOOLS = ["Read", "Grep", "Glob", "WebSearch"]
+WORK_TOOLS = ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "WebSearch"]
+DISABLED_PLUGINS = {
+    "subtask@subtask": False,
+    "basedpyright@claude-code-lsps": False,
+    "pyright@claude-code-lsps": False,
+    "modern-web-guidance@googlechrome": False,
+}
 SUMMARY_RULE = (
     "\n\nWhen you finish, end your answer with a section that starts with the exact "
     'line "## Summary" and has at most 10 short lines. Put the answer itself first '
@@ -76,6 +83,7 @@ def settings(
         str(Path.home() / ".claude" / ".credentials.json"),
     ]
     data: dict = {
+        "enabledPlugins": DISABLED_PLUGINS,
         "permissions": {
             "deny": [f"{tool}(/{p})" for p in secret_paths for tool in ("Read", "Edit", "Write")]
             + [f"Bash(*{p}*)" for p in secret_paths]
@@ -100,8 +108,18 @@ def settings(
     return json.dumps(data)
 
 
-def api_env(key_name: str = "ANTHROPIC_API_KEY") -> dict[str, str]:
-    env = {"IS_SANDBOX": "1", "ANTHROPIC_API_KEY": ""}  # key comes from apiKeyHelper only
+def api_env(
+    key_name: str = "ANTHROPIC_API_KEY", *, readonly: bool = False, cwd: str | None = None
+) -> dict[str, str]:
+    env = {
+        "IS_SANDBOX": "1",
+        "ANTHROPIC_API_KEY": "",  # key comes from apiKeyHelper only
+        "FORCE_PROMPT_CACHING_5M": "1",
+        "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+        "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "80",
+    }
+    if readonly and cwd and not (Path(cwd) / "CLAUDE.md").is_file():
+        env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     secrets = config.load_secrets()
     if not secrets.get(key_name):
         raise RuntimeError(f"{key_name} missing (file {config.ENV_FILE})")
@@ -201,11 +219,14 @@ class ClaudeApi(Adapter):
             max_budget_usd=spec["max_usd"],
             effort=spec["effort"],
             permission_mode="dontAsk" if readonly else "bypassPermissions",
+            tools=READONLY_TOOLS if readonly else WORK_TOOLS,
             allowed_tools=READONLY_TOOLS if readonly else [],
             disallowed_tools=["mcp__*", "WebFetch"] if readonly else ["mcp__*"],
+            strict_mcp_config=True,
+            extra_args={"disable-slash-commands": None},
             settings=settings(sandbox, spec.get("git_dir"), policy.get("untrusted", False), self.key_name),
             system_prompt={"type": "preset", "preset": "claude_code", "append": SUMMARY_RULE},
-            env={**ctx.env, **api_env(self.key_name)},
+            env={**ctx.env, **api_env(self.key_name, readonly=readonly, cwd=spec.get("cwd"))},
             resume=ctx.resume,
             stderr=stderr_lines.append,
         )
