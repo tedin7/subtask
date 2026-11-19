@@ -128,6 +128,18 @@ def clear_provider_block(adapter) -> None:
         _cache().unlink(missing_ok=True)
 
 
+def key_rejected_by_report(key_name: str) -> bool:
+    """True when the last live cost-report read of this key's group failed with HTTP 401.
+
+    The 12h block from a failed run expires by itself; a key that keeps answering 401 on the
+    cost report must not go back to looking available (F-15979)."""
+    from . import live_limits
+
+    group = "claude-api2" if key_name == "ANTHROPIC_API_KEY_2" else "claude-api"
+    entry = live_limits._load_cache().get(group)
+    return isinstance(entry, dict) and "HTTP Error 401" in str(entry.get("note", ""))
+
+
 def _hint(engine: str) -> dict | None:
     hint = jobs.read_json(_hints()).get(engine)
     if not hint:

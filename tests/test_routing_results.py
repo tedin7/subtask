@@ -26,6 +26,9 @@ def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch)
     from subtask import capacity, config, ledger
     from subtask.engines.claude_api import ClaudeApi
 
+    (home / "env").write_text(
+        "ANTHROPIC_API_KEY=sk-ant-test-0000000000\nANTHROPIC_API_KEY_2=sk-ant-test-2-000000\n"
+    )
     monkeypatch.setattr(config, "MONTHLY_CAP_USD", 100.0)
     monkeypatch.setattr(ledger, "committed", lambda: 25.0)
     monkeypatch.setattr(
@@ -52,6 +55,28 @@ def test_claude_budget_display_does_not_claim_provider_credit(home, monkeypatch)
     capacity.note_exhausted("sonnet-api", time.time() + 60, "provider quota exhausted")
     line = capacity.report().splitlines()[0]
     assert "free   0%" in line and "provider quota exhausted" in line
+
+
+def test_engine_without_key_or_with_rejected_key_shows_no_room(home, monkeypatch):
+    from subtask import capacity, live_limits
+    from subtask.engines.claude_api import ClaudeApi
+
+    missing = ClaudeApi("sonnet-api2", "sonnet", "ANTHROPIC_API_KEY_2").capacity()  # F-15979
+    assert missing.value == 0.0 and "missing" in missing.note
+
+    monkeypatch.setattr(
+        live_limits,
+        "_load_cache",
+        lambda: {
+            "claude-api": {
+                "note": "live read failed (HTTPError: HTTP Error 401: Unauthorized); last known value"
+            }
+        },
+    )
+    rejected = ClaudeApi("sonnet-api", "sonnet").capacity()
+    assert rejected.value == 0.0 and "HTTP 401" in rejected.note
+    capacity.clear_provider_block(ClaudeApi("sonnet-api", "sonnet"))  # a real run succeeded: trust it
+    assert ClaudeApi("sonnet-api", "sonnet").capacity().value > 0.0
 
 
 def test_capacity_report_preserves_long_provider_note(monkeypatch):
@@ -341,6 +366,9 @@ def test_active_index_makes_counting_independent_of_history(home):
 
 
 def test_provider_credit_or_401_marks_key_engines_blocked(home):
+    (home / "env").write_text(
+        "ANTHROPIC_API_KEY=sk-ant-test-0000000000\nANTHROPIC_API_KEY_2=sk-ant-test-2-000000\n"
+    )
     from subtask import capacity
     from subtask.engines.claude_api import ClaudeApi
 
@@ -362,6 +390,9 @@ def test_provider_credit_or_401_marks_key_engines_blocked(home):
 
 
 def test_block_without_reset_stays_blocked_until_cleared(home, monkeypatch):
+    (home / "env").write_text(
+        "ANTHROPIC_API_KEY=sk-ant-test-0000000000\nANTHROPIC_API_KEY_2=sk-ant-test-2-000000\n"
+    )
     from subtask import capacity
     from subtask.engines.claude_api import ClaudeApi
 

@@ -146,6 +146,12 @@ class ClaudeApi(Adapter):
 
         cap = config.MONTHLY_CAP_USD
         proven = capacity.provider_ok_recently(self.key_name)
+        if self.auth_state() == "missing":  # F-15979: no key, no room: never listed as available
+            return Capacity(0.0, "pct_free", "key check", time.time(), "high",
+                            f"{self.key_name} missing: engine unavailable")  # fmt: skip
+        if not proven and capacity.key_rejected_by_report(self.key_name):
+            return Capacity(0.0, "pct_free", "live cost report", time.time(), "high",
+                            "provider rejected the key (HTTP 401): engine unavailable")  # fmt: skip
         left = cap - ledger.committed()
         return Capacity(
             max(0.0, 100 * left / cap) if cap > 0 else 0.0,
