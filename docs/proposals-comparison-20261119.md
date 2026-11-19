@@ -53,6 +53,27 @@ because every pointer was followed in full; reading just the needed range is che
 Limit: success of the task and cost per successful result need model runs (not made): this measures the
 size and the recoverability of the proof, the two inputs to that cost.
 
+### 2b. The same three arms with a model (T-1002921, run 19/11/2026, decision "prova ampia", cap 15 USD)
+
+`python bench/context_compaction_live.py --out DIR --sessions 12 --targets 2` (run with the interpreter of
+the subtask tool). 12 real sessions of 239-358 calls (77k-125k tokens by chars/4), 2 failing calls each, the
+same 24 questions for every arm, model Claude Haiku through the claude-api key. Question: "call #N failed;
+quote the last line of its exact output". Success = the line is in the answer verbatim (the line is unique in
+the session). Full and summary have no tools; state may read the stored session (Read/Grep) by pointer.
+
+| arm | success | cost (reported, USD) | cost per successful result | tool reads |
+|---|---|---|---|---|
+| full history | 24 / 24 | 5.118 | 0.2133 | 0 |
+| summary | 0 / 24 (24 times UNKNOWN, no invented answer) | 0.066 | undefined (no success) | 0 |
+| state with pointers | 24 / 24 | 0.244 | 0.0102 | 66 (2.75 per question) |
+
+Total spent 5.43 USD (plus 0.14 USD of one smoke run). Reading: the state with pointers is as reliable as
+the full history and 21 times cheaper per success; the summary is cheap but never finds the proof, so its
+cost per success does not exist. Limits: one model, one question type (exact quote of a failing output), 24
+trials per arm; the full arm fits only because the sessions were chosen under 140k estimated tokens (real
+size about 2.3 times the chars/4 figure, up to 191k): the 12 longest sessions of the offline run (up to 850k)
+cannot be carried whole at all. Nothing in the product changes.
+
 ## 3. Localization guided by callers (T-1002924)
 
 `python bench/localization_callers.py --n 20 --k 3` (and `--k 5`): the 20 newest `fix:` commits of this
