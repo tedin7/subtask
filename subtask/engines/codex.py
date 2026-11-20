@@ -57,6 +57,9 @@ class Codex(CliAdapter):
         argv += ["-o", str(ctx.folder / f"last-message-{ctx.attempt}.txt")]
         if spec.get("model"):
             argv += ["-m", spec["model"]]
+        tier = service_tier(spec)
+        if tier:
+            argv += ["-c", f'service_tier="{tier}"']
         argv += ["resume", ctx.resume, "--", ctx.prompt] if ctx.resume else ["--", ctx.prompt]
         return argv
 
@@ -112,6 +115,13 @@ class Codex(CliAdapter):
 
     def capacity(self) -> Capacity:
         return codex_capacity()
+
+
+def service_tier(spec: dict) -> str:
+    """Codex service tier for a job (e.g. `ultrafast`): spec key `service_tier`, else the env
+    SUBTASK_CODEX_SERVICE_TIER. Empty keeps the tier of the job home config (`default`)."""
+    value = str(spec.get("service_tier") or os.environ.get("SUBTASK_CODEX_SERVICE_TIER") or "").strip()
+    return value if re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", value) else ""
 
 
 def parse_reset(message: str) -> float | None:

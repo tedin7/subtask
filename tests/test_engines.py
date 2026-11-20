@@ -108,6 +108,27 @@ def test_codex_never_bypasses_its_sandbox_unless_asked():
     assert "--dangerously-bypass-approvals-and-sandbox" in argv("worktree")
 
 
+def test_codex_service_tier_ultrafast_is_opt_in(monkeypatch):
+    from subtask.engines.base import RunContext
+    from subtask.engines.codex import Codex
+    from subtask.engines.openai import OpenAI
+
+    def argv(spec, engine=Codex):
+        spec = {"cwd": "/w", "policy": {"level": "sandbox"}, **spec}
+        ctx = RunContext("st-x", spec, "p", None, 1, Path("/tmp"), print, threading.Event(), None, {})
+        return engine().argv(ctx)
+
+    monkeypatch.delenv("SUBTASK_CODEX_SERVICE_TIER", raising=False)
+    assert not any("service_tier" in a for a in argv({}))
+    assert 'service_tier="ultrafast"' in argv({"service_tier": "ultrafast"})
+    monkeypatch.setenv("SUBTASK_CODEX_SERVICE_TIER", "ultrafast")
+    assert 'service_tier="ultrafast"' in argv({})
+    assert 'service_tier="ultrafast"' in argv({}, OpenAI)
+    assert argv({})[-2:] == ["--", "p"]
+    monkeypatch.setenv("SUBTASK_CODEX_SERVICE_TIER", 'x"; rm')
+    assert not any("service_tier" in a for a in argv({}))
+
+
 def test_probe_reports_missing_binary_and_flags(home):
     from subtask.engines.kimi import Kimi
 

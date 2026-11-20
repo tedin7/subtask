@@ -194,6 +194,7 @@ Details and evidence: [docs/progress-matrix.md](docs/progress-matrix.md).
 | `SUBTASK_PROGRESS_MIN_S` / `SUBTASK_PROGRESS_HEARTBEAT_S` | `2` / `10` |
 | `SUBTASK_CODEX_JOB_HOME` | `~/.codex-job`, used if it has `config.toml`; otherwise a sanitized `~/.codex-jobs` is prepared |
 | `SUBTASK_CODEX_KEEP_MCP` | unset; set to keep the normal Codex home and its MCP servers |
+| `SUBTASK_CODEX_SERVICE_TIER` | unset; `ultrafast` runs codex/openai jobs on the Ultra fast tier (also per job: spec key `service_tier`) |
 
 Costs of API engines come from the SDK's estimate; a run whose real cost is
 unknown is charged its whole reservation. Telemetry stays on this machine.
