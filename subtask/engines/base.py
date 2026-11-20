@@ -197,6 +197,21 @@ class Adapter:
 class CliAdapter(Adapter):
     """An engine driven as a headless CLI that prints JSON lines on stdout."""
 
+    default_timeout_s: float | None = None
+    timeout_env_var: str | None = None
+
+    def run_timeout(self, ctx: RunContext) -> float | None:
+        raw = ctx.spec.get("timeout_s")
+        if raw is None and self.timeout_env_var:
+            raw = os.environ.get(self.timeout_env_var)
+        if raw is not None:
+            try:
+                val = float(raw)
+                return val if val > 0 else None
+            except (TypeError, ValueError):
+                return self.default_timeout_s
+        return self.default_timeout_s
+
     def argv(self, ctx: RunContext) -> list[str]:
         raise NotImplementedError
 
@@ -210,6 +225,8 @@ class CliAdapter(Adapter):
         raw = ctx.folder / f"output-{ctx.attempt}.jsonl"
         stderr_log = ctx.folder / "worker-stderr.log"
         stderr_from = stderr_log.stat().st_size if stderr_log.exists() else 0
+        limit = self.run_timeout(ctx)
+        timed_out = [False]
         with raw.open("a") as keep, stderr_log.open("a") as err:
             proc = subprocess.Popen(
                 argv,
@@ -220,23 +237,46 @@ class CliAdapter(Adapter):
                 text=True,
                 env=env,
             )
-            ctx.started.set()
-            assert proc.stdout is not None
-            last_emit = 0.0
-            for line in proc.stdout:
-                keep.write(line)
-                if not line.lstrip().startswith("{"):
-                    state.setdefault("plain", []).append(line.rstrip("\n"))
-                try:
-                    activity = self.parse(line, state)
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    activity = None
-                    state.setdefault("format_errors", 0)
-                    state["format_errors"] += 1
-                if activity and time.monotonic() - last_emit >= 1.0:
-                    ctx.emit("tool", activity, source="adapter")
-                    last_emit = time.monotonic()
-            code = proc.wait()
+            timer: threading.Timer | None = None
+            if limit is not None and limit > 0:
+                def _on_timeout() -> None:
+                    timed_out[0] = True
+                    try:
+                        proc.terminate()
+                        proc.wait(timeout=5)
+                    except Exception:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+
+                timer = threading.Timer(limit, _on_timeout)
+                timer.daemon = True
+                timer.start()
+            try:
+                ctx.started.set()
+                assert proc.stdout is not None
+                last_emit = 0.0
+                for line in proc.stdout:
+                    keep.write(line)
+                    if not line.lstrip().startswith("{"):
+                        state.setdefault("plain", []).append(line.rstrip("\n"))
+                    try:
+                        activity = self.parse(line, state)
+                    except (ValueError, KeyError, TypeError, AttributeError):
+                        activity = None
+                        state.setdefault("format_errors", 0)
+                        state["format_errors"] += 1
+                    if activity and time.monotonic() - last_emit >= 1.0:
+                        ctx.emit("tool", activity, source="adapter")
+                        last_emit = time.monotonic()
+                code = proc.wait()
+            finally:
+                if timer is not None:
+                    timer.cancel()
+        if timed_out[0]:
+            state["error_kind"] = "timeout"
+            state["error"] = f"{self.name or 'engine'} timed out after {int(limit or 0)} s"
         text = "\n".join(state["text"]).strip()
         if not text and state.get("plain"):
             text = "\n".join(state["plain"]).strip()  # engine printed no structured events: keep its output

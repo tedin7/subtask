@@ -154,6 +154,8 @@ class Kimi(CliAdapter):
     family = "kimi"
     binary = "kimi"
     supported = "kimi >=2.1"
+    default_timeout_s = 1500.0
+    timeout_env_var = "SUBTASK_KIMI_TIMEOUT_S"
     capabilities = Capabilities(
         readonly=False,  # --plan is a mode, not an enforced read-only boundary
         levels=("worktree", "isolated"),

@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -387,7 +388,15 @@ def main() -> int:
             _learn(job_id, spec, attempts)
         if review_state or failed_check:
             auto_review.finish(job_id, attempt, api_key=review_key)
+        _cleanup_job_tmp(folder)
     return 0
+
+
+def _cleanup_job_tmp(folder: Path) -> None:
+    """Remove per-job TMPDIR once the attempt is settled (prevents unbounded inode/disk growth)."""
+    tmp = folder / "tmp"
+    if tmp.is_dir() and not tmp.is_symlink():
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _advance_group(spec: dict) -> None:
