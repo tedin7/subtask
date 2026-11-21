@@ -108,6 +108,19 @@ def test_codex_never_bypasses_its_sandbox_unless_asked():
     assert "--dangerously-bypass-approvals-and-sandbox" in argv("worktree")
 
 
+def test_codex_low_effort_job_runs_in_ultrafast_tier():
+    from subtask.engines.base import RunContext
+    from subtask.engines.codex import Codex
+
+    def argv(effort):
+        spec = {"cwd": "/w", "effort": effort, "policy": {"level": "sandbox"}}
+        ctx = RunContext("st-x", spec, "p", None, 1, Path("/tmp"), print, threading.Event(), None, {})
+        return Codex().argv(ctx)
+
+    assert 'service_tier="ultrafast"' in argv("low")
+    assert not any("service_tier" in part for part in argv("medium"))
+
+
 def test_probe_reports_missing_binary_and_flags(home):
     from subtask.engines.kimi import Kimi
 

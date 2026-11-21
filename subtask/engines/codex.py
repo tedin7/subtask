@@ -57,6 +57,8 @@ class Codex(CliAdapter):
         argv += ["-o", str(ctx.folder / f"last-message-{ctx.attempt}.txt")]
         if spec.get("model"):
             argv += ["-m", spec["model"]]
+        if spec.get("effort") == "low":  # tier=fast sets effort low: Codex then runs in its Ultra fast service tier
+            argv += ["-c", 'service_tier="ultrafast"']
         argv += ["resume", ctx.resume, "--", ctx.prompt] if ctx.resume else ["--", ctx.prompt]
         return argv
 
