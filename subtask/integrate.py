@@ -87,6 +87,13 @@ def _worktree_gone(repo: str, cwd: str) -> bool:
 
 
 def _discard(job_id: str, sp: dict) -> str:
+    if not os.path.isdir(sp["repo"]):
+        # arvos T-1003877: a review-only job whose repo is a worktree already removed by hand: nothing left to remove
+        # or to delete a branch from; the job is discarded and the audit line says so.
+        events.emit(
+            job_id, "integrate", f"{datetime.now(UTC).isoformat()} repo missing, nothing to discard"[:200]
+        )
+        return f"{job_id}: repo {sp['repo']} already gone, job discarded"
     removed = _git(sp["repo"], "worktree", "remove", "--force", sp["cwd"])
     already = False
     if removed.returncode != 0:
