@@ -77,6 +77,7 @@ def start(
     context_refs: list[str] | None = None,
     auto_repomap: bool = False,
     tier: str = "auto",
+    fast: bool = False,
     invariants: list[str] | None = None,
     allowed_paths: list[str] | None = None,
     symbol_scope: list[str] | None = None,
@@ -90,12 +91,12 @@ def start(
     allowed_paths: files outside are reverted. symbol_scope: ['f.py::func'] only those defs may change; integrate merges by symbol.
     oracle_cmd: after verify passes, run on base and result; reports output_match and speedup_pct.
     adversarial: a Breaker job writes the tests first. context_refs: file:P[:A-B] | git:diff[:REF] | subtask:ID:summary|diff
-    instead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only."""
+    instead of pasting text; auto_repomap adds a symbol map. policy: worktree|sandbox|isolated|untrusted. tier: auto|fast|balanced|deep|free_only. fast: True sets tier=fast, effort=low, and Codex ultrafast tier."""
     return core.start(
         task, engine, repo, cwd, base, readonly, max_usd, max_turns, effort, model=model,
         kind=kind, files=files, policy=policy, verify=verify,
         isolation=isolation, max_retries=max_retries, adversarial=adversarial,
-        context_refs=context_refs, auto_repomap=auto_repomap, tier=tier,
+        context_refs=context_refs, auto_repomap=auto_repomap, tier=tier, fast=fast,
         invariants=invariants, allowed_paths=allowed_paths, symbol_scope=symbol_scope, oracle_cmd=oracle_cmd,
         contract=contract,
     )  # fmt: skip

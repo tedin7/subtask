@@ -168,6 +168,7 @@ def start(
     context_refs: list[str] | None = None,
     auto_repomap: bool = False,
     tier: str = "auto",
+    fast: bool = False,
     invariants: list[str] | None = None,
     allowed_paths: list[str] | None = None,
     symbol_scope: list[str] | None = None,
@@ -200,6 +201,11 @@ def start(
         return "oracle_cmd needs a worktree (repo or isolation=worktree)"
     if (allowed_paths or symbol_scope) and not (repo or isolation == "worktree"):
         return "allowed_paths and symbol_scope need a worktree (repo or isolation=worktree)"
+    if fast:
+        if tier == "auto":
+            tier = "fast"
+        if effort == "medium":
+            effort = "low"
     tier, budget_warning = _degrade(tier)
     if tier == "fast" and effort == "medium":
         effort = "low"
@@ -488,6 +494,7 @@ def start(
             "port": _free_port() if branch else None,
             "group": _group,
             "tier": tier,
+            "fast": bool(fast or tier == "fast"),
             "budget_warning": budget_warning,
             "model": model,
             "max_usd": budget,

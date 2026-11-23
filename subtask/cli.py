@@ -80,6 +80,8 @@ def main() -> int:
     s.add_argument("--max-usd", type=float)
     s.add_argument("--max-turns", type=int, default=60)
     s.add_argument("--effort", default="medium")
+    s.add_argument("--tier", choices=list(core.TIERS), default="auto")
+    s.add_argument("--fast", action="store_true", help="fast tier: effort=low + Codex ultrafast service tier")
     s.add_argument("--model")
     s.add_argument("--no-sandbox", action="store_true")
     s.add_argument("--file", action="append", dest="files", help="path the agent reads first")
@@ -214,6 +216,8 @@ def main() -> int:
             verify=a.verify,
             untrusted=a.untrusted,
             isolation=a.isolation,
+            tier=a.tier,
+            fast=a.fast,
             contract=__import__("json").loads(__import__("pathlib").Path(a.contract_file).read_text())
             if a.contract_file
             else None,
