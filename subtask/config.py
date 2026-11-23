@@ -88,7 +88,7 @@ MONTHLY_CAP_USD = (
 JEV_INPUT_USD_M = _money("SUBTASK_JEV_INPUT_USD_M", "0.042")
 DEFAULT_MAX_USD = _money("SUBTASK_DEFAULT_MAX_USD", "2")
 MAX_JOB_USD = _money("SUBTASK_MAX_JOB_USD", "20")
-MAX_RUNNING = int(_money("SUBTASK_MAX_RUNNING", "4")) or 4
+MAX_RUNNING = int(_money("SUBTASK_MAX_RUNNING", "12")) or 12
 SUMMARY_LINES = 12
 
 # DeepSeek (engine "dsh"): key file and list price in USD per million tokens.
